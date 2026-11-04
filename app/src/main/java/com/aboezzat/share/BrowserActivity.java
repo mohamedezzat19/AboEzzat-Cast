@@ -16,6 +16,7 @@ import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
 import android.net.Uri;
+import android.provider.OpenableColumns;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Environment;
@@ -145,6 +146,7 @@ public class BrowserActivity extends Activity {
     }
 
     private final List<CapturedMedia> capturedList = Collections.synchronizedList(new ArrayList<CapturedMedia>());
+    private final List<Uri> localMediaUris = new ArrayList<>();
     private final OkHttpClient client = new OkHttpClient();
     private String tvIp = "";
     private String lastDiscoveredPoster = "";
@@ -421,8 +423,19 @@ public class BrowserActivity extends Activity {
                 performSearchOrGo();
             }
         } else if (requestCode == 7302 && resultCode == RESULT_OK && data != null) {
-            int selected = data.getClipData() != null ? data.getClipData().getItemCount() : (data.getData() != null ? 1 : 0);
-            Toast.makeText(this, selected > 0 ? "تم اختيار " + selected + " ملف(ات) من الهاتف" : "لم يتم اختيار ملف", Toast.LENGTH_SHORT).show();
+            int selected = 0;
+            if (data.getClipData() != null) {
+                for (int i = 0; i < data.getClipData().getItemCount(); i++) {
+                    Uri uri = data.getClipData().getItemAt(i).getUri();
+                    addLocalMediaUri(uri, data.getFlags());
+                    selected++;
+                }
+            } else if (data.getData() != null) {
+                addLocalMediaUri(data.getData(), data.getFlags());
+                selected = 1;
+            }
+            buildMediaPanel();
+            Toast.makeText(this, selected > 0 ? "تمت إضافة " + selected + " ملف(ات) إلى قسم الوسائط" : "لم يتم اختيار ملف", Toast.LENGTH_SHORT).show();
         }
     }
 
@@ -472,6 +485,48 @@ public class BrowserActivity extends Activity {
         });
     }
 
+    private void addLocalMediaUri(Uri uri, int intentFlags) {
+        if (uri == null) return;
+        if (!localMediaUris.contains(uri)) localMediaUris.add(uri);
+        try {
+            int permissionFlags = intentFlags & (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+            getContentResolver().takePersistableUriPermission(uri, permissionFlags);
+        } catch (Exception ignored) {}
+    }
+
+    private String getLocalMediaName(Uri uri) {
+        String name = uri == null ? "ملف وسائط" : uri.getLastPathSegment();
+        if (uri == null) return name;
+        android.database.Cursor cursor = null;
+        try {
+            cursor = getContentResolver().query(uri, new String[]{OpenableColumns.DISPLAY_NAME}, null, null, null);
+            if (cursor != null && cursor.moveToFirst()) {
+                int index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
+                if (index >= 0) {
+                    String displayName = cursor.getString(index);
+                    if (displayName != null && !displayName.trim().isEmpty()) name = displayName;
+                }
+            }
+        } catch (Exception ignored) {
+        } finally {
+            if (cursor != null) cursor.close();
+        }
+        return name == null ? "ملف وسائط" : name;
+    }
+
+    private void openLocalMedia(Uri uri) {
+        try {
+            String mime = getContentResolver().getType(uri);
+            if (mime == null) mime = "*/*";
+            Intent viewIntent = new Intent(Intent.ACTION_VIEW);
+            viewIntent.setDataAndType(uri, mime);
+            viewIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            startActivity(Intent.createChooser(viewIntent, "فتح الملف باستخدام"));
+        } catch (Exception e) {
+            Toast.makeText(this, "لا يوجد تطبيق مناسب لفتح هذا الملف", Toast.LENGTH_SHORT).show();
+        }
+    }
+
     private void buildMediaPanel() {
         if (mediaPanel == null) return;
         mediaPanel.removeAllViews();
@@ -507,11 +562,38 @@ public class BrowserActivity extends Activity {
         content.addView(discovered, discoveredParams);
 
         TextView note = new TextView(this);
-        note.setText("اختيار ملف محلي يفتح منتقي ملفات أندرويد، ويمكن تحديد أكثر من ملف.");
+        note.setText("اختيار ملف محلي يفتح منتقي ملفات أندرويد، ويمكن تحديد أكثر من ملف. اضغط على ملف مختار لفتحه بالتطبيق المناسب.");
         note.setTextColor(Color.GRAY);
         note.setTextSize(12);
-        note.setPadding(0, dp(16), 0, 0);
+        note.setPadding(0, dp(16), 0, dp(10));
         content.addView(note);
+
+        if (!localMediaUris.isEmpty()) {
+            TextView selectedHeading = new TextView(this);
+            selectedHeading.setText("📂 الملفات المختارة (" + localMediaUris.size() + ")");
+            selectedHeading.setTextColor(Color.parseColor("#FFC107"));
+            selectedHeading.setTextSize(16);
+            selectedHeading.setPadding(0, dp(12), 0, dp(8));
+            content.addView(selectedHeading);
+            for (Uri uri : new ArrayList<>(localMediaUris)) {
+                TextView fileRow = new TextView(this);
+                fileRow.setText("▶  " + getLocalMediaName(uri));
+                fileRow.setTextColor(Color.WHITE);
+                fileRow.setTextSize(14);
+                fileRow.setPadding(dp(12), dp(12), dp(12), dp(12));
+                fileRow.setBackgroundColor(Color.parseColor("#202020"));
+                LinearLayout.LayoutParams fileParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                fileParams.setMargins(0, dp(3), 0, dp(3));
+                content.addView(fileRow, fileParams);
+                fileRow.setOnClickListener(v -> openLocalMedia(uri));
+                fileRow.setOnLongClickListener(v -> {
+                    localMediaUris.remove(uri);
+                    buildMediaPanel();
+                    Toast.makeText(this, "تم حذف الملف من القائمة", Toast.LENGTH_SHORT).show();
+                    return true;
+                });
+            }
+        }
         mediaPanel.addView(content, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
     }
 
