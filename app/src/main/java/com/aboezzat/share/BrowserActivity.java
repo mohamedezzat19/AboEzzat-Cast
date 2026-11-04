@@ -88,7 +88,6 @@ public class BrowserActivity extends Activity {
 
     private LinearLayout rootLayout;
     private LinearLayout topBar;
-    private LinearLayout bottomBar;
     private LinearLayout browserControls;
     private LinearLayout searchRow;
     private BottomNavigationView bottomNavigation;
@@ -461,7 +460,7 @@ public class BrowserActivity extends Activity {
             }
             final boolean result = connected;
             runOnUiThread(() -> {
-                if (receiverStatus == null) return;
+                if (isFinishing() || receiverStatus == null) return;
                 if (result) {
                     receiverStatus.setText("● متصل: " + ip);
                     receiverStatus.setTextColor(Color.parseColor("#43D17A"));
@@ -658,7 +657,7 @@ public class BrowserActivity extends Activity {
         if (old != null) for (String item : old.split("\\n")) if (!item.equals(entry)) list.add(item);
         StringBuilder out = new StringBuilder();
         for (String item : list) {
-            if (out.length() > 0) out.append("\\n");
+            if (out.length() > 0) out.append("\n");
             out.append(item);
         }
         prefs.edit().putString(key, out.toString()).apply();
