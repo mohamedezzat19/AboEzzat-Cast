@@ -182,7 +182,7 @@ public class BrowserActivity extends Activity {
         topBar.setPadding(dp(14), dp(9), dp(14), dp(9));
         topBar.setBackgroundColor(Color.parseColor("#1B1B1B"));
         topBar.setGravity(Gravity.CENTER_VERTICAL);
-        topBar.setLayoutDirection(View.LAYOUT_DIRECTION.LTR);
+        topBar.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
 
         ImageView appIcon = new ImageView(this);
         appIcon.setImageResource(com.aboezzat.share.R.drawable.ic_launcher);
