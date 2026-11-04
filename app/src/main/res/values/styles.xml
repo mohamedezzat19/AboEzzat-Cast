@@ -5,4 +5,28 @@
         <item name="colorPrimaryDark">#000000</item>
         <item name="colorAccent">#FFD700</item>
     </style>
+
+    <style name="DrawerMenuRow">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">50dp</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:orientation">horizontal</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+        <item name="android:paddingHorizontal">4dp</item>
+        <item name="android:foreground">?android:attr/selectableItemBackground</item>
+    </style>
+
+    <style name="DrawerMenuIcon">
+        <item name="android:layout_width">38dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textSize">19sp</item>
+    </style>
+
+    <style name="DrawerMenuText">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textColor">#E8ECF4</item>
+        <item name="android:textSize">14sp</item>
+    </style>
 </resources>
