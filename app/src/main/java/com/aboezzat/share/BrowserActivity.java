@@ -8,6 +8,7 @@ import android.app.DownloadManager;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.speech.RecognizerIntent;
 import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
 import android.graphics.Bitmap;
@@ -27,6 +28,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowManager;
+import android.view.MenuItem;
 import android.view.animation.AlphaAnimation;
 import android.view.animation.Animation;
 import android.webkit.CookieManager;
@@ -45,6 +47,8 @@ import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
+import android.widget.ImageButton;
+import android.widget.ScrollView;
 import android.widget.LinearLayout;
 import android.widget.ListView;
 import android.widget.ProgressBar;
@@ -72,6 +76,10 @@ import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
 
+import com.google.android.material.bottomnavigation.BottomNavigationView;
+import java.net.InetSocketAddress;
+import java.net.Socket;
+
 public class BrowserActivity extends Activity {
 
     private final List<WebView> tabList = new ArrayList<>();
@@ -81,6 +89,20 @@ public class BrowserActivity extends Activity {
     private LinearLayout rootLayout;
     private LinearLayout topBar;
     private LinearLayout bottomBar;
+    private LinearLayout browserControls;
+    private BottomNavigationView bottomNavigation;
+    private FrameLayout mediaPanel;
+    private FrameLayout libraryPanel;
+    private TextView receiverStatus;
+    private TextView mediaPanelInfo;
+    private int currentSection = 0;
+    private final android.os.Handler receiverStatusHandler = new android.os.Handler();
+    private final Runnable receiverStatusRunnable = new Runnable() {
+        @Override public void run() {
+            refreshReceiverStatus();
+            receiverStatusHandler.postDelayed(this, 7000);
+        }
+    };
     private ProgressBar progressBar;
     private FrameLayout webContainer;
     private FrameLayout fullScreenContainer;
@@ -92,6 +114,13 @@ public class BrowserActivity extends Activity {
     private Button btnSniff;
     private Button btnCast;
     private Button btnTabs;
+    private ImageButton btnVoice;
+    private ImageButton btnClear;
+    private ImageButton btnGo;
+    private static final int REQUEST_VOICE_SEARCH = 7301;
+    private static final int NAV_HOME = 1;
+    private static final int NAV_MEDIA = 2;
+    private static final int NAV_LIBRARY = 3;
 
     private PowerManager.WakeLock wakeLock;
 
@@ -147,59 +176,118 @@ public class BrowserActivity extends Activity {
         rootLayout.setOrientation(LinearLayout.VERTICAL);
         rootLayout.setBackgroundColor(Color.parseColor("#121212"));
 
+        // Header: app title and live receiver connection status.
         topBar = new LinearLayout(this);
         topBar.setOrientation(LinearLayout.HORIZONTAL);
-        topBar.setPadding(8, 8, 8, 8);
-        topBar.setBackgroundColor(Color.parseColor("#1F1F1F"));
+        topBar.setPadding(dp(14), dp(9), dp(14), dp(9));
+        topBar.setBackgroundColor(Color.parseColor("#1B1B1B"));
         topBar.setGravity(Gravity.CENTER_VERTICAL);
+        topBar.setLayoutDirection(View.LAYOUT_DIRECTION.LTR);
+
+        ImageView appIcon = new ImageView(this);
+        appIcon.setImageResource(com.aboezzat.share.R.drawable.ic_launcher);
+        appIcon.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        LinearLayout.LayoutParams appIconParams = new LinearLayout.LayoutParams(dp(42), dp(42));
+        appIconParams.setMargins(0, 0, dp(10), 0);
+        topBar.addView(appIcon, appIconParams);
+
+        LinearLayout titleBlock = new LinearLayout(this);
+        titleBlock.setOrientation(LinearLayout.VERTICAL);
+        titleBlock.setGravity(Gravity.CENTER_VERTICAL);
+        TextView appTitle = new TextView(this);
+        appTitle.setText("Abo Ezzat Cast");
+        appTitle.setTextColor(Color.WHITE);
+        appTitle.setTextSize(18);
+        appTitle.setTypeface(null, android.graphics.Typeface.BOLD);
+        titleBlock.addView(appTitle);
+
+        receiverStatus = new TextView(this);
+        receiverStatus.setText("● جاري فحص اتصال الريسيفر...");
+        receiverStatus.setTextColor(Color.GRAY);
+        receiverStatus.setTextSize(11);
+        titleBlock.addView(receiverStatus);
+        topBar.addView(titleBlock, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
         Button btnMenu = new Button(this);
         btnMenu.setText("☰");
         btnMenu.setTextColor(Color.WHITE);
         btnMenu.setBackgroundColor(Color.TRANSPARENT);
-        btnMenu.setTextSize(20);
+        btnMenu.setTextSize(21);
         btnMenu.setOnClickListener(v -> showSideMenu());
-        topBar.addView(btnMenu, new LinearLayout.LayoutParams(95, ViewGroup.LayoutParams.WRAP_CONTENT));
+        topBar.addView(btnMenu, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        rootLayout.addView(topBar);
+
+        // Fast URL / Google search row.
+        LinearLayout searchRow = new LinearLayout(this);
+        searchRow.setOrientation(LinearLayout.HORIZONTAL);
+        searchRow.setGravity(Gravity.CENTER_VERTICAL);
+        searchRow.setPadding(dp(8), dp(7), dp(8), dp(7));
+        searchRow.setBackgroundColor(Color.parseColor("#121212"));
 
         etUrl = new EditText(this);
-        etUrl.setHint("اكتب الرابط أو ابحث...");
+        etUrl.setHint("ابحث في جوجل أو اكتب رابط");
         etUrl.setHintTextColor(Color.GRAY);
         etUrl.setTextColor(Color.WHITE);
-        etUrl.setTextSize(13);
+        etUrl.setTextSize(14);
         etUrl.setSingleLine(true);
-        etUrl.setBackgroundColor(Color.parseColor("#2A2A2A"));
-        etUrl.setPadding(15, 10, 15, 10);
-        LinearLayout.LayoutParams urlParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
-        urlParams.setMargins(5, 0, 5, 0);
+        etUrl.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_GO);
+        etUrl.setBackgroundColor(Color.parseColor("#292929"));
+        etUrl.setPadding(dp(12), dp(9), dp(12), dp(9));
+        LinearLayout.LayoutParams urlParams = new LinearLayout.LayoutParams(0, dp(48), 1f);
+        urlParams.setMargins(dp(3), 0, dp(3), 0);
         etUrl.setOnEditorActionListener((v, actionId, event) -> {
-            loadTargetUrl(etUrl.getText().toString().trim());
-            return true;
+            if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_GO ||
+                    actionId == android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH ||
+                    (event != null && event.getKeyCode() == KeyEvent.KEYCODE_ENTER)) {
+                performSearchOrGo();
+                return true;
+            }
+            return false;
         });
-        topBar.addView(etUrl, urlParams);
+        searchRow.addView(etUrl, urlParams);
+
+        btnVoice = createSearchImageButton(android.R.drawable.ic_btn_speak_now, "بحث صوتي");
+        btnVoice.setOnClickListener(v -> startVoiceSearch());
+        searchRow.addView(btnVoice, new LinearLayout.LayoutParams(dp(42), dp(48)));
+
+        btnClear = createSearchImageButton(android.R.drawable.ic_menu_close_clear_cancel, "مسح النص");
+        btnClear.setVisibility(View.GONE);
+        btnClear.setOnClickListener(v -> etUrl.setText(""));
+        searchRow.addView(btnClear, new LinearLayout.LayoutParams(dp(38), dp(48)));
+
+        btnGo = createSearchImageButton(android.R.drawable.ic_media_play, "فتح الرابط أو البحث");
+        btnGo.setOnClickListener(v -> performSearchOrGo());
+        searchRow.addView(btnGo, new LinearLayout.LayoutParams(dp(42), dp(48)));
 
         btnSniff = new Button(this);
         btnSniff.setText("🎯");
-        btnSniff.setTextSize(16);
+        btnSniff.setTextSize(15);
         btnSniff.setTextColor(Color.WHITE);
         btnSniff.setBackgroundColor(Color.parseColor("#D32F2F"));
+        btnSniff.setContentDescription("فحص الوسائط");
         btnSniff.setOnClickListener(v -> triggerManualSniff());
-        LinearLayout.LayoutParams sniffParams = new LinearLayout.LayoutParams(95, ViewGroup.LayoutParams.WRAP_CONTENT);
-        sniffParams.setMargins(0, 5, 5, 0);
-        topBar.addView(btnSniff, sniffParams);
+        searchRow.addView(btnSniff, new LinearLayout.LayoutParams(dp(44), dp(48)));
 
         btnCast = new Button(this);
         btnCast.setText("📺 0");
-        btnCast.setTextSize(13);
+        btnCast.setTextSize(12);
         btnCast.setTextColor(Color.BLACK);
         btnCast.setBackgroundColor(Color.parseColor("#FFC107"));
         btnCast.setVisibility(View.GONE);
         btnCast.setOnClickListener(v -> showMediaListDialog());
-        topBar.addView(btnCast, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        searchRow.addView(btnCast, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(48)));
+        rootLayout.addView(searchRow);
 
-        rootLayout.addView(topBar);
+        etUrl.addTextChangedListener(new android.text.TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
+                if (btnClear != null) btnClear.setVisibility(s.length() > 0 ? View.VISIBLE : View.GONE);
+            }
+            @Override public void afterTextChanged(android.text.Editable s) {}
+        });
 
         progressBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
-        progressBar.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 6));
+        progressBar.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(3)));
         progressBar.setMax(100);
         progressBar.setProgress(0);
         progressBar.setVisibility(View.GONE);
@@ -210,36 +298,62 @@ public class BrowserActivity extends Activity {
         fullScreenContainer = new FrameLayout(this);
         fullScreenContainer.setVisibility(View.GONE);
         fullScreenContainer.setBackgroundColor(Color.BLACK);
-
         baseFrame.addView(webContainer, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         baseFrame.addView(fullScreenContainer, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
-        rootLayout.addView(baseFrame, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1.0f));
+        mediaPanel = new FrameLayout(this);
+        mediaPanel.setBackgroundColor(Color.parseColor("#121212"));
+        mediaPanel.setVisibility(View.GONE);
+        baseFrame.addView(mediaPanel, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
-        bottomBar = new LinearLayout(this);
-        bottomBar.setOrientation(LinearLayout.HORIZONTAL);
-        bottomBar.setBackgroundColor(Color.parseColor("#1F1F1F"));
-        bottomBar.setPadding(10, 5, 10, 5);
-        bottomBar.setGravity(Gravity.CENTER);
+        libraryPanel = new FrameLayout(this);
+        libraryPanel.setBackgroundColor(Color.parseColor("#121212"));
+        libraryPanel.setVisibility(View.GONE);
+        baseFrame.addView(libraryPanel, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
-        bottomBar.addView(createBottomButton("◀", v -> {
+        rootLayout.addView(baseFrame, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+
+        // Keep browser navigation controls, but place them above the three main destinations.
+        browserControls = new LinearLayout(this);
+        browserControls.setOrientation(LinearLayout.HORIZONTAL);
+        browserControls.setGravity(Gravity.CENTER);
+        browserControls.setBackgroundColor(Color.parseColor("#1A1A1A"));
+        browserControls.setPadding(dp(5), dp(2), dp(5), dp(2));
+        browserControls.addView(createBottomButton("◀ رجوع", v -> {
             WebView currentWeb = getCurrentWebView();
             if (currentWeb != null && currentWeb.canGoBack()) currentWeb.goBack();
         }));
-
-        bottomBar.addView(createBottomButton("▶", v -> {
+        browserControls.addView(createBottomButton("▶ التالي", v -> {
             WebView currentWeb = getCurrentWebView();
             if (currentWeb != null && currentWeb.canGoForward()) currentWeb.goForward();
         }));
+        browserControls.addView(createBottomButton("⟳", v -> {
+            WebView currentWeb = getCurrentWebView();
+            if (currentWeb != null) currentWeb.reload();
+        }));
+        browserControls.addView(createBottomButton("تبويبات", v -> showTabsDialog()));
+        rootLayout.addView(browserControls);
 
-        bottomBar.addView(createBottomButton("🏠", v -> loadHomePage()));
-
-        btnTabs = createBottomButton("[ 1 ]", v -> showTabsDialog());
-        bottomBar.addView(btnTabs);
-
-        rootLayout.addView(bottomBar);
+        bottomNavigation = new BottomNavigationView(this);
+        bottomNavigation.setBackgroundColor(Color.parseColor("#202020"));
+        bottomNavigation.setItemIconTintList(android.content.res.ColorStateList.valueOf(Color.WHITE));
+        bottomNavigation.setItemTextColor(android.content.res.ColorStateList.valueOf(Color.WHITE));
+        bottomNavigation.getMenu().add(0, NAV_HOME, 0, "الرئيسية").setIcon(android.R.drawable.ic_menu_view);
+        bottomNavigation.getMenu().add(0, NAV_MEDIA, 1, "الوسائط").setIcon(android.R.drawable.ic_menu_gallery);
+        bottomNavigation.getMenu().add(0, NAV_LIBRARY, 2, "المكتبة").setIcon(android.R.drawable.ic_menu_save);
+        bottomNavigation.setLabelVisibilityMode(BottomNavigationView.LABEL_VISIBILITY_LABELED);
+        bottomNavigation.setOnItemSelectedListener(item -> {
+            switchMainSection(item.getItemId());
+            return true;
+        });
+        rootLayout.addView(bottomNavigation, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         setContentView(rootLayout);
+        bottomNavigation.setSelectedItemId(NAV_HOME);
+        buildMediaPanel();
+        buildLibraryPanel();
+        refreshReceiverStatus();
+        receiverStatusHandler.postDelayed(receiverStatusRunnable, 7000);
 
         String startUrl = "about:home";
         if (getIntent() != null) {
@@ -250,6 +364,300 @@ public class BrowserActivity extends Activity {
             }
         }
         addNewTab(startUrl);
+    }
+
+    private int dp(float value) {
+        return (int) (value * getResources().getDisplayMetrics().density + 0.5f);
+    }
+
+    private ImageButton createSearchImageButton(int drawable, String description) {
+        ImageButton button = new ImageButton(this);
+        button.setImageResource(drawable);
+        button.setContentDescription(description);
+        button.setBackgroundColor(Color.TRANSPARENT);
+        button.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        button.setPadding(dp(7), dp(7), dp(7), dp(7));
+        button.setColorFilter(Color.WHITE);
+        return button;
+    }
+
+    private void performSearchOrGo() {
+        String value = etUrl == null ? "" : etUrl.getText().toString().trim();
+        if (value.isEmpty()) {
+            etUrl.requestFocus();
+            return;
+        }
+        loadTargetUrl(value);
+        hideKeyboard();
+    }
+
+    private void hideKeyboard() {
+        try {
+            android.view.inputmethod.InputMethodManager imm =
+                    (android.view.inputmethod.InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+            if (imm != null) imm.hideSoftInputFromWindow(etUrl.getWindowToken(), 0);
+        } catch (Exception ignored) {}
+    }
+
+    private void startVoiceSearch() {
+        try {
+            Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+            intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_WEB_SEARCH);
+            intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ar");
+            intent.putExtra(RecognizerIntent.EXTRA_PROMPT, "قل ما تريد البحث عنه");
+            startActivityForResult(intent, REQUEST_VOICE_SEARCH);
+        } catch (Exception e) {
+            Toast.makeText(this, "البحث الصوتي غير متاح على هذا الجهاز", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQUEST_VOICE_SEARCH && resultCode == RESULT_OK && data != null) {
+            ArrayList<String> matches = data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
+            if (matches != null && !matches.isEmpty()) {
+                etUrl.setText(matches.get(0));
+                performSearchOrGo();
+            }
+        }
+    }
+
+    private void switchMainSection(int sectionId) {
+        currentSection = sectionId;
+        boolean home = sectionId == NAV_HOME;
+        webContainer.setVisibility(home ? View.VISIBLE : View.GONE);
+        mediaPanel.setVisibility(sectionId == NAV_MEDIA ? View.VISIBLE : View.GONE);
+        libraryPanel.setVisibility(sectionId == NAV_LIBRARY ? View.VISIBLE : View.GONE);
+        browserControls.setVisibility(home ? View.VISIBLE : View.GONE);
+        if (sectionId == NAV_MEDIA) buildMediaPanel();
+        if (sectionId == NAV_LIBRARY) buildLibraryPanel();
+    }
+
+    private void refreshReceiverStatus() {
+        if (receiverStatus == null) return;
+        final String ip = tvIp == null ? "" : tvIp.trim();
+        if (ip.isEmpty()) {
+            receiverStatus.setText("● الريسيفر غير محدد");
+            receiverStatus.setTextColor(Color.GRAY);
+            return;
+        }
+        receiverStatus.setText("● جاري الاتصال: " + ip);
+        receiverStatus.setTextColor(Color.parseColor("#FFC107"));
+        AsyncTask.execute(() -> {
+            boolean connected = false;
+            Socket socket = null;
+            try {
+                socket = new Socket();
+                socket.connect(new InetSocketAddress(ip, 8081), 1800);
+                connected = true;
+            } catch (Exception ignored) {
+            } finally {
+                if (socket != null) try { socket.close(); } catch (Exception ignored) {}
+            }
+            final boolean result = connected;
+            runOnUiThread(() -> {
+                if (receiverStatus == null) return;
+                if (result) {
+                    receiverStatus.setText("● متصل: " + ip);
+                    receiverStatus.setTextColor(Color.parseColor("#43D17A"));
+                } else {
+                    receiverStatus.setText("● غير متصل: " + ip);
+                    receiverStatus.setTextColor(Color.parseColor("#FF6B6B"));
+                }
+            });
+        });
+    }
+
+    private void buildMediaPanel() {
+        if (mediaPanel == null) return;
+        mediaPanel.removeAllViews();
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(20), dp(20), dp(20), dp(20));
+        content.setGravity(Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+
+        TextView heading = new TextView(this);
+        heading.setText("وسائط الهاتف");
+        heading.setTextColor(Color.WHITE);
+        heading.setTextSize(22);
+        heading.setTypeface(null, android.graphics.Typeface.BOLD);
+        content.addView(heading);
+
+        mediaPanelInfo = new TextView(this);
+        mediaPanelInfo.setText("افتح ملفات الفيديو والصور والصوت من جهازك، أو اعرض الوسائط التي اكتشفها المتصفح.");
+        mediaPanelInfo.setTextColor(Color.LTGRAY);
+        mediaPanelInfo.setTextSize(14);
+        mediaPanelInfo.setPadding(0, dp(12), 0, dp(18));
+        content.addView(mediaPanelInfo);
+
+        Button openLocal = new Button(this);
+        openLocal.setText("📁 فتح ملفات الهاتف");
+        openLocal.setOnClickListener(v -> openLocalMediaPicker());
+        content.addView(openLocal, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(52)));
+
+        Button discovered = new Button(this);
+        discovered.setText("📺 الوسائط المكتشفة في المتصفح (" + capturedList.size() + ")");
+        discovered.setOnClickListener(v -> showMediaListDialog());
+        LinearLayout.LayoutParams discoveredParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(52));
+        discoveredParams.setMargins(0, dp(10), 0, 0);
+        content.addView(discovered, discoveredParams);
+
+        TextView note = new TextView(this);
+        note.setText("اختيار ملف محلي يفتح منتقي ملفات أندرويد، ويمكن تحديد أكثر من ملف.");
+        note.setTextColor(Color.GRAY);
+        note.setTextSize(12);
+        note.setPadding(0, dp(16), 0, 0);
+        content.addView(note);
+        mediaPanel.addView(content, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+    }
+
+    private void openLocalMediaPicker() {
+        try {
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("*/*");
+            intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+            startActivityForResult(intent, 7302);
+        } catch (Exception e) {
+            Toast.makeText(this, "تعذر فتح منتقي ملفات الهاتف", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void buildLibraryPanel() {
+        if (libraryPanel == null) return;
+        libraryPanel.removeAllViews();
+        ScrollView scroll = new ScrollView(this);
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(16), dp(16), dp(16), dp(16));
+
+        TextView heading = new TextView(this);
+        heading.setText("المكتبة");
+        heading.setTextColor(Color.WHITE);
+        heading.setTextSize(22);
+        heading.setTypeface(null, android.graphics.Typeface.BOLD);
+        content.addView(heading);
+
+        Button saveCurrent = new Button(this);
+        saveCurrent.setText("☆ إضافة الصفحة الحالية للمفضلة");
+        saveCurrent.setOnClickListener(v -> saveCurrentPageAsFavorite());
+        LinearLayout.LayoutParams saveParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(50));
+        saveParams.setMargins(0, dp(10), 0, dp(12));
+        content.addView(saveCurrent, saveParams);
+
+        addLibrarySection(content, "⭐ المفضلة", "browser_favorites", true);
+        addLibrarySection(content, "🕘 سجل التصفح", "browser_history", false);
+        scroll.addView(content);
+        libraryPanel.addView(scroll, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+    }
+
+    private void addLibrarySection(LinearLayout parent, String headingText, String prefKey, boolean favorites) {
+        TextView heading = new TextView(this);
+        heading.setText(headingText);
+        heading.setTextColor(Color.parseColor("#FFC107"));
+        heading.setTextSize(17);
+        heading.setPadding(0, dp(10), 0, dp(8));
+        parent.addView(heading);
+
+        SharedPreferences prefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
+        String saved = prefs.getString(prefKey, "");
+        if (saved == null || saved.trim().isEmpty()) {
+            TextView empty = new TextView(this);
+            empty.setText(favorites ? "لا توجد صفحات في المفضلة حتى الآن." : "سجل التصفح سيظهر هنا بعد زيارة المواقع.");
+            empty.setTextColor(Color.GRAY);
+            empty.setPadding(dp(8), dp(5), dp(8), dp(12));
+            parent.addView(empty);
+            return;
+        }
+
+        String[] entries = saved.split("\\n");
+        int shown = 0;
+        for (String entry : entries) {
+            if (entry.trim().isEmpty() || shown >= 40) continue;
+            String[] parts = entry.split("\\|\\|\\|", 2);
+            String title = parts.length > 1 ? parts[0] : entry;
+            String url = parts.length > 1 ? parts[1] : entry;
+            TextView row = new TextView(this);
+            row.setText("• " + title + "\\n" + url);
+            row.setTextColor(Color.WHITE);
+            row.setTextSize(13);
+            row.setPadding(dp(12), dp(12), dp(12), dp(12));
+            row.setBackgroundColor(Color.parseColor(shown % 2 == 0 ? "#202020" : "#181818"));
+            row.setOnClickListener(v -> {
+                bottomNavigation.setSelectedItemId(NAV_HOME);
+                loadTargetUrl(url);
+            });
+            if (favorites) {
+                row.setOnLongClickListener(v -> {
+                    removeLibraryEntry(prefKey, entry);
+                    buildLibraryPanel();
+                    Toast.makeText(this, "تم حذف العنصر من المفضلة", Toast.LENGTH_SHORT).show();
+                    return true;
+                });
+            }
+            parent.addView(row);
+            shown++;
+        }
+        if (favorites && shown > 0) {
+            TextView hint = new TextView(this);
+            hint.setText("اضغط مطولاً على عنصر لحذفه من المفضلة.");
+            hint.setTextColor(Color.GRAY);
+            hint.setTextSize(11);
+            hint.setPadding(0, dp(5), 0, dp(10));
+            parent.addView(hint);
+        }
+    }
+
+    private void saveCurrentPageAsFavorite() {
+        WebView current = getCurrentWebView();
+        if (current == null || current.getUrl() == null || current.getUrl().startsWith("about:")) {
+            Toast.makeText(this, "افتح صفحة ويب أولاً لإضافتها للمفضلة", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        String title = current.getTitle() == null ? current.getUrl() : current.getTitle();
+        saveLibraryEntry("browser_favorites", title, current.getUrl(), 100);
+        buildLibraryPanel();
+        Toast.makeText(this, "تمت إضافة الصفحة للمفضلة ⭐", Toast.LENGTH_SHORT).show();
+    }
+
+    private void saveHistoryEntry(String url, String title) {
+        if (url == null || url.isEmpty() || url.startsWith("about:")) return;
+        saveLibraryEntry("browser_history", title == null || title.trim().isEmpty() ? url : title, url, 60);
+    }
+
+    private void saveLibraryEntry(String key, String title, String url, int maxEntries) {
+        SharedPreferences prefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
+        String entry = (title == null ? url : title.replace("\\n", " ")) + "|||" + url;
+        String old = prefs.getString(key, "");
+        ArrayList<String> list = new ArrayList<>();
+        if (old != null && !old.isEmpty()) {
+            for (String item : old.split("\\n")) {
+                if (!item.equals(entry) && !item.trim().isEmpty()) list.add(item);
+            }
+        }
+        list.add(0, entry);
+        while (list.size() > maxEntries) list.remove(list.size() - 1);
+        StringBuilder out = new StringBuilder();
+        for (String item : list) {
+            if (out.length() > 0) out.append("\\n");
+            out.append(item);
+        }
+        prefs.edit().putString(key, out.toString()).apply();
+    }
+
+    private void removeLibraryEntry(String key, String entry) {
+        SharedPreferences prefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
+        String old = prefs.getString(key, "");
+        ArrayList<String> list = new ArrayList<>();
+        if (old != null) for (String item : old.split("\\n")) if (!item.equals(entry)) list.add(item);
+        StringBuilder out = new StringBuilder();
+        for (String item : list) {
+            if (out.length() > 0) out.append("\\n");
+            out.append(item);
+        }
+        prefs.edit().putString(key, out.toString()).apply();
     }
 
     private Button createBottomButton(String text, View.OnClickListener listener) {
@@ -458,6 +866,7 @@ public class BrowserActivity extends Activity {
                     etUrl.setText(loadedUrl.equals("about:home") ? "" : loadedUrl);
                     tabTitles.set(currentTabIndex, view.getTitle() != null ? view.getTitle() : "علامة تبويب");
                 }
+                saveHistoryEntry(loadedUrl, view.getTitle());
                 injectAdKiller(view);
             }
         });
@@ -1258,6 +1667,8 @@ public class BrowserActivity extends Activity {
     private void showSideMenu() {
         String[] menuItems = {
                 "🔄 تحديث الصفحة الحالية",
+                "🎯 فحص واستخراج الوسائط",
+                "⭐ إضافة الصفحة الحالية للمفضلة",
                 "📂 مجلد التنزيلات (Downloads)",
                 "➕ فتح علامة تبويب جديدة",
                 "🧹 مسح الكوكيز والبيانات المسجلة"
@@ -1269,10 +1680,14 @@ public class BrowserActivity extends Activity {
                         WebView current = getCurrentWebView();
                         if (current != null) current.reload();
                     } else if (which == 1) {
-                        openDownloadsFolder();
+                        triggerManualSniff();
                     } else if (which == 2) {
-                        addNewTab("about:home");
+                        saveCurrentPageAsFavorite();
                     } else if (which == 3) {
+                        openDownloadsFolder();
+                    } else if (which == 4) {
+                        addNewTab("about:home");
+                    } else if (which == 5) {
                         CookieManager.getInstance().removeAllCookies(null);
                         CookieManager.getInstance().flush();
                         Toast.makeText(BrowserActivity.this, "تم مسح الكوكيز بنجاح ✓", Toast.LENGTH_SHORT).show();
@@ -1335,6 +1750,9 @@ public class BrowserActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        refreshReceiverStatus();
+        receiverStatusHandler.removeCallbacks(receiverStatusRunnable);
+        receiverStatusHandler.postDelayed(receiverStatusRunnable, 7000);
         if (wakeLock != null && wakeLock.isHeld()) {
             try {
                 wakeLock.release();
@@ -1344,6 +1762,7 @@ public class BrowserActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        receiverStatusHandler.removeCallbacks(receiverStatusRunnable);
         super.onDestroy();
         if (wakeLock != null && wakeLock.isHeld()) {
             try {
