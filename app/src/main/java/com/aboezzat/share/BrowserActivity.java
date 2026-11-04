@@ -182,7 +182,7 @@ public class BrowserActivity extends Activity {
         topBar = new LinearLayout(this);
         topBar.setOrientation(LinearLayout.HORIZONTAL);
         topBar.setPadding(dp(14), dp(9), dp(14), dp(9));
-        topBar.setBackgroundColor(Color.parseColor("#1B1B1B"));
+        topBar.setBackgroundColor(Color.parseColor("#151B25"));
         topBar.setGravity(Gravity.CENTER_VERTICAL);
         topBar.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
 
@@ -224,7 +224,7 @@ public class BrowserActivity extends Activity {
         searchRow.setOrientation(LinearLayout.HORIZONTAL);
         searchRow.setGravity(Gravity.CENTER_VERTICAL);
         searchRow.setPadding(dp(8), dp(7), dp(8), dp(7));
-        searchRow.setBackgroundColor(Color.parseColor("#121212"));
+        searchRow.setBackgroundColor(Color.parseColor("#0B0D12"));
 
         etUrl = new EditText(this);
         etUrl.setHint("ابحث في جوجل أو اكتب رابط");
@@ -233,7 +233,7 @@ public class BrowserActivity extends Activity {
         etUrl.setTextSize(14);
         etUrl.setSingleLine(true);
         etUrl.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_GO);
-        etUrl.setBackgroundColor(Color.parseColor("#292929"));
+        etUrl.setBackgroundColor(Color.parseColor("#202938"));
         etUrl.setPadding(dp(12), dp(9), dp(12), dp(9));
         LinearLayout.LayoutParams urlParams = new LinearLayout.LayoutParams(0, dp(48), 1f);
         urlParams.setMargins(dp(3), 0, dp(3), 0);
@@ -265,7 +265,7 @@ public class BrowserActivity extends Activity {
         btnSniff.setText("🎯");
         btnSniff.setTextSize(15);
         btnSniff.setTextColor(Color.WHITE);
-        btnSniff.setBackgroundColor(Color.parseColor("#D32F2F"));
+        btnSniff.setBackgroundColor(Color.parseColor("#087E8B"));
         btnSniff.setContentDescription("فحص الوسائط");
         btnSniff.setOnClickListener(v -> triggerManualSniff());
         searchRow.addView(btnSniff, new LinearLayout.LayoutParams(dp(44), dp(48)));
@@ -315,25 +315,26 @@ public class BrowserActivity extends Activity {
 
         rootLayout.addView(baseFrame, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
-        // Keep browser navigation controls, but place them above the three main destinations.
+        // Browser toolbar order: refresh, back, home, forward, more.
         browserControls = new LinearLayout(this);
         browserControls.setOrientation(LinearLayout.HORIZONTAL);
         browserControls.setGravity(Gravity.CENTER);
-        browserControls.setBackgroundColor(Color.parseColor("#1A1A1A"));
-        browserControls.setPadding(dp(5), dp(2), dp(5), dp(2));
-        browserControls.addView(createBottomButton("◀ رجوع", v -> {
-            WebView currentWeb = getCurrentWebView();
-            if (currentWeb != null && currentWeb.canGoBack()) currentWeb.goBack();
-        }));
-        browserControls.addView(createBottomButton("▶ التالي", v -> {
-            WebView currentWeb = getCurrentWebView();
-            if (currentWeb != null && currentWeb.canGoForward()) currentWeb.goForward();
-        }));
-        browserControls.addView(createBottomButton("⟳", v -> {
+        browserControls.setBackgroundColor(Color.parseColor("#151B25"));
+        browserControls.setPadding(dp(4), dp(3), dp(4), dp(3));
+        browserControls.addView(createBottomButton("⟳ تحديث", v -> {
             WebView currentWeb = getCurrentWebView();
             if (currentWeb != null) currentWeb.reload();
         }));
-        browserControls.addView(createBottomButton("تبويبات", v -> showTabsDialog()));
+        browserControls.addView(createBottomButton("‹ رجوع", v -> {
+            WebView currentWeb = getCurrentWebView();
+            if (currentWeb != null && currentWeb.canGoBack()) currentWeb.goBack();
+        }));
+        browserControls.addView(createBottomButton("⌂ الرئيسية", v -> loadHomePage()));
+        browserControls.addView(createBottomButton("التالي ›", v -> {
+            WebView currentWeb = getCurrentWebView();
+            if (currentWeb != null && currentWeb.canGoForward()) currentWeb.goForward();
+        }));
+        browserControls.addView(createBottomButton("⋮ المزيد", v -> showSideMenu()));
         rootLayout.addView(browserControls);
 
         bottomNavigation = new BottomNavigationView(this);
