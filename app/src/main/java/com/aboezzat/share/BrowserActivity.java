@@ -90,6 +90,7 @@ public class BrowserActivity extends Activity {
     private LinearLayout topBar;
     private LinearLayout bottomBar;
     private LinearLayout browserControls;
+    private LinearLayout searchRow;
     private BottomNavigationView bottomNavigation;
     private FrameLayout mediaPanel;
     private FrameLayout libraryPanel;
@@ -218,7 +219,7 @@ public class BrowserActivity extends Activity {
         rootLayout.addView(topBar);
 
         // Fast URL / Google search row.
-        LinearLayout searchRow = new LinearLayout(this);
+        searchRow = new LinearLayout(this);
         searchRow.setOrientation(LinearLayout.HORIZONTAL);
         searchRow.setGravity(Gravity.CENTER_VERTICAL);
         searchRow.setPadding(dp(8), dp(7), dp(8), dp(7));
@@ -420,6 +421,9 @@ public class BrowserActivity extends Activity {
                 etUrl.setText(matches.get(0));
                 performSearchOrGo();
             }
+        } else if (requestCode == 7302 && resultCode == RESULT_OK && data != null) {
+            int selected = data.getClipData() != null ? data.getClipData().getItemCount() : (data.getData() != null ? 1 : 0);
+            Toast.makeText(this, selected > 0 ? "تم اختيار " + selected + " ملف(ات) من الهاتف" : "لم يتم اختيار ملف", Toast.LENGTH_SHORT).show();
         }
     }
 
@@ -580,7 +584,7 @@ public class BrowserActivity extends Activity {
             String title = parts.length > 1 ? parts[0] : entry;
             String url = parts.length > 1 ? parts[1] : entry;
             TextView row = new TextView(this);
-            row.setText("• " + title + "\\n" + url);
+            row.setText("• " + title + "\n" + url);
             row.setTextColor(Color.WHITE);
             row.setTextSize(13);
             row.setPadding(dp(12), dp(12), dp(12), dp(12));
@@ -629,7 +633,7 @@ public class BrowserActivity extends Activity {
 
     private void saveLibraryEntry(String key, String title, String url, int maxEntries) {
         SharedPreferences prefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
-        String entry = (title == null ? url : title.replace("\\n", " ")) + "|||" + url;
+        String entry = (title == null ? url : title.replace("\n", " ")) + "|||" + url;
         String old = prefs.getString(key, "");
         ArrayList<String> list = new ArrayList<>();
         if (old != null && !old.isEmpty()) {
@@ -641,7 +645,7 @@ public class BrowserActivity extends Activity {
         while (list.size() > maxEntries) list.remove(list.size() - 1);
         StringBuilder out = new StringBuilder();
         for (String item : list) {
-            if (out.length() > 0) out.append("\\n");
+            if (out.length() > 0) out.append("\n");
             out.append(item);
         }
         prefs.edit().putString(key, out.toString()).apply();
@@ -752,7 +756,9 @@ public class BrowserActivity extends Activity {
 
                 topBar.setVisibility(View.GONE);
                 progressBar.setVisibility(View.GONE);
-                bottomBar.setVisibility(View.GONE);
+                searchRow.setVisibility(View.GONE);
+                browserControls.setVisibility(View.GONE);
+                bottomNavigation.setVisibility(View.GONE);
                 webContainer.setVisibility(View.GONE);
 
                 fullScreenContainer.addView(customView);
@@ -776,7 +782,9 @@ public class BrowserActivity extends Activity {
                 }
 
                 topBar.setVisibility(View.VISIBLE);
-                bottomBar.setVisibility(View.VISIBLE);
+                searchRow.setVisibility(View.VISIBLE);
+                browserControls.setVisibility(currentSection == NAV_HOME ? View.VISIBLE : View.GONE);
+                bottomNavigation.setVisibility(View.VISIBLE);
                 webContainer.setVisibility(View.VISIBLE);
 
                 setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
@@ -1750,6 +1758,7 @@ public class BrowserActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        tvIp = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE).getString("tv_ip", "").trim();
         refreshReceiverStatus();
         receiverStatusHandler.removeCallbacks(receiverStatusRunnable);
         receiverStatusHandler.postDelayed(receiverStatusRunnable, 7000);
