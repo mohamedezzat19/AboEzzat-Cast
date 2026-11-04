@@ -1760,7 +1760,8 @@ public class BrowserActivity extends Activity {
                 "⭐ إضافة الصفحة الحالية للمفضلة",
                 "📂 مجلد التنزيلات (Downloads)",
                 "➕ فتح علامة تبويب جديدة",
-                "🧹 مسح الكوكيز والبيانات المسجلة"
+                "🧹 مسح الكوكيز والبيانات المسجلة",
+                "📲 التحقق من تحديث التطبيق"
         };
         new AlertDialog.Builder(this)
                 .setTitle("القائمة الجانبية")
@@ -1780,6 +1781,8 @@ public class BrowserActivity extends Activity {
                         CookieManager.getInstance().removeAllCookies(null);
                         CookieManager.getInstance().flush();
                         Toast.makeText(BrowserActivity.this, "تم مسح الكوكيز بنجاح ✓", Toast.LENGTH_SHORT).show();
+                    } else if (which == 6) {
+                        new AppUpdater(BrowserActivity.this).checkForUpdate(true);
                     }
                 })
                 .show();
