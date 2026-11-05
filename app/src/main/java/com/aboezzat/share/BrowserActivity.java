@@ -299,7 +299,7 @@ public class BrowserActivity extends Activity {
     }
 
     private void showBrowserMoreMenu() {
-        Button anchor = btnTabs;
+        TextView anchor = btnTabs;
         if (anchor == null) {
             showSideMenu();
             return;
