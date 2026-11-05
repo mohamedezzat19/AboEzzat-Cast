@@ -99,6 +99,7 @@ public class MainActivity extends Activity {
 
         initViews();
         setupNavigationDrawer();
+        setupBottomNavigation();
     }
 
     private void initViews() {
@@ -205,6 +206,45 @@ public class MainActivity extends Activity {
         findViewById(R.id.btn_vol_up).setOnClickListener(v -> sendRemoteCommand("volume_up"));
         findViewById(R.id.btn_vol_down).setOnClickListener(v -> sendRemoteCommand("volume_down"));
         findViewById(R.id.btn_mute).setOnClickListener(v -> sendRemoteCommand("mute"));
+    }
+
+    private void setupBottomNavigation() {
+        Button home = findViewById(R.id.bottom_home);
+        Button media = findViewById(R.id.bottom_media);
+        Button library = findViewById(R.id.bottom_library);
+
+        home.setOnClickListener(v -> {
+            View scroll = findViewById(R.id.main_content_scroll);
+            if (scroll instanceof android.widget.ScrollView) {
+                ((android.widget.ScrollView) scroll).smoothScrollTo(0, 0);
+            }
+            home.setTextColor(0xFFFFD700);
+            media.setTextColor(0xFFFFFFFF);
+            library.setTextColor(0xFFFFFFFF);
+        });
+
+        media.setOnClickListener(v -> {
+            media.setTextColor(0xFFFFD700);
+            home.setTextColor(0xFFFFFFFF);
+            library.setTextColor(0xFFFFFFFF);
+            openMediaPicker(false);
+        });
+
+        library.setOnClickListener(v -> {
+            library.setTextColor(0xFFFFD700);
+            home.setTextColor(0xFFFFFFFF);
+            media.setTextColor(0xFFFFFFFF);
+            new AlertDialog.Builder(MainActivity.this)
+                    .setTitle("مكتبة Abo Ezzat Cast")
+                    .setItems(new String[]{"الوسائط الأخيرة", "قائمة التشغيل", "العلامات المرجعية", "اختيار ملفات من الهاتف"}, (dialog, which) -> {
+                        if (which == 0) showRecentMediaDialog();
+                        else if (which == 1) showPlaylistDialog();
+                        else if (which == 2) showBookmarksDialog();
+                        else openMediaPicker(false);
+                    })
+                    .setNegativeButton("إغلاق", null)
+                    .show();
+        });
     }
 
     private void setupNavigationDrawer() {
