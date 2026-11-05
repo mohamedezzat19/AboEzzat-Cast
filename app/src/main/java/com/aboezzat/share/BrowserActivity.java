@@ -277,7 +277,17 @@ public class BrowserActivity extends Activity {
             return true;
         });
         menu.getMenu().add("⭐ حفظ الموقع في المفضلة").setOnMenuItemClickListener(item -> {
-            saveCustomSite();
+            WebView current = getCurrentWebView();
+            if (current != null && current.getUrl() != null &&
+                    (current.getUrl().startsWith("http://") || current.getUrl().startsWith("https://"))) {
+                String siteUrl = current.getUrl();
+                String siteName = current.getTitle();
+                if (siteName == null || siteName.trim().isEmpty()) siteName = siteUrl;
+                saveCustomSite(siteName, siteUrl);
+                Toast.makeText(this, "تم حفظ الموقع في المفضلة", Toast.LENGTH_SHORT).show();
+            } else {
+                Toast.makeText(this, "افتح موقعًا أولاً لحفظه في المفضلة", Toast.LENGTH_SHORT).show();
+            }
             return true;
         });
         menu.getMenu().add("📂 التنزيلات").setOnMenuItemClickListener(item -> {
