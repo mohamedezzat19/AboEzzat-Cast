@@ -248,6 +248,42 @@ public class BrowserActivity extends Activity {
 
         rootLayout.addView(bottomBar);
 
+        // Keep Home / Media / Library navigation visible while browsing.
+        LinearLayout appNavigation = new LinearLayout(this);
+        appNavigation.setOrientation(LinearLayout.HORIZONTAL);
+        appNavigation.setGravity(Gravity.CENTER);
+        appNavigation.setPadding(dp(4), dp(3), dp(4), dp(3));
+        appNavigation.setBackgroundColor(Color.parseColor("#07132B"));
+        String[] navLabels = {"🏠\nالرئيسية", "🎞️\nالوسائط", "📚\nالمكتبة"};
+        for (int index = 0; index < navLabels.length; index++) {
+            final int destination = index;
+            Button navButton = new Button(this);
+            navButton.setText(navLabels[index]);
+            navButton.setAllCaps(false);
+            navButton.setTextSize(12);
+            navButton.setTextColor(Color.WHITE);
+            navButton.setMinHeight(0);
+            navButton.setPadding(dp(2), 0, dp(2), 0);
+            android.graphics.drawable.GradientDrawable navBg = new android.graphics.drawable.GradientDrawable();
+            navBg.setColor(Color.parseColor("#14284D"));
+            navBg.setCornerRadius(dp(8));
+            navButton.setBackground(navBg);
+            LinearLayout.LayoutParams navLp = new LinearLayout.LayoutParams(0, dp(42), 1f);
+            navLp.setMargins(dp(2), 0, dp(2), 0);
+            appNavigation.addView(navButton, navLp);
+            navButton.setOnClickListener(v -> {
+                if (destination == 0) {
+                    finish();
+                } else {
+                    Intent homeIntent = new Intent(BrowserActivity.this, MainActivity.class);
+                    homeIntent.putExtra(destination == 1 ? "open_media_picker" : "open_library", true);
+                    startActivity(homeIntent);
+                    finish();
+                }
+            });
+        }
+        rootLayout.addView(appNavigation);
+
         setContentView(rootLayout);
 
         String startUrl = "about:home";
