@@ -17,47 +17,6 @@
             android:orientation="vertical"
             android:padding="16dp">
 
-            <!-- الهيدر مع زرار القائمة الجانبية المضاف -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:layout_marginTop="8dp"
-                android:layout_marginBottom="20dp">
-
-                <Button
-                    android:id="@+id/btn_open_drawer"
-                    android:layout_width="45dp"
-                    android:layout_height="45dp"
-                    android:text="☰"
-                    android:textColor="#FFFFFF"
-                    android:textSize="22sp"
-                    android:background="#262833"
-                    android:layout_marginEnd="10dp" />
-
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="Abo Ezzat Cast"
-                    android:textColor="#FFFFFF"
-                    android:textSize="22sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/tv_status_badge"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="🔍 فحص الشاشة تلقائياً"
-                    android:textColor="#00E676"
-                    android:textSize="13sp"
-                    android:textStyle="bold"
-                    android:background="#1B2E23"
-                    android:paddingHorizontal="10dp"
-                    android:paddingVertical="4dp" />
-            </LinearLayout>
-
             <!-- سطر الاتصال: الاسم والـ IP ثابتين على الشمال حتى في العربية -->
             <LinearLayout
                 android:layout_width="match_parent"
