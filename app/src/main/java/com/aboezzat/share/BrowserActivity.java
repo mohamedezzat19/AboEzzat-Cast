@@ -383,21 +383,21 @@ public class BrowserActivity extends Activity {
                 : "⌂".equals(text) ? "العودة للرئيسية"
                 : "تقدم للصفحة التالية");
         android.graphics.drawable.GradientDrawable normal = new android.graphics.drawable.GradientDrawable();
-        normal.setColor(Color.parseColor("⋮".equals(text) ? "#202B49" : "#111D38"));
+        normal.setColor(Color.rgb(27, 28, 35)); // Share New PANEL
         normal.setCornerRadius(dp(13));
-        normal.setStroke(dp(1), Color.parseColor("#263B61"));
+        normal.setStroke(dp(1), Color.rgb(38, 40, 51)); // Share New PANEL2
         btn.setBackground(normal);
         btn.setFocusable(true);
         btn.setFocusableInTouchMode(true);
         btn.setClickable(true);
         btn.setOnFocusChangeListener((view, focused) -> {
             android.graphics.drawable.GradientDrawable state = new android.graphics.drawable.GradientDrawable();
-            state.setColor(Color.parseColor(focused ? "#203B65" : ("⋮".equals(text) ? "#202B49" : "#111D38")));
+            state.setColor(focused ? Color.rgb(38, 40, 51) : Color.rgb(27, 28, 35));
             state.setCornerRadius(dp(13));
-            state.setStroke(dp(1), Color.parseColor(focused ? "#36BDF2" : "#263B61"));
+            state.setStroke(dp(1), focused ? Color.rgb(0, 176, 255) : Color.rgb(38, 40, 51));
             btn.setBackground(state);
-            btn.setTextColor(focused ? Color.parseColor("#FFD54A")
-                    : ("⋮".equals(text) ? Color.parseColor("#FFD54A") : Color.WHITE));
+            btn.setTextColor(focused ? Color.rgb(255, 215, 0)
+                    : ("⋮".equals(text) ? Color.rgb(255, 215, 0) : Color.WHITE));
             btn.setElevation(focused ? dp(3) : 0);
         });
         LinearLayout.LayoutParams buttonParams = new LinearLayout.LayoutParams(0, dp(40), 1.0f);
