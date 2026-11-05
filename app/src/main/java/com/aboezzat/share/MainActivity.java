@@ -757,8 +757,9 @@ private void showManualIpDialog() {
             String endpoint = tvIp;
             if (!endpoint.startsWith("http")) endpoint = "http://" + endpoint;
             if (!endpoint.contains(":" + TARGET_PORT)) endpoint += ":" + TARGET_PORT;
+            final String receiverEndpoint = endpoint;
 
-            String fullUrl = endpoint + "/?url=" + URLEncoder.encode(mediaUrl, "UTF-8");
+            String fullUrl = receiverEndpoint + "/?url=" + URLEncoder.encode(mediaUrl, "UTF-8");
             Request req = new Request.Builder().url(fullUrl).build();
             AtomicBoolean requestHeadersSent = new AtomicBoolean(false);
             OkHttpClient trackedClient = client.newBuilder()
@@ -775,7 +776,7 @@ private void showManualIpDialog() {
                     // close before OkHttp receives the acknowledgement. Verify the receiver
                     // with its lightweight ping endpoint before showing a failure.
                     Request ping = new Request.Builder()
-                            .url(endpoint + "/?command=ping")
+                            .url(receiverEndpoint + "/?command=ping")
                             .get()
                             .build();
                     client.newCall(ping).enqueue(new Callback() {
