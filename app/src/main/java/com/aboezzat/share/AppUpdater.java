@@ -24,7 +24,7 @@ import java.util.concurrent.Executors;
 public final class AppUpdater {
     private static final ExecutorService IO = Executors.newSingleThreadExecutor();
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
-    private static final String RELEASES_API = "https://api.github.com/repos/mohamedezzat19/AboEzzat-Share/releases/latest";
+    private static final String RELEASES_API = "https://api.github.com/repos/mohamedezzat19/AboEzzat-Cast/releases/latest";
     private final Activity activity;
 
     public AppUpdater(Activity activity) { this.activity = activity; }
@@ -36,7 +36,7 @@ public final class AppUpdater {
                 c.setConnectTimeout(10000);
                 c.setReadTimeout(15000);
                 c.setRequestProperty("Accept", "application/vnd.github+json");
-                c.setRequestProperty("User-Agent", "AboEzzat-Share-Classic-Updater");
+                c.setRequestProperty("User-Agent", "AboEzzat-Cast-Updater");
                 JSONObject release;
                 try (InputStream in = c.getInputStream();
                      java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream()) {
