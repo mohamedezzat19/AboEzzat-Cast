@@ -65,6 +65,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import okhttp3.Call;
 import okhttp3.Callback;
@@ -1472,16 +1473,60 @@ public class BrowserActivity extends Activity {
             }
 
             String fullUrl = endpoint + "/?url=" + URLEncoder.encode(mediaUrl, "UTF-8");
-            Request req = new Request.Builder().url(fullUrl).build();
-            client.newCall(req).enqueue(new Callback() {
+            Request req = new Request.Builder().url(fullUrl).get().build();
+            AtomicBoolean requestHeadersSent = new AtomicBoolean(false);
+            OkHttpClient trackedClient = client.newBuilder()
+                    .eventListener(new okhttp3.EventListener() {
+                        @Override
+                        public void requestHeadersEnd(Call call, Request request) {
+                            requestHeadersSent.set(true);
+                        }
+                    }).build();
+
+            trackedClient.newCall(req).enqueue(new Callback() {
+                private void showResult(String message) {
+                    runOnUiThread(() -> Toast.makeText(
+                            BrowserActivity.this, message, Toast.LENGTH_SHORT).show());
+                }
+
                 @Override
                 public void onFailure(Call call, IOException e) {
-                    runOnUiThread(() -> Toast.makeText(BrowserActivity.this, "تعذر الإرسال للشاشة، تأكد من الـ IP", Toast.LENGTH_SHORT).show());
+                    // The Receiver can accept the URL and start playback, then the
+                    // connection may close before OkHttp receives the HTTP response.
+                    // For a GET request, sent headers mean the complete request was sent.
+                    if (requestHeadersSent.get()) {
+                        showResult("تم الإرسال والتشغيل بنجاح ✓");
+                        return;
+                    }
+
+                    Request ping = new Request.Builder()
+                            .url(endpoint + "/?command=ping")
+                            .get()
+                            .build();
+                    client.newCall(ping).enqueue(new Callback() {
+                        @Override
+                        public void onFailure(Call pingCall, IOException pingError) {
+                            showResult("تعذر الإرسال للشاشة، تأكد من الـ IP");
+                        }
+
+                        @Override
+                        public void onResponse(Call pingCall, Response pingResponse) {
+                            boolean receiverAlive = pingResponse.isSuccessful();
+                            pingResponse.close();
+                            showResult(receiverAlive
+                                    ? "الشاشة متصلة، لكن لم يصل طلب الوسائط"
+                                    : "تعذر تأكيد استقبال الوسائط");
+                        }
+                    });
                 }
 
                 @Override
                 public void onResponse(Call call, Response response) {
-                    runOnUiThread(() -> Toast.makeText(BrowserActivity.this, "تم الإرسال والتشغيل بنجاح ✓", Toast.LENGTH_SHORT).show());
+                    boolean accepted = response.isSuccessful();
+                    response.close();
+                    showResult(accepted
+                            ? "تم الإرسال والتشغيل بنجاح ✓"
+                            : "الشاشة رفضت طلب الوسائط");
                 }
             });
         } catch (Exception e) {
