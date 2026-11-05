@@ -38,10 +38,12 @@ import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import fi.iki.elonen.NanoHTTPD;
 import okhttp3.Call;
 import okhttp3.Callback;
+import okhttp3.EventListener;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
@@ -753,19 +755,35 @@ private void showManualIpDialog() {
 
             String fullUrl = endpoint + "/?url=" + URLEncoder.encode(mediaUrl, "UTF-8");
             Request req = new Request.Builder().url(fullUrl).build();
-            client.newCall(req).enqueue(new Callback() {
+            AtomicBoolean requestHeadersSent = new AtomicBoolean(false);
+            OkHttpClient trackedClient = client.newBuilder()
+                    .eventListener(new EventListener() {
+                        @Override
+                        public void requestHeadersEnd(Call call, Request request) {
+                            requestHeadersSent.set(true);
+                        }
+                    }).build();
+            trackedClient.newCall(req).enqueue(new Callback() {
                 @Override
                 public void onFailure(Call call, IOException e) {
                     runOnUiThread(() -> {
-                        Toast.makeText(MainActivity.this, "تعذر الإرسال للشاشة", Toast.LENGTH_SHORT).show();
+                        String message = requestHeadersSent.get()
+                                ? "تم إرسال الطلب للشاشة ✓"
+                                : "تعذر الاتصال بالشاشة";
+                        Toast.makeText(MainActivity.this, message, Toast.LENGTH_SHORT).show();
                         finish();
                     });
                 }
 
                 @Override
                 public void onResponse(Call call, Response response) {
+                    boolean accepted = response.isSuccessful();
+                    response.close();
                     runOnUiThread(() -> {
-                        Toast.makeText(MainActivity.this, "تم الإرسال والتشغيل فوراً ✓", Toast.LENGTH_SHORT).show();
+                        String message = accepted
+                                ? "تم الإرسال والتشغيل فوراً ✓"
+                                : "الشاشة رفضت الطلب (HTTP)";
+                        Toast.makeText(MainActivity.this, message, Toast.LENGTH_SHORT).show();
                         finish();
                     });
                 }
