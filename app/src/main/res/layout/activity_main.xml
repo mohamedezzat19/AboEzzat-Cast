@@ -315,7 +315,7 @@
                         android:textSize="18sp"
                         android:contentDescription="إيقاف الفيديو وإغلاق التشغيل"
                         android:textColor="#FFFFFF"
-                        android:backgroundTint="#D95765"
+                        android:backgroundTint="#24475B"
                         android:layout_marginHorizontal="3dp" />
 
                     <Button
@@ -382,7 +382,7 @@
                         android:layout_weight="1"
                         android:text="🔇 كتم"
                         android:textColor="#FFFFFF"
-                        android:backgroundTint="#D95765"
+                        android:backgroundTint="#24475B"
                         android:layout_marginHorizontal="4dp" />
 
                     <Button
