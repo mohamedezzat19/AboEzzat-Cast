@@ -222,19 +222,28 @@ public class BrowserActivity extends Activity {
         bottomBar.setPadding(10, 5, 10, 5);
         bottomBar.setGravity(Gravity.CENTER);
 
-        bottomBar.addView(createBottomButton("◀", v -> {
+        // Browser bottom controls match Share New order: refresh, back, home, forward, more.
+        bottomBar.addView(createBottomButton("↻", v -> {
+            WebView currentWeb = getCurrentWebView();
+            if (currentWeb != null) currentWeb.reload();
+        }));
+
+        bottomBar.addView(createBottomButton("‹", v -> {
             WebView currentWeb = getCurrentWebView();
             if (currentWeb != null && currentWeb.canGoBack()) currentWeb.goBack();
+            else Toast.makeText(this, "مفيش صفحة سابقة", Toast.LENGTH_SHORT).show();
         }));
 
-        bottomBar.addView(createBottomButton("▶", v -> {
+        bottomBar.addView(createBottomButton("⌂", v -> loadHomePage()));
+
+        bottomBar.addView(createBottomButton("›", v -> {
             WebView currentWeb = getCurrentWebView();
             if (currentWeb != null && currentWeb.canGoForward()) currentWeb.goForward();
+            else Toast.makeText(this, "مفيش صفحة تالية", Toast.LENGTH_SHORT).show();
         }));
 
-        bottomBar.addView(createBottomButton("🏠", v -> loadHomePage()));
-
-        btnTabs = createBottomButton("[ 1 ]", v -> showTabsDialog());
+        btnTabs = createBottomButton("⋮", v -> showBrowserMoreMenu());
+        btnTabs.setContentDescription("المزيد من أدوات المتصفح");
         bottomBar.addView(btnTabs);
 
         rootLayout.addView(bottomBar);
@@ -250,6 +259,40 @@ public class BrowserActivity extends Activity {
             }
         }
         addNewTab(startUrl);
+    }
+
+    private void showBrowserMoreMenu() {
+        Button anchor = btnTabs;
+        if (anchor == null) {
+            showSideMenu();
+            return;
+        }
+        android.widget.PopupMenu menu = new android.widget.PopupMenu(this, anchor);
+        menu.getMenu().add("➕ إضافة تبويب").setOnMenuItemClickListener(item -> {
+            addNewTab("about:home");
+            return true;
+        });
+        menu.getMenu().add("▣ علامات التبويب").setOnMenuItemClickListener(item -> {
+            showTabsDialog();
+            return true;
+        });
+        menu.getMenu().add("⭐ حفظ الموقع في المفضلة").setOnMenuItemClickListener(item -> {
+            saveCustomSite();
+            return true;
+        });
+        menu.getMenu().add("📂 التنزيلات").setOnMenuItemClickListener(item -> {
+            openDownloadsFolder();
+            return true;
+        });
+        menu.getMenu().add("🎯 الوسائط المكتشفة").setOnMenuItemClickListener(item -> {
+            showMediaListDialog();
+            return true;
+        });
+        menu.getMenu().add("⚙️ القائمة والإعدادات").setOnMenuItemClickListener(item -> {
+            showSideMenu();
+            return true;
+        });
+        menu.show();
     }
 
     private Button createBottomButton(String text, View.OnClickListener listener) {
