@@ -1276,7 +1276,13 @@ public class BrowserActivity extends Activity {
                     } else if (which == 3) {
                         CookieManager.getInstance().removeAllCookies(null);
                         CookieManager.getInstance().flush();
-                        Toast.makeText(BrowserActivity.this, "تم مسح الكوكيز بنجاح ✓", Toast.LENGTH_SHORT).show();
+                        android.webkit.WebStorage.getInstance().deleteAllData();
+                        for (WebView webView : new ArrayList<>(tabList)) {
+                            webView.clearCache(true);
+                            webView.clearFormData();
+                            webView.clearHistory();
+                        }
+                        Toast.makeText(BrowserActivity.this, "تم مسح الكوكيز وبيانات المواقع وذاكرة المتصفح", Toast.LENGTH_SHORT).show();
                     }
                 })
                 .show();
