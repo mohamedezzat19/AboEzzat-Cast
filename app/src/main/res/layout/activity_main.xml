@@ -9,7 +9,7 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="vertical"
-        android:background="#101014">
+        android:background="#081923">
 
     <ScrollView
         android:id="@+id/main_content_scroll"
@@ -98,7 +98,7 @@
                     android:text="🎙"
                     android:textSize="16sp"
                     android:textColor="#FFFFFF"
-                    android:backgroundTint="#343846"
+                    android:backgroundTint="#24475B"
                     android:layout_marginStart="4dp"/>
                 <Button
                     android:id="@+id/btn_search_clear"
@@ -292,7 +292,7 @@
                         android:layout_weight="1"
                         android:text="التالي ⏭️"
                         android:textColor="#FFFFFF"
-                        android:backgroundTint="#2D303E"
+                        android:backgroundTint="#24475B"
                         android:layout_marginEnd="3dp" />
 
                     <Button
