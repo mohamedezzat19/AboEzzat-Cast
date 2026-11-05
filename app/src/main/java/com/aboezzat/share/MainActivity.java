@@ -453,6 +453,7 @@ public class MainActivity extends Activity {
                     .setNegativeButton("إغلاق", null).show();
             return;
         }
+
         String[] labels = new String[urls.size()];
         for (int i = 0; i < urls.size(); i++) {
             String url = urls.get(i);
@@ -460,22 +461,53 @@ public class MainActivity extends Activity {
             labels[i] = (mostVisited ? (browserPrefs.getInt("visit_count_" + url, 0) + " زيارة · ") : "")
                     + title + "\n" + url;
         }
-        new AlertDialog.Builder(this).setTitle(mostVisited ? "الأكثر زيارة" : "سجل التصفح")
-                .setItems(labels, (dialog, which) -> {
-                    Intent intent = new Intent(MainActivity.this, BrowserActivity.class);
-                    intent.putExtra("url", urls.get(which));
-                    startActivity(intent);
-                })
-                .setNeutralButton("مسح السجل", (dialog, which) -> {
+
+        android.widget.ListView listView = new android.widget.ListView(this);
+        listView.setAdapter(new android.widget.ArrayAdapter<String>(this,
+                android.R.layout.simple_list_item_1, labels));
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle(mostVisited ? "الأكثر زيارة" : "سجل التصفح")
+                .setView(listView)
+                .setNeutralButton("مسح السجل كله", (d, w) -> {
                     SharedPreferences.Editor edit = browserPrefs.edit();
                     for (String url : urls) {
                         edit.remove("history_title_" + url).remove("history_time_" + url)
                                 .remove("visit_count_" + url);
                     }
                     edit.remove("browser_history").apply();
-                    Toast.makeText(this, "تم مسح سجل التصفح", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, "تم مسح سجل التصفح بالكامل", Toast.LENGTH_SHORT).show();
                 })
-                .setNegativeButton("إغلاق", null).show();
+                .setNegativeButton("إغلاق", null)
+                .create();
+
+        listView.setOnItemClickListener((parent, view, position, id) -> {
+            Intent intent = new Intent(MainActivity.this, BrowserActivity.class);
+            intent.putExtra("url", urls.get(position));
+            startActivity(intent);
+            dialog.dismiss();
+        });
+        listView.setOnItemLongClickListener((parent, view, position, id) -> {
+            String url = urls.get(position);
+            String title = browserPrefs.getString("history_title_" + url, url);
+            new AlertDialog.Builder(MainActivity.this)
+                    .setTitle("حذف الصفحة من السجل؟")
+                    .setMessage(title + "\n" + url)
+                    .setPositiveButton("حذف", (confirm, which) -> {
+                        Set<String> updated = new HashSet<>(browserPrefs.getStringSet("browser_history", new HashSet<String>()));
+                        updated.remove(url);
+                        browserPrefs.edit().putStringSet("browser_history", updated)
+                                .remove("history_title_" + url)
+                                .remove("history_time_" + url)
+                                .remove("visit_count_" + url).apply();
+                        dialog.dismiss();
+                        Toast.makeText(MainActivity.this, "تم حذف الصفحة من السجل", Toast.LENGTH_SHORT).show();
+                        showBrowserHistory(mostVisited);
+                    })
+                    .setNegativeButton("إلغاء", null)
+                    .show();
+            return true;
+        });
+        dialog.show();
     }
 
     private void closeDrawer() {
@@ -566,29 +598,56 @@ public class MainActivity extends Activity {
     }
 
     private void showBookmarksDialog() {
-        Set<String> customSites = prefs.getStringSet("custom_sites", new HashSet<>());
-        if (customSites == null || customSites.isEmpty()) {
-            Toast.makeText(this, "لا توجد علامات مرجعية محفوظة بعد", Toast.LENGTH_SHORT).show();
-            return;
-        }
+        SharedPreferences bookmarkPrefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
+        Set<String> customSites = new HashSet<>(bookmarkPrefs.getStringSet("custom_sites", new HashSet<String>()));
         List<String> names = new ArrayList<>();
         List<String> urls = new ArrayList<>();
+        List<String> entries = new ArrayList<>();
         for (String entry : customSites) {
             String[] parts = entry.split("\\|", 2);
             if (parts.length == 2) {
                 names.add(parts[0]);
                 urls.add(parts[1]);
+                entries.add(entry);
             }
         }
-        new AlertDialog.Builder(this)
-                .setTitle("العلامات المرجعية المفضلة")
-                .setItems(names.toArray(new String[0]), (dialog, which) -> {
-                    Intent intent = new Intent(MainActivity.this, BrowserActivity.class);
-                    intent.putExtra("url", urls.get(which));
-                    startActivity(intent);
-                })
+        if (entries.isEmpty()) {
+            Toast.makeText(this, "لا توجد علامات مرجعية محفوظة بعد", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        android.widget.ListView listView = new android.widget.ListView(this);
+        listView.setAdapter(new android.widget.ArrayAdapter<String>(this,
+                android.R.layout.simple_list_item_1, names));
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("العلامات المرجعية (اضغط مطولاً للحذف)")
+                .setView(listView)
                 .setNegativeButton("إغلاق", null)
-                .show();
+                .create();
+        listView.setOnItemClickListener((parent, view, position, id) -> {
+            Intent intent = new Intent(MainActivity.this, BrowserActivity.class);
+            intent.putExtra("url", urls.get(position));
+            startActivity(intent);
+            dialog.dismiss();
+        });
+        listView.setOnItemLongClickListener((parent, view, position, id) -> {
+            String entry = entries.get(position);
+            new AlertDialog.Builder(MainActivity.this)
+                    .setTitle("حذف العلامة المرجعية؟")
+                    .setMessage(names.get(position) + "\\n" + urls.get(position))
+                    .setPositiveButton("حذف", (confirm, which) -> {
+                        Set<String> updated = new HashSet<>(bookmarkPrefs.getStringSet("custom_sites", new HashSet<String>()));
+                        updated.remove(entry);
+                        bookmarkPrefs.edit().putStringSet("custom_sites", updated).apply();
+                        dialog.dismiss();
+                        Toast.makeText(MainActivity.this, "تم حذف العلامة المرجعية", Toast.LENGTH_SHORT).show();
+                        showBookmarksDialog();
+                    })
+                    .setNegativeButton("إلغاء", null)
+                    .show();
+            return true;
+        });
+        dialog.show();
     }
 
     private void openDownloads() {
