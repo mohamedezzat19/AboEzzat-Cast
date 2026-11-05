@@ -544,7 +544,7 @@ public class MainActivity extends Activity {
         scroll.setBackgroundColor(0xFF101014);
         android.widget.LinearLayout content = new android.widget.LinearLayout(this);
         content.setOrientation(android.widget.LinearLayout.VERTICAL);
-        content.setPadding(dp(20), dp(22), dp(20), dp(20));
+        content.setPadding(dp(14), dp(12), dp(14), dp(12));
         scroll.addView(content);
 
         TextView title = new TextView(this);
@@ -561,8 +561,8 @@ public class MainActivity extends Activity {
         subtitle.setTextSize(13);
         subtitle.setGravity(android.view.Gravity.RIGHT);
         android.widget.LinearLayout.LayoutParams subtitleParams = new android.widget.LinearLayout.LayoutParams(-1, -2);
-        subtitleParams.topMargin = dp(18);
-        subtitleParams.bottomMargin = dp(28);
+        subtitleParams.topMargin = dp(8);
+        subtitleParams.bottomMargin = dp(12);
         content.addView(subtitle, subtitleParams);
 
         addLibrarySectionTitle(content, "☆  المفضلة");
@@ -628,14 +628,14 @@ public class MainActivity extends Activity {
         TextView clearHistory = new TextView(this);
         clearHistory.setText("🗑  مسح سجل التصفح بالكامل");
         clearHistory.setTextColor(0xFFFFFFFF);
-        clearHistory.setTextSize(21);
+        clearHistory.setTextSize(15);
         clearHistory.setTypeface(null, android.graphics.Typeface.BOLD);
         clearHistory.setGravity(android.view.Gravity.CENTER);
-        clearHistory.setPadding(dp(16), dp(20), dp(16), dp(20));
+        clearHistory.setPadding(dp(12), dp(12), dp(12), dp(12));
         clearHistory.setBackground(libraryCardBackground(0xFF252630));
         android.widget.LinearLayout.LayoutParams clearParams = new android.widget.LinearLayout.LayoutParams(-1, -2);
-        clearParams.topMargin = dp(32);
-        clearParams.bottomMargin = dp(20);
+        clearParams.topMargin = dp(12);
+        clearParams.bottomMargin = dp(10);
         content.addView(clearHistory, clearParams);
         clearHistory.setOnClickListener(v -> new AlertDialog.Builder(MainActivity.this)
                 .setTitle("مسح سجل التصفح بالكامل؟")
@@ -662,7 +662,8 @@ public class MainActivity extends Activity {
         dialog.show();
         if (dialog.getWindow() != null) {
             dialog.getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(0xFF101014));
-            dialog.getWindow().setLayout(-1, -1);
+            dialog.getWindow().setLayout(-1, getResources().getDisplayMetrics().heightPixels - dp(76));
+            dialog.getWindow().setGravity(android.view.Gravity.TOP);
         }
     }
 
@@ -678,8 +679,8 @@ public class MainActivity extends Activity {
         heading.setTypeface(null, android.graphics.Typeface.BOLD);
         heading.setGravity(android.view.Gravity.RIGHT | android.view.Gravity.CENTER_VERTICAL);
         android.widget.LinearLayout.LayoutParams params = new android.widget.LinearLayout.LayoutParams(-1, -2);
-        params.topMargin = dp(12);
-        params.bottomMargin = dp(18);
+        params.topMargin = dp(8);
+        params.bottomMargin = dp(8);
         content.addView(heading, params);
     }
 
@@ -687,9 +688,9 @@ public class MainActivity extends Activity {
         TextView empty = new TextView(this);
         empty.setText(text);
         empty.setTextColor(0xFF99999D);
-        empty.setTextSize(18);
+        empty.setTextSize(14);
         empty.setGravity(android.view.Gravity.CENTER);
-        content.addView(empty, new android.widget.LinearLayout.LayoutParams(-1, dp(72)));
+        content.addView(empty, new android.widget.LinearLayout.LayoutParams(-1, dp(48)));
     }
 
     private TextView addLibraryCard(android.widget.LinearLayout content, String text) {
