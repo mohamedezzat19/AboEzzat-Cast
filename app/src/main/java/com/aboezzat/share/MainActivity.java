@@ -6,6 +6,7 @@ import android.app.DownloadManager;
 import android.content.ClipData;
 import android.content.Context;
 import android.content.Intent;
+import android.speech.RecognizerIntent;
 import android.content.SharedPreferences;
 import android.content.res.AssetFileDescriptor;
 import android.net.Uri;
@@ -50,9 +51,11 @@ public class MainActivity extends Activity {
     private static final int TARGET_PORT = 8081;
     private static final int PICK_MEDIA_REQUEST = 101;
     private static final int PICK_SLIDESHOW_REQUEST = 102;
+    private static final int VOICE_SEARCH_REQUEST = 103;
 
     private DrawerLayout drawerLayout;
     private EditText etTvIp;
+    private EditText etHomeSearch;
     private TextView tvStatusBadge;
     private SharedPreferences prefs;
     private final OkHttpClient client = new OkHttpClient();
@@ -103,6 +106,10 @@ public class MainActivity extends Activity {
         etTvIp = findViewById(R.id.et_ip);
         tvStatusBadge = findViewById(R.id.tv_status_badge);
         Button btnSave = findViewById(R.id.btn_save);
+        etHomeSearch = findViewById(R.id.et_home_search);
+        Button btnSearchMic = findViewById(R.id.btn_search_mic);
+        Button btnSearchClear = findViewById(R.id.btn_search_clear);
+        Button btnSearchGo = findViewById(R.id.btn_search_go);
 
         findViewById(R.id.btn_open_drawer).setOnClickListener(v -> {
             if (drawerLayout != null) {
@@ -112,11 +119,13 @@ public class MainActivity extends Activity {
 
         String savedIp = prefs.getString("tv_ip", "");
         etTvIp.setText(savedIp);
-        if (!savedIp.isEmpty()) {
-            tvStatusBadge.setText("● متصل: " + savedIp);
-        }
-
+        updateReceiverStatus();
         tvStatusBadge.setOnClickListener(v -> scanForTvDevices());
+        tvStatusBadge.setOnLongClickListener(v -> { showManualIpDialog(); return true; });
+        btnSearchClear.setOnClickListener(v -> etHomeSearch.setText(""));
+        btnSearchGo.setOnClickListener(v -> openSearchResult());
+        etHomeSearch.setOnEditorActionListener((v, actionId, event) -> { openSearchResult(); return true; });
+        btnSearchMic.setOnClickListener(v -> startVoiceSearch());
 
         btnSave.setOnClickListener(v -> {
             String ip = etTvIp.getText().toString().trim();
@@ -373,6 +382,66 @@ public class MainActivity extends Activity {
             }
         }
     }
+    private void updateReceiverStatus() {
+        String ip = prefs.getString("tv_ip", "").trim();
+        tvStatusBadge.setText(ip.isEmpty() ? "● اضغط لفحص الأجهزة • ضغطة مطولة لإدخال IP" : "● متصل بـ " + ip);
+    }
+
+    private void showManualIpDialog() {
+        EditText input = new EditText(this);
+        input.setSingleLine(true);
+        input.setHint("مثال: 192.168.1.100");
+        input.setText(prefs.getString("tv_ip", ""));
+        new AlertDialog.Builder(this).setTitle("إدخال IP يدويًا").setView(input)
+                .setPositiveButton("حفظ", (dialog, which) -> {
+                    String ip = input.getText().toString().trim();
+                    if (!ip.isEmpty()) {
+                        prefs.edit().putString("tv_ip", ip).apply();
+                        etTvIp.setText(ip);
+                        updateReceiverStatus();
+                    }
+                }).setNegativeButton("إلغاء", null).show();
+    }
+
+    private void openSearchResult() {
+        String query = etHomeSearch.getText().toString().trim();
+        if (query.isEmpty()) return;
+        String target;
+        if (query.startsWith("http://") || query.startsWith("https://")) target = query;
+        else if (query.matches("(?i)^[a-z0-9.-]+\\.[a-z]{2,}(:[0-9]+)?(/.*)?$")) target = "https://" + query;
+        else {
+            try { target = "https://www.google.com/search?q=" + URLEncoder.encode(query, "UTF-8"); }
+            catch (Exception e) { target = "https://www.google.com"; }
+        }
+        Intent intent = new Intent(MainActivity.this, BrowserActivity.class);
+        intent.putExtra("url", target);
+        startActivity(intent);
+    }
+
+    private void startVoiceSearch() {
+        try {
+            Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+            intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+            intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ar-EG");
+            intent.putExtra(RecognizerIntent.EXTRA_PROMPT, "قل ما تريد البحث عنه");
+            startActivityForResult(intent, VOICE_SEARCH_REQUEST);
+        } catch (Exception e) {
+            Toast.makeText(this, "ميزة البحث الصوتي غير متاحة على الهاتف", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == VOICE_SEARCH_REQUEST && resultCode == RESULT_OK && data != null) {
+            ArrayList<String> voiceResults = data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
+            if (voiceResults != null && !voiceResults.isEmpty()) {
+                etHomeSearch.setText(voiceResults.get(0));
+                etHomeSearch.setSelection(etHomeSearch.getText().length());
+            }
+        }
+    }
+
     private void scanForTvDevices() {
         tvStatusBadge.setText("🔍 جاري الفحص...");
         Toast.makeText(this, "جاري فحص الشبكة لاكتشاف الأجهزة المتاحة...", Toast.LENGTH_SHORT).show();
@@ -416,7 +485,7 @@ public class MainActivity extends Activity {
             String chosenIp = devices.get(which);
             etTvIp.setText(chosenIp);
             prefs.edit().putString("tv_ip", chosenIp).apply();
-            tvStatusBadge.setText("● متصل: " + chosenIp);
+            updateReceiverStatus();
             Toast.makeText(MainActivity.this, "تم اختيار وحفظ: " + chosenIp, Toast.LENGTH_SHORT).show();
         });
         builder.setNegativeButton("إلغاء", null);
