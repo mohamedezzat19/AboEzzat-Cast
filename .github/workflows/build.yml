@@ -45,7 +45,7 @@ jobs:
         id: signing
         env:
           KEYSTORE_BASE64: ${{ secrets.ABOEZZAT_SHARE_KEYSTORE_BASE64 }}
-          STORE_PASSWORD: ${{ secrets.ABOEZZAT_SHARE_KEYSTORE_BASE64_PASSWORD }}
+          STORE_PASSWORD: ${{ secrets.ABOEZZAT_SHARE_KEYSTORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.ABOEZZAT_SHARE_KEY_ALIAS_PASSWORD }}
         shell: bash
         run: |
@@ -69,7 +69,7 @@ jobs:
         if: ${{ env.HAS_SIGNING == 'true' }}
         env:
           KEYSTORE_FILE: ${{ runner.temp }}/classic-release-keystore.jks
-          KEYSTORE_PASSWORD: ${{ secrets.ABOEZZAT_SHARE_KEYSTORE_BASE64_PASSWORD }}
+          KEYSTORE_PASSWORD: ${{ secrets.ABOEZZAT_SHARE_KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ env.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.ABOEZZAT_SHARE_KEY_ALIAS_PASSWORD }}
         run: gradle assembleRelease --no-daemon
