@@ -239,6 +239,8 @@ public class ShareActivity extends Activity {
 
         mainHandler.postDelayed(() -> {
             if (!isCaptured) {
+                // Ignore any late WebView resource callbacks after falling back.
+                isCaptured = true;
                 destroyWebView();
                 if (openBrowserOnTimeout) {
                     openTikTokLiveInBrowser(url);
