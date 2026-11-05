@@ -181,7 +181,7 @@ public class BrowserActivity extends Activity {
         btnSniff.setText("🎯");
         btnSniff.setTextSize(16);
         btnSniff.setTextColor(Color.WHITE);
-        btnSniff.setBackgroundColor(Color.parseColor("#24475B"));
+        btnSniff.setBackgroundColor(Color.parseColor("#D32F2F"));
         btnSniff.setOnClickListener(v -> triggerManualSniff());
         LinearLayout.LayoutParams sniffParams = new LinearLayout.LayoutParams(95, ViewGroup.LayoutParams.WRAP_CONTENT);
         sniffParams.setMargins(0, 5, 5, 0);
