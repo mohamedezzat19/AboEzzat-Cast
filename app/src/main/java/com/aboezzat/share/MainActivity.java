@@ -430,18 +430,6 @@ public class MainActivity extends Activity {
         }
     }
 
-    @Override
-    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == VOICE_SEARCH_REQUEST && resultCode == RESULT_OK && data != null) {
-            ArrayList<String> voiceResults = data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
-            if (voiceResults != null && !voiceResults.isEmpty()) {
-                etHomeSearch.setText(voiceResults.get(0));
-                etHomeSearch.setSelection(etHomeSearch.getText().length());
-            }
-        }
-    }
-
     private void scanForTvDevices() {
         tvStatusBadge.setText("🔍 جاري الفحص...");
         Toast.makeText(this, "جاري فحص الشبكة لاكتشاف الأجهزة المتاحة...", Toast.LENGTH_SHORT).show();
@@ -588,6 +576,16 @@ public class MainActivity extends Activity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == VOICE_SEARCH_REQUEST) {
+            if (resultCode == RESULT_OK && data != null) {
+                ArrayList<String> voiceResults = data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
+                if (voiceResults != null && !voiceResults.isEmpty()) {
+                    etHomeSearch.setText(voiceResults.get(0));
+                    etHomeSearch.setSelection(etHomeSearch.getText().length());
+                }
+            }
+            return;
+        }
         slideHandler.removeCallbacks(slideRunnable);
         isSlideshowRunning = false;
 
