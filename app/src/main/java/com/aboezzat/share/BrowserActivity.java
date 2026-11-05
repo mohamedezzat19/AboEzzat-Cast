@@ -145,12 +145,12 @@ public class BrowserActivity extends Activity {
 
         rootLayout = new LinearLayout(this);
         rootLayout.setOrientation(LinearLayout.VERTICAL);
-        rootLayout.setBackgroundColor(Color.parseColor("#121212"));
+        rootLayout.setBackgroundColor(Color.parseColor("#080C27"));
 
         topBar = new LinearLayout(this);
         topBar.setOrientation(LinearLayout.HORIZONTAL);
         topBar.setPadding(8, 8, 8, 8);
-        topBar.setBackgroundColor(Color.parseColor("#1F1F1F"));
+        topBar.setBackgroundColor(Color.parseColor("#0D1733"));
         topBar.setGravity(Gravity.CENTER_VERTICAL);
 
         Button btnMenu = new Button(this);
@@ -167,7 +167,7 @@ public class BrowserActivity extends Activity {
         etUrl.setTextColor(Color.WHITE);
         etUrl.setTextSize(13);
         etUrl.setSingleLine(true);
-        etUrl.setBackgroundColor(Color.parseColor("#2A2A2A"));
+        etUrl.setBackgroundColor(Color.parseColor("#182442"));
         etUrl.setPadding(15, 10, 15, 10);
         LinearLayout.LayoutParams urlParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
         urlParams.setMargins(5, 0, 5, 0);
@@ -181,7 +181,7 @@ public class BrowserActivity extends Activity {
         btnSniff.setText("🎯");
         btnSniff.setTextSize(16);
         btnSniff.setTextColor(Color.WHITE);
-        btnSniff.setBackgroundColor(Color.parseColor("#D32F2F"));
+        btnSniff.setBackgroundColor(Color.parseColor("#24475B"));
         btnSniff.setOnClickListener(v -> triggerManualSniff());
         LinearLayout.LayoutParams sniffParams = new LinearLayout.LayoutParams(95, ViewGroup.LayoutParams.WRAP_CONTENT);
         sniffParams.setMargins(0, 5, 5, 0);
@@ -190,8 +190,8 @@ public class BrowserActivity extends Activity {
         btnCast = new Button(this);
         btnCast.setText("📺 0");
         btnCast.setTextSize(13);
-        btnCast.setTextColor(Color.BLACK);
-        btnCast.setBackgroundColor(Color.parseColor("#FFC107"));
+        btnCast.setTextColor(Color.WHITE);
+        btnCast.setBackgroundColor(Color.parseColor("#182442"));
         btnCast.setVisibility(View.GONE);
         btnCast.setOnClickListener(v -> showMediaListDialog());
         topBar.addView(btnCast, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -218,7 +218,7 @@ public class BrowserActivity extends Activity {
 
         bottomBar = new LinearLayout(this);
         bottomBar.setOrientation(LinearLayout.HORIZONTAL);
-        bottomBar.setBackgroundColor(Color.parseColor("#1F1F1F"));
+        bottomBar.setBackgroundColor(Color.parseColor("#0D1733"));
         bottomBar.setPadding(10, 5, 10, 5);
         bottomBar.setGravity(Gravity.CENTER);
 
@@ -305,13 +305,25 @@ public class BrowserActivity extends Activity {
         menu.show();
     }
 
+    private int dp(float value) {
+        return (int) (value * getResources().getDisplayMetrics().density + 0.5f);
+    }
+
     private Button createBottomButton(String text, View.OnClickListener listener) {
         Button btn = new Button(this);
         btn.setText(text);
         btn.setTextColor(Color.WHITE);
-        btn.setTextSize(16);
-        btn.setBackgroundColor(Color.TRANSPARENT);
-        btn.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
+        btn.setTextSize(20);
+        btn.setAllCaps(false);
+        btn.setMinHeight(dp(44));
+        btn.setPadding(dp(4), dp(4), dp(4), dp(4));
+        android.graphics.drawable.GradientDrawable buttonBg = new android.graphics.drawable.GradientDrawable();
+        buttonBg.setColor(Color.parseColor("#14213D"));
+        buttonBg.setCornerRadius(dp(12));
+        btn.setBackground(buttonBg);
+        LinearLayout.LayoutParams buttonParams = new LinearLayout.LayoutParams(0, dp(44), 1.0f);
+        buttonParams.setMargins(dp(3), 0, dp(3), 0);
+        btn.setLayoutParams(buttonParams);
         btn.setOnClickListener(listener);
         return btn;
     }
