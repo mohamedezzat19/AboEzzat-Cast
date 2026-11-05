@@ -18,6 +18,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.text.format.Formatter;
 import android.view.View;
+import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
@@ -131,9 +132,16 @@ public class MainActivity extends Activity {
         updateReceiverStatus();
         tvStatusBadge.setOnClickListener(v -> scanForTvDevices());
         tvStatusBadge.setOnLongClickListener(v -> { showManualIpDialog(); return true; });
-        btnSearchClear.setOnClickListener(v -> etHomeSearch.setText(""));
+        btnSearchClear.setOnClickListener(v -> {
+            etHomeSearch.setText("");
+            hideHomeSearchKeyboard();
+            etHomeSearch.clearFocus();
+        });
         btnSearchGo.setOnClickListener(v -> openSearchResult());
         etHomeSearch.setOnEditorActionListener((v, actionId, event) -> { openSearchResult(); return true; });
+        etHomeSearch.setOnFocusChangeListener((v, hasFocus) -> {
+            if (!hasFocus) hideHomeSearchKeyboard();
+        });
         btnSearchMic.setOnClickListener(v -> startVoiceSearch());
 
         btnSave.setOnClickListener(v -> {
