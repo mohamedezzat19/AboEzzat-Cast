@@ -1120,7 +1120,16 @@ private void showManualIpDialog() {
                 }
 
                 long contentLength = end - start + 1L;
-                FileInputStream fis = afd.createInputStream();
+                final AssetFileDescriptor responseAfd = afd;
+                FileInputStream rawStream = afd.createInputStream();
+                java.io.InputStream fis = new java.io.FilterInputStream(rawStream) {
+                    @Override
+                    public void close() throws IOException {
+                        try { super.close(); } finally {
+                            try { responseAfd.close(); } catch (IOException ignored) {}
+                        }
+                    }
+                };
                 long toSkip = start;
                 while (toSkip > 0) {
                     long skipped = fis.skip(toSkip);
@@ -1146,10 +1155,8 @@ private void showManualIpDialog() {
                 return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "text/plain",
                         "Error loading local media");
             } finally {
-                // NanoHTTPD closes the returned response stream; close descriptor on setup failure.
-                if (afd != null) {
-                    try { afd.close(); } catch (Exception ignored) {}
-                }
+                // Keep the descriptor open while NanoHTTPD streams the response;
+                // the wrapped response stream closes it after transmission.
             }
         }
 
