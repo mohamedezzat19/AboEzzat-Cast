@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item><shape android:shape="rectangle"><gradient android:angle="270" android:startColor="#02091F" android:centerColor="#061535" android:endColor="#020A20"/></shape></item>
+    <item android:gravity="top|left" android:left="9dp" android:top="24dp"><shape android:shape="oval"><size android:width="2dp" android:height="2dp"/><solid android:color="#5575B8E8"/></shape></item>
+    <item android:gravity="top|right" android:right="31dp" android:top="78dp"><shape android:shape="oval"><size android:width="3dp" android:height="3dp"/><solid android:color="#6689BDEB"/></shape></item>
+    <item android:gravity="top|left" android:left="72dp" android:top="132dp"><shape android:shape="oval"><size android:width="2dp" android:height="2dp"/><solid android:color="#6689BDEB"/></shape></item>
+    <item android:gravity="top|right" android:right="84dp" android:top="186dp"><shape android:shape="oval"><size android:width="2dp" android:height="2dp"/><solid android:color="#5575B8E8"/></shape></item>
+    <item android:gravity="top|left" android:left="145dp" android:top="244dp"><shape android:shape="oval"><size android:width="3dp" android:height="3dp"/><solid android:color="#5575B8E8"/></shape></item>
+    <item android:gravity="center|left" android:left="25dp"><shape android:shape="oval"><size android:width="2dp" android:height="2dp"/><solid android:color="#6689BDEB"/></shape></item>
+    <item android:gravity="center|right" android:right="56dp"><shape android:shape="oval"><size android:width="3dp" android:height="3dp"/><solid android:color="#5575B8E8"/></shape></item>
+    <item android:gravity="bottom|left" android:left="42dp" android:bottom="88dp"><shape android:shape="oval"><size android:width="2dp" android:height="2dp"/><solid android:color="#6689BDEB"/></shape></item>
+    <item android:gravity="bottom|right" android:right="22dp" android:bottom="142dp"><shape android:shape="oval"><size android:width="2dp" android:height="2dp"/><solid android:color="#5575B8E8"/></shape></item>
+    <item android:gravity="bottom|left" android:left="112dp" android:bottom="32dp"><shape android:shape="oval"><size android:width="3dp" android:height="3dp"/><solid android:color="#5575B8E8"/></shape></item>
+</layer-list>
