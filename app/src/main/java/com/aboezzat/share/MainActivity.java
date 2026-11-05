@@ -100,6 +100,7 @@ public class MainActivity extends Activity {
         initViews();
         setupNavigationDrawer();
         setupBottomNavigation();
+        applyDarkMode(findViewById(R.id.drawer_layout), prefs.getBoolean("dark_mode", true));
     }
 
     private void initViews() {
