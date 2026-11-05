@@ -1028,24 +1028,29 @@ public class BrowserActivity extends Activity {
             return;
         }
 
-        String js = "javascript:(function(){" +
-                "var title = ''; var poster = '';" +
-                "var metaTitle = document.querySelector('meta[property=\"og:title\"], meta[name=\"twitter:title\"]');" +
-                "if(metaTitle && metaTitle.content){ title = metaTitle.content; }" +
-                "var metaImg = document.querySelector('meta[property=\"og:image\"], meta[name=\"twitter:image\"]');" +
-                "if(metaImg && metaImg.content){ poster = metaImg.content; }" +
-                "if(title || poster){ window.AboEzzatBridge.onMetaFound(title, poster); }" +
-                "var meta = document.querySelector('meta[property=\"og:video\"], meta[property=\"og:video:secure_url\"]');" +
-                "if(meta && meta.content){" +
-                "  window.AboEzzatBridge.onVideoPlayingWithPoster(meta.content, title || 'ريل إنستجرام', poster);" +
-                "}" +
-                "var vids = document.getElementsByTagName('video');" +
-                "for(var i=0; i<vids.length; i++){" +
-                "  var src = vids[i].currentSrc || vids[i].src;" +
-                "  if(src && src.indexOf('http') === 0 && !vids[i].classList.contains('ad-interrupting')){" +
-                "    window.AboEzzatBridge.onVideoPlayingWithPoster(src, title || document.title, poster);" +
-                "  }" +
-                "}" +
+        // Keep the existing sniff path unchanged for every platform. TikTok LIVE gets
+        // an additional targeted scan for the actual HLS/live media URL.
+        String js = "javascript:(function(){"+
+                "var title=''; var poster='';"+
+                "var mt=document.querySelector('meta[property=\\\"og:title\\\"],meta[name=\\\"twitter:title\\\"]');"+
+                "if(mt&&mt.content)title=mt.content;"+
+                "var mi=document.querySelector('meta[property=\\\"og:image\\\"],meta[name=\\\"twitter:image\\\"]');"+
+                "if(mi&&mi.content)poster=mi.content;"+
+                "if(title||poster)window.AboEzzatBridge.onMetaFound(title,poster);"+
+                "var meta=document.querySelector('meta[property=\\\"og:video\\\"],meta[property=\\\"og:video:secure_url\\\"]');"+
+                "if(meta&&meta.content)window.AboEzzatBridge.onVideoPlayingWithPoster(meta.content,title||document.title,poster);"+
+                "var vids=document.getElementsByTagName('video');"+
+                "for(var i=0;i<vids.length;i++){var src=vids[i].currentSrc||vids[i].src;"+
+                "if(src&&src.indexOf('http')===0&&!vids[i].classList.contains('ad-interrupting'))"+
+                "window.AboEzzatBridge.onVideoPlayingWithPoster(src,title||document.title,poster);}"+
+                "var u=location.href.toLowerCase();"+
+                "if(u.indexOf('tiktok.com')!==-1&&(u.indexOf('/live')!==-1||u.indexOf('live')!==-1)){"+
+                "try{var entries=performance.getEntriesByType('resource');"+
+                "for(var j=0;j<entries.length;j++){var ru=entries[j].name;var rl=ru.toLowerCase();"+
+                "if(rl.indexOf('.m3u8')!==-1||rl.indexOf('pull-')!==-1||rl.indexOf('live')!==-1&&"+
+                "(rl.indexOf('video')!==-1||rl.indexOf('stream')!==-1)){"+
+                "window.AboEzzatBridge.onVideoPlayingWithPoster(ru,title||document.title,poster);}}"+
+                "}catch(e){}}"+
                 "})()";
         current.loadUrl(js);
     }
