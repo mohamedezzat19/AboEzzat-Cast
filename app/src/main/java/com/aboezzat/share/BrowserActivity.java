@@ -91,7 +91,7 @@ public class BrowserActivity extends Activity {
     private EditText etUrl;
     private Button btnSniff;
     private Button btnCast;
-    private Button btnTabs;
+    private TextView btnTabs;
 
     private PowerManager.WakeLock wakeLock;
 
@@ -219,7 +219,8 @@ public class BrowserActivity extends Activity {
         bottomBar = new LinearLayout(this);
         bottomBar.setOrientation(LinearLayout.HORIZONTAL);
         bottomBar.setBackgroundColor(Color.parseColor("#0D1733"));
-        bottomBar.setPadding(10, 5, 10, 5);
+        bottomBar.setPadding(dp(5), dp(5), dp(5), dp(5));
+        bottomBar.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
         bottomBar.setGravity(Gravity.CENTER);
 
         // Browser bottom controls match Share New order: refresh, back, home, forward, more.
@@ -304,40 +305,25 @@ public class BrowserActivity extends Activity {
             return;
         }
         android.widget.PopupMenu menu = new android.widget.PopupMenu(this, anchor);
-        menu.getMenu().add("إضافة تبويب").setOnMenuItemClickListener(item -> {
-            addNewTab("about:home");
-            return true;
-        });
-        menu.getMenu().add("علامات التبويب").setOnMenuItemClickListener(item -> {
-            showTabsDialog();
-            return true;
-        });
-        menu.getMenu().add("المواقع السريعة").setOnMenuItemClickListener(item -> {
-            showQuickSitesDialog();
-            return true;
-        });
+        menu.getMenu().add("إضافة تبويب").setOnMenuItemClickListener(item -> { addNewTab("about:home"); return true; });
+        menu.getMenu().add("علامات التبويب").setOnMenuItemClickListener(item -> { showTabsDialog(); return true; });
+        menu.getMenu().add("المواقع السريعة").setOnMenuItemClickListener(item -> { showQuickSitesDialog(); return true; });
         menu.getMenu().add("المفضلة").setOnMenuItemClickListener(item -> {
             WebView current = getCurrentWebView();
-            if (current != null && current.getUrl() != null &&
-                    (current.getUrl().startsWith("http://") || current.getUrl().startsWith("https://"))) {
+            if (current != null && current.getUrl() != null
+                    && (current.getUrl().startsWith("http://") || current.getUrl().startsWith("https://"))) {
                 String siteUrl = current.getUrl();
                 String siteName = current.getTitle();
                 if (siteName == null || siteName.trim().isEmpty()) siteName = siteUrl;
                 saveCustomSite(siteName, siteUrl);
                 Toast.makeText(this, "تم حفظ الموقع في المفضلة", Toast.LENGTH_SHORT).show();
             } else {
-                showQuickSitesDialog();
+                Toast.makeText(this, "افتح موقعاً أولاً لحفظه", Toast.LENGTH_SHORT).show();
             }
             return true;
         });
-        menu.getMenu().add("الإعدادات").setOnMenuItemClickListener(item -> {
-            showBrowserSettingsDialog();
-            return true;
-        });
-        menu.getMenu().add("القائمة الجانبية").setOnMenuItemClickListener(item -> {
-            showSideMenu();
-            return true;
-        });
+        menu.getMenu().add("الإعدادات").setOnMenuItemClickListener(item -> { showBrowserSettingsDialog(); return true; });
+        menu.getMenu().add("القائمة الجانبية").setOnMenuItemClickListener(item -> { showSideMenu(); return true; });
         menu.show();
     }
 
@@ -382,20 +368,40 @@ public class BrowserActivity extends Activity {
         return (int) (value * getResources().getDisplayMetrics().density + 0.5f);
     }
 
-    private Button createBottomButton(String text, View.OnClickListener listener) {
-        Button btn = new Button(this);
+    // Match Share New's compact text-icon controls, focus feedback and spacing.
+    private TextView createBottomButton(String text, View.OnClickListener listener) {
+        TextView btn = new TextView(this);
         btn.setText(text);
-        btn.setTextColor(Color.WHITE);
+        btn.setTextColor("⋮".equals(text) ? Color.parseColor("#FFD54A") : Color.WHITE);
         btn.setTextSize(18);
-        btn.setAllCaps(false);
-        btn.setMinHeight(dp(34));
-        btn.setPadding(dp(3), 0, dp(3), 0);
-        android.graphics.drawable.GradientDrawable buttonBg = new android.graphics.drawable.GradientDrawable();
-        buttonBg.setColor(Color.parseColor("#14213D"));
-        buttonBg.setCornerRadius(dp(12));
-        btn.setBackground(buttonBg);
-        LinearLayout.LayoutParams buttonParams = new LinearLayout.LayoutParams(0, dp(34), 1.0f);
-        buttonParams.setMargins(dp(2), 0, dp(2), 0);
+        btn.setGravity(Gravity.CENTER);
+        btn.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
+        btn.setIncludeFontPadding(false);
+        btn.setContentDescription("⋮".equals(text) ? "المزيد من أدوات المتصفح"
+                : "↻".equals(text) ? "إعادة تحميل الصفحة"
+                : "‹".equals(text) ? "رجوع للصفحة السابقة"
+                : "⌂".equals(text) ? "العودة للرئيسية"
+                : "تقدم للصفحة التالية");
+        android.graphics.drawable.GradientDrawable normal = new android.graphics.drawable.GradientDrawable();
+        normal.setColor(Color.parseColor("⋮".equals(text) ? "#202B49" : "#111D38"));
+        normal.setCornerRadius(dp(13));
+        normal.setStroke(dp(1), Color.parseColor("#263B61"));
+        btn.setBackground(normal);
+        btn.setFocusable(true);
+        btn.setFocusableInTouchMode(true);
+        btn.setClickable(true);
+        btn.setOnFocusChangeListener((view, focused) -> {
+            android.graphics.drawable.GradientDrawable state = new android.graphics.drawable.GradientDrawable();
+            state.setColor(Color.parseColor(focused ? "#203B65" : ("⋮".equals(text) ? "#202B49" : "#111D38")));
+            state.setCornerRadius(dp(13));
+            state.setStroke(dp(1), Color.parseColor(focused ? "#36BDF2" : "#263B61"));
+            btn.setBackground(state);
+            btn.setTextColor(focused ? Color.parseColor("#FFD54A")
+                    : ("⋮".equals(text) ? Color.parseColor("#FFD54A") : Color.WHITE));
+            btn.setElevation(focused ? dp(3) : 0);
+        });
+        LinearLayout.LayoutParams buttonParams = new LinearLayout.LayoutParams(0, dp(40), 1.0f);
+        buttonParams.setMargins(dp(2), dp(2), dp(2), dp(2));
         btn.setLayoutParams(buttonParams);
         btn.setOnClickListener(listener);
         return btn;
