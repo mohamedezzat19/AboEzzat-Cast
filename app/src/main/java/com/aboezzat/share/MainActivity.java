@@ -640,8 +640,25 @@ private void showManualIpDialog() {
                 }).setNegativeButton("إلغاء", null).show();
     }
 
+    private void hideHomeSearchKeyboard() {
+        if (etHomeSearch == null) return;
+        InputMethodManager imm = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+        if (imm != null) imm.hideSoftInputFromWindow(etHomeSearch.getWindowToken(), 0);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (etHomeSearch != null) {
+            etHomeSearch.clearFocus();
+            hideHomeSearchKeyboard();
+        }
+    }
+
     private void openSearchResult() {
         String query = etHomeSearch.getText().toString().trim();
+        hideHomeSearchKeyboard();
+        etHomeSearch.clearFocus();
         if (query.isEmpty()) return;
         String target;
         if (query.startsWith("http://") || query.startsWith("https://")) target = query;
