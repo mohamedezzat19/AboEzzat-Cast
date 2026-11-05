@@ -351,19 +351,18 @@ public class MainActivity extends Activity {
         if (view == null) return;
         if (view instanceof android.view.ViewGroup) {
             android.view.ViewGroup group = (android.view.ViewGroup) view;
-            for (int i = 0; i < group.getChildCount(); i++) applyDarkMode(group.getChildAt(i), dark);
+            for (int i = 0; i < group.getChildCount(); i++) {
+                applyDarkMode(group.getChildAt(i), dark);
+            }
         }
+        // Keep the individually designed section/card/button colors from XML.
+        // Only update text contrast; do not overwrite backgrounds or button tints.
         if (view instanceof TextView) {
             TextView text = (TextView) view;
-            text.setTextColor(dark ? 0xFFFFFFFF : 0xFF202124);
-            if (view instanceof EditText) ((EditText) view).setHintTextColor(dark ? 0xFFAAAAAA : 0xFF666666);
-        }
-        if (view instanceof Button) {
-            view.setBackgroundTintList(android.content.res.ColorStateList.valueOf(dark ? 0xFF343846 : 0xFFE0E0E0));
-        } else if (view instanceof android.widget.LinearLayout || view instanceof android.widget.ScrollView) {
-            view.setBackgroundColor(dark ? 0xFF101014 : 0xFFF4F4F4);
-        } else if (view instanceof EditText) {
-            view.setBackgroundColor(dark ? 0xFF262833 : 0xFFFFFFFF);
+            if (view instanceof EditText) {
+                text.setTextColor(dark ? 0xFFFFFFFF : 0xFF202124);
+                ((EditText) view).setHintTextColor(dark ? 0xFFAAAAAA : 0xFF666666);
+            }
         }
     }
 
