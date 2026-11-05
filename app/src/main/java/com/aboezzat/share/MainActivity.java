@@ -362,7 +362,7 @@ public class MainActivity extends Activity {
             String url = urls.get(i);
             String title = browserPrefs.getString("history_title_" + url, url);
             labels[i] = (mostVisited ? (browserPrefs.getInt("visit_count_" + url, 0) + " زيارة · ") : "")
-                    + title + "\\n" + url;
+                    + title + "\n" + url;
         }
         new AlertDialog.Builder(this).setTitle(mostVisited ? "الأكثر زيارة" : "سجل التصفح")
                 .setItems(labels, (dialog, which) -> {
