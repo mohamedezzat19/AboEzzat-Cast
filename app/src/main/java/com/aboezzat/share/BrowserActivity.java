@@ -686,6 +686,7 @@ public class BrowserActivity extends Activity {
                     tabTitles.set(currentTabIndex, view.getTitle() != null ? view.getTitle() : "علامة تبويب");
                 }
                 injectAdKiller(view);
+                injectTikTokLiveSniffer(view);
             }
         });
 
@@ -699,6 +700,28 @@ public class BrowserActivity extends Activity {
         } else {
             loadTargetUrl(url);
         }
+    }
+
+    // TikTok LIVE only: wait for the user to start playback, then watch for the
+    // actual live pull/HLS resource. Ordinary video sniffing remains untouched.
+    private void injectTikTokLiveSniffer(WebView view) {
+        String js = "javascript:(function(){try{var u=location.href.toLowerCase();"
+                + "if(u.indexOf('tiktok.com')<0||u.indexOf('/live')<0)return;"
+                + "if(window.__aboTikTokLiveSniffer)return;window.__aboTikTokLiveSniffer=true;"
+                + "var sent={};function scan(){try{var vids=document.querySelectorAll('video');"
+                + "var playing=false;for(var i=0;i<vids.length;i++){var v=vids[i];"
+                + "if(!v.paused&&!v.ended&&v.readyState>=2)playing=true;"
+                + "if(v.currentSrc||v.src){var vu=(v.currentSrc||v.src);var vl=vu.toLowerCase();"
+                + "if(playing&&(vl.indexOf('pull-')>=0||vl.indexOf('.m3u8')>=0))send(vu);}}"
+                + "if(!playing)return;var es=performance.getEntriesByType('resource');"
+                + "for(var j=0;j<es.length;j++){var ru=es[j].name,rl=ru.toLowerCase();"
+                + "if(rl.indexOf('pull-')>=0||rl.indexOf('.m3u8')>=0||"
+                + "(rl.indexOf('tiktok')>=0&&(rl.indexOf('live')>=0||rl.indexOf('stream')>=0)))send(ru);"
+                + "}}catch(e){}}function send(url){if(!url||sent[url])return;sent[url]=1;"
+                + "window.AboEzzatBridge.onVideoPlayingWithPoster(url,document.title,'');}"
+                + "document.addEventListener('playing',scan,true);document.addEventListener('play',scan,true);"
+                + "setInterval(scan,1200); }catch(e){}})()";
+        view.evaluateJavascript(js, null);
     }
 
     private void injectAdKiller(WebView view) {
