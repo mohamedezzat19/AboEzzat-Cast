@@ -103,6 +103,11 @@ public class MainActivity extends Activity {
         setupNavigationDrawer();
         setupBottomNavigation();
         applyDarkMode(findViewById(R.id.drawer_layout), prefs.getBoolean("dark_mode", true));
+        if (getIntent().getBooleanExtra("open_media_picker", false)) {
+            new Handler(Looper.getMainLooper()).post(() -> openMediaPicker(false));
+        } else if (getIntent().getBooleanExtra("open_library", false)) {
+            new Handler(Looper.getMainLooper()).post(() -> showRecentMediaDialog());
+        }
     }
 
     private void initViews() {
