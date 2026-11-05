@@ -1474,6 +1474,7 @@ public class BrowserActivity extends Activity {
 
             String fullUrl = endpoint + "/?url=" + URLEncoder.encode(mediaUrl, "UTF-8");
             Request req = new Request.Builder().url(fullUrl).get().build();
+            final String receiverEndpoint = endpoint;
             AtomicBoolean requestHeadersSent = new AtomicBoolean(false);
             OkHttpClient trackedClient = client.newBuilder()
                     .eventListener(new okhttp3.EventListener() {
@@ -1500,7 +1501,7 @@ public class BrowserActivity extends Activity {
                     }
 
                     Request ping = new Request.Builder()
-                            .url(endpoint + "/?command=ping")
+                            .url(receiverEndpoint + "/?command=ping")
                             .get()
                             .build();
                     client.newCall(ping).enqueue(new Callback() {
