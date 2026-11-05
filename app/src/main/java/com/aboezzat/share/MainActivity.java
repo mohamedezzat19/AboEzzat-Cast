@@ -110,6 +110,20 @@ public class MainActivity extends Activity {
         }
     }
 
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+
+        if (handleIncomingShareIntent(intent)) return;
+
+        if (intent.getBooleanExtra("open_media_picker", false)) {
+            new Handler(Looper.getMainLooper()).post(() -> openMediaPicker(false));
+        } else if (intent.getBooleanExtra("open_library", false)) {
+            new Handler(Looper.getMainLooper()).post(() -> showRecentMediaDialog());
+        }
+    }
+
     private void initViews() {
         drawerLayout = findViewById(R.id.drawer_layout);
         etTvIp = findViewById(R.id.et_ip);
@@ -145,6 +159,7 @@ public class MainActivity extends Activity {
 
         findViewById(R.id.card_browser).setOnClickListener(v -> {
             Intent intent = new Intent(MainActivity.this, BrowserActivity.class);
+            intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
             startActivity(intent);
         });
 
@@ -259,7 +274,9 @@ public class MainActivity extends Activity {
         // 1. المتصفح
         findViewById(R.id.menu_browser).setOnClickListener(v -> {
             closeDrawer();
-            startActivity(new Intent(MainActivity.this, BrowserActivity.class));
+            Intent browserIntent = new Intent(MainActivity.this, BrowserActivity.class);
+            browserIntent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+            startActivity(browserIntent);
         });
 
         // 2. ملفات الهاتف
