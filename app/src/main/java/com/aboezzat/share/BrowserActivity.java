@@ -81,6 +81,7 @@ public class BrowserActivity extends Activity {
     private LinearLayout rootLayout;
     private LinearLayout topBar;
     private LinearLayout bottomBar;
+    private LinearLayout appNavigation;
     private ProgressBar progressBar;
     private FrameLayout webContainer;
     private FrameLayout fullScreenContainer;
@@ -250,7 +251,7 @@ public class BrowserActivity extends Activity {
         rootLayout.addView(bottomBar);
 
         // Keep Home / Media / Library navigation visible while browsing.
-        LinearLayout appNavigation = new LinearLayout(this);
+        appNavigation = new LinearLayout(this);
         appNavigation.setOrientation(LinearLayout.HORIZONTAL);
         // Match the fixed left-to-right order used by the home screen:
         // Home on the left, Media in the middle, Library on the right.
@@ -492,6 +493,7 @@ public class BrowserActivity extends Activity {
                 topBar.setVisibility(View.GONE);
                 progressBar.setVisibility(View.GONE);
                 bottomBar.setVisibility(View.GONE);
+                appNavigation.setVisibility(View.GONE);
                 webContainer.setVisibility(View.GONE);
 
                 fullScreenContainer.addView(customView);
@@ -516,6 +518,7 @@ public class BrowserActivity extends Activity {
 
                 topBar.setVisibility(View.VISIBLE);
                 bottomBar.setVisibility(View.VISIBLE);
+                appNavigation.setVisibility(View.VISIBLE);
                 webContainer.setVisibility(View.VISIBLE);
 
                 setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
