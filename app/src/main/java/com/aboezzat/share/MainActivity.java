@@ -189,8 +189,8 @@ public class MainActivity extends Activity {
             }
         });
 
-        findViewById(R.id.btn_vol_up).setOnClickListener(v -> sendRemoteCommand("vol_up"));
-        findViewById(R.id.btn_vol_down).setOnClickListener(v -> sendRemoteCommand("vol_down"));
+        findViewById(R.id.btn_vol_up).setOnClickListener(v -> sendRemoteCommand("volume_up"));
+        findViewById(R.id.btn_vol_down).setOnClickListener(v -> sendRemoteCommand("volume_down"));
         findViewById(R.id.btn_mute).setOnClickListener(v -> sendRemoteCommand("mute"));
     }
 
@@ -384,10 +384,23 @@ public class MainActivity extends Activity {
     }
     private void updateReceiverStatus() {
         String ip = prefs.getString("tv_ip", "").trim();
-        tvStatusBadge.setText(ip.isEmpty() ? "● اضغط لفحص الأجهزة • ضغطة مطولة لإدخال IP" : "● متصل بـ " + ip);
+        if (ip.isEmpty()) {
+            tvStatusBadge.setText("● اضغط لفحص الأجهزة • ضغطة مطولة لإدخال IP");
+            return;
+        }
+        tvStatusBadge.setText("● جارٍ التحقق من " + ip + "...");
+        AsyncTask.execute(() -> {
+            boolean reachable = false;
+            try (Socket socket = new Socket()) {
+                socket.connect(new InetSocketAddress(ip, TARGET_PORT), 1200);
+                reachable = true;
+            } catch (Exception ignored) { }
+            final boolean isReachable = reachable;
+            runOnUiThread(() -> tvStatusBadge.setText(isReachable
+                    ? "● متصل بـ " + ip : "● محفوظ، غير متصل: " + ip));
+        });
     }
-
-    private void showManualIpDialog() {
+private void showManualIpDialog() {
         EditText input = new EditText(this);
         input.setSingleLine(true);
         input.setHint("مثال: 192.168.1.100");
