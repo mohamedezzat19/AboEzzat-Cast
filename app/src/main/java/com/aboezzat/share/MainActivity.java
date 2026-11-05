@@ -158,6 +158,19 @@ public class MainActivity extends Activity {
             }
         });
 
+        findViewById(R.id.btn_stop).setOnClickListener(v -> {
+            // Stop the local slideshow timer first, then stop playback on Receiver.
+            isSlideshowRunning = false;
+            slideHandler.removeCallbacks(slideRunnable);
+            slideshowQueue.clear();
+            videoQueue.clear();
+            currentSlideIndex = 0;
+            currentVideoIndex = 0;
+            selectedMediaUri = null;
+            sendRemoteCommand("stop");
+            Toast.makeText(this, "تم إرسال أمر إيقاف الفيديو ⏹", Toast.LENGTH_SHORT).show();
+        });
+
         findViewById(R.id.btn_rewind).setOnClickListener(v -> sendRemoteCommand("rw"));
         findViewById(R.id.btn_forward).setOnClickListener(v -> sendRemoteCommand("ff"));
 
