@@ -771,12 +771,37 @@ private void showManualIpDialog() {
             trackedClient.newCall(req).enqueue(new Callback() {
                 @Override
                 public void onFailure(Call call, IOException e) {
-                    runOnUiThread(() -> {
-                        String message = requestHeadersSent.get()
-                                ? "تم إرسال الطلب للشاشة ✓"
-                                : "تعذر الاتصال بالشاشة";
-                        Toast.makeText(MainActivity.this, message, Toast.LENGTH_SHORT).show();
-                        finish();
+                    // The receiver can accept and start playback, then the socket can
+                    // close before OkHttp receives the acknowledgement. Verify the receiver
+                    // with its lightweight ping endpoint before showing a failure.
+                    Request ping = new Request.Builder()
+                            .url(endpoint + "/?command=ping")
+                            .get()
+                            .build();
+                    client.newCall(ping).enqueue(new Callback() {
+                        @Override
+                        public void onFailure(Call pingCall, IOException pingError) {
+                            runOnUiThread(() -> {
+                                String message = requestHeadersSent.get()
+                                        ? "تم إرسال الطلب، لكن تعذر تأكيد رد الشاشة"
+                                        : "تعذر الاتصال بالشاشة";
+                                Toast.makeText(MainActivity.this, message, Toast.LENGTH_SHORT).show();
+                                finish();
+                            });
+                        }
+
+                        @Override
+                        public void onResponse(Call pingCall, Response pingResponse) {
+                            boolean receiverAlive = pingResponse.isSuccessful();
+                            pingResponse.close();
+                            runOnUiThread(() -> {
+                                String message = receiverAlive
+                                        ? "تم إرسال الطلب للشاشة ✓"
+                                        : "تعذر تأكيد استقبال الطلب";
+                                Toast.makeText(MainActivity.this, message, Toast.LENGTH_SHORT).show();
+                                finish();
+                            });
+                        }
                     });
                 }
 
