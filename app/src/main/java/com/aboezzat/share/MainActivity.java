@@ -958,21 +958,62 @@ private void showManualIpDialog() {
             if (!endpoint.startsWith("http")) endpoint = "http://" + endpoint;
             if (!endpoint.contains(":" + TARGET_PORT)) endpoint += ":" + TARGET_PORT;
 
-            String fullUrl = endpoint + "/?url=" + URLEncoder.encode(targetUrl, "UTF-8");
-            Request req = new Request.Builder().url(fullUrl).build();
-            client.newCall(req).enqueue(new Callback() {
-                @Override
-                public void onFailure(Call call, IOException e) {
+            final String receiverEndpoint = endpoint;
+            String fullUrl = receiverEndpoint + "/?url=" + URLEncoder.encode(targetUrl, "UTF-8");
+            Request req = new Request.Builder().url(fullUrl).get().build();
+            AtomicBoolean requestHeadersSent = new AtomicBoolean(false);
+            OkHttpClient trackedClient = client.newBuilder()
+                    .eventListener(new EventListener() {
+                        @Override
+                        public void requestHeadersEnd(Call call, Request request) {
+                            requestHeadersSent.set(true);
+                        }
+                    }).build();
+
+            trackedClient.newCall(req).enqueue(new Callback() {
+                private void showSendResult(String message) {
                     if (showToast) {
-                        runOnUiThread(() -> Toast.makeText(MainActivity.this, "فشل الإرسال للشاشة", Toast.LENGTH_SHORT).show());
+                        runOnUiThread(() -> Toast.makeText(MainActivity.this, message, Toast.LENGTH_SHORT).show());
                     }
                 }
 
                 @Override
-                public void onResponse(Call call, Response response) {
-                    if (showToast) {
-                        runOnUiThread(() -> Toast.makeText(MainActivity.this, "جاري العرض على الشاشة ✓", Toast.LENGTH_SHORT).show());
+                public void onFailure(Call call, IOException error) {
+                    // Receiver may accept the media and start playback, then close the
+                    // original HTTP connection before the phone receives its response.
+                    if (requestHeadersSent.get()) {
+                        showSendResult("تم إرسال الوسائط للشاشة ✓");
+                        return;
                     }
+
+                    Request ping = new Request.Builder()
+                            .url(receiverEndpoint + "/?command=ping")
+                            .get()
+                            .build();
+                    client.newCall(ping).enqueue(new Callback() {
+                        @Override
+                        public void onFailure(Call pingCall, IOException pingError) {
+                            showSendResult("تعذر الاتصال بالشاشة");
+                        }
+
+                        @Override
+                        public void onResponse(Call pingCall, Response pingResponse) {
+                            boolean receiverAlive = pingResponse.isSuccessful();
+                            pingResponse.close();
+                            showSendResult(receiverAlive
+                                    ? "الشاشة متصلة، لكن لم يصل طلب الوسائط"
+                                    : "تعذر تأكيد استقبال الوسائط");
+                        }
+                    });
+                }
+
+                @Override
+                public void onResponse(Call call, Response response) {
+                    boolean accepted = response.isSuccessful();
+                    response.close();
+                    showSendResult(accepted
+                            ? "تم إرسال الوسائط للشاشة ✓"
+                            : "الشاشة رفضت طلب الوسائط");
                 }
             });
         } catch (Exception ignored) {}
