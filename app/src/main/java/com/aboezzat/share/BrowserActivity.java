@@ -94,6 +94,13 @@ public class BrowserActivity extends Activity {
     private Button btnCast;
     private TextView btnTabs;
 
+    // Consent bar for external app/store redirects and pop-up requests.
+    private LinearLayout redirectBar;
+    private TextView redirectSiteLabel;
+    private Button redirectOpenButton;
+    private String pendingRedirectUrl = "";
+    private Runnable hideRedirectBarRunnable;
+
     private PowerManager.WakeLock wakeLock;
 
     public static class CapturedMedia {
@@ -477,112 +484,18 @@ public class BrowserActivity extends Activity {
 
             @Override
             public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture, android.os.Message resultMsg) {
-                final Dialog popupDialog = new Dialog(BrowserActivity.this);
-                final WebView popup = new WebView(BrowserActivity.this);
-                WebSettings popupSettings = popup.getSettings();
-                popupSettings.setJavaScriptEnabled(true);
-                popupSettings.setDomStorageEnabled(true);
-                popupSettings.setDatabaseEnabled(true);
-                popupSettings.setJavaScriptCanOpenWindowsAutomatically(true);
-                popupSettings.setSupportMultipleWindows(true);
-                popupSettings.setUserAgentString(view.getSettings().getUserAgentString());
-                CookieManager cookies = CookieManager.getInstance();
-                cookies.setAcceptCookie(true);
-                cookies.setAcceptThirdPartyCookies(popup, true);
-
-                popup.setWebChromeClient(new WebChromeClient() {
-                    @Override public boolean onCreateWindow(WebView child, boolean dialog, boolean gesture, android.os.Message message) {
-                        return false;
-                    }
-                    @Override public void onCloseWindow(WebView window) {
-                        try { popupDialog.dismiss(); } catch (Exception ignored) {}
-                    }
-                });
-                popup.setWebViewClient(new WebViewClient() {
-                    @Override public boolean shouldOverrideUrlLoading(WebView child, WebResourceRequest request) {
-                        Uri uri = request.getUrl();
-                        String scheme = uri.getScheme();
-                        if ("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme)) return false;
-                        try {
-                            Intent intent = Intent.parseUri(uri.toString(), Intent.URI_INTENT_SCHEME);
-                            if (intent.resolveActivity(getPackageManager()) != null) startActivity(intent);
-                            else {
-                                String fallback = intent.getStringExtra("browser_fallback_url");
-                                if (fallback != null && (fallback.startsWith("https://") || fallback.startsWith("http://"))) child.loadUrl(fallback);
-                            }
-                        } catch (Exception ignored) {}
-                        return true;
-                    }
-                });
-
-                popupDialog.setContentView(popup);
-                popupDialog.setOnDismissListener(dialog -> {
-                    try { popup.stopLoading(); popup.destroy(); } catch (Exception ignored) {}
-                });
-                popupDialog.show();
-                Window popupWindow = popupDialog.getWindow();
-                if (popupWindow != null) {
-                    popupWindow.setBackgroundDrawable(new ColorDrawable(Color.BLACK));
-                    popupWindow.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+                // Block pop-up windows by default. A short consent bar lets the user
+                // explicitly open the requested destination without interrupting LIVE.
+                String popupTarget = "";
+                try {
+                    WebView.HitTestResult hit = view.getHitTestResult();
+                    if (hit != null && hit.getExtra() != null) popupTarget = hit.getExtra();
+                } catch (Exception ignored) {}
+                if (popupTarget == null || popupTarget.trim().isEmpty()) {
+                    popupTarget = view.getUrl() == null ? "" : view.getUrl();
                 }
-                WebView.WebViewTransport transport = (WebView.WebViewTransport) resultMsg.obj;
-                transport.setWebView(popup);
-                resultMsg.sendToTarget();
-                return true;
-            }
-
-            @Override
-            public void onGeolocationPermissionsShowPrompt(String origin, GeolocationPermissions.Callback callback) {
-                callback.invoke(origin, true, false);
-            }
-
-            @Override
-            public void onPermissionRequest(final PermissionRequest request) {
-                runOnUiThread(() -> request.grant(request.getResources()));
-            }
-
-            @Override
-            public void onShowCustomView(View view, CustomViewCallback callback) {
-                if (customView != null) {
-                    onHideCustomView();
-                    return;
-                }
-                customView = view;
-                customViewCallback = callback;
-
-                topBar.setVisibility(View.GONE);
-                progressBar.setVisibility(View.GONE);
-                bottomBar.setVisibility(View.GONE);
-                appNavigation.setVisibility(View.GONE);
-                webContainer.setVisibility(View.GONE);
-
-                fullScreenContainer.addView(customView);
-                fullScreenContainer.setVisibility(View.VISIBLE);
-
-                setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
-                getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
-            }
-
-            @Override
-            public void onHideCustomView() {
-                if (customView == null) return;
-
-                fullScreenContainer.removeView(customView);
-                fullScreenContainer.setVisibility(View.GONE);
-                customView = null;
-
-                if (customViewCallback != null) {
-                    customViewCallback.onCustomViewHidden();
-                    customViewCallback = null;
-                }
-
-                topBar.setVisibility(View.VISIBLE);
-                bottomBar.setVisibility(View.VISIBLE);
-                appNavigation.setVisibility(View.VISIBLE);
-                webContainer.setVisibility(View.VISIBLE);
-
-                setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
-                getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+                showRedirectConsent(popupTarget, true);
+                return false;
             }
         });
 
@@ -599,25 +512,13 @@ public class BrowserActivity extends Activity {
                 String targetUrl = request.getUrl().toString();
                 String lower = targetUrl.toLowerCase();
 
-                // Block only known ad destinations. OAuth/login redirect URLs must remain allowed.
+                // Preserve the current ad destination blocking.
                 if (lower.contains("popads") || lower.contains("bet365")) return true;
 
-                if (targetUrl.startsWith("intent://")) {
-                    try {
-                        Intent intent = Intent.parseUri(targetUrl, Intent.URI_INTENT_SCHEME);
-                        if (intent.resolveActivity(getPackageManager()) != null) startActivity(intent);
-                        else {
-                            String fallback = intent.getStringExtra("browser_fallback_url");
-                            if (fallback != null && (fallback.startsWith("https://") || fallback.startsWith("http://"))) view.loadUrl(fallback);
-                        }
-                    } catch (Exception ignored) {}
-                    return true;
-                }
-                if (!targetUrl.startsWith("http://") && !targetUrl.startsWith("https://")) {
-                    try {
-                        Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(targetUrl));
-                        if (intent.resolveActivity(getPackageManager()) != null) startActivity(intent);
-                    } catch (Exception ignored) {}
+                // Play Store / app schemes and other non-web links require consent.
+                if (isPlayStoreRedirect(targetUrl)
+                        || (!lower.startsWith("http://") && !lower.startsWith("https://"))) {
+                    showRedirectConsent(targetUrl, false);
                     return true;
                 }
                 return false;
@@ -699,6 +600,120 @@ public class BrowserActivity extends Activity {
             loadHomePage();
         } else {
             loadTargetUrl(url);
+        }
+    }
+
+    private boolean isPlayStoreRedirect(String url) {
+        if (url == null) return false;
+        String lower = url.toLowerCase();
+        return lower.startsWith("market://")
+                || lower.startsWith("https://play.google.com/store")
+                || lower.startsWith("http://play.google.com/store")
+                || lower.startsWith("https://play.google.com/apps")
+                || (lower.startsWith("intent://") && lower.contains("play.google.com"));
+    }
+
+    private void showRedirectConsent(String requestedUrl, boolean popupRequest) {
+        if (webContainer == null) return;
+        String destination = requestedUrl == null ? "" : requestedUrl.trim();
+        pendingRedirectUrl = destination;
+
+        String siteLabel = getRedirectSiteName(destination);
+        if (popupRequest && (destination.isEmpty() || destination.equals("about:blank"))) {
+            WebView current = getCurrentWebView();
+            siteLabel = current == null ? "الموقع الحالي" : getRedirectSiteName(current.getUrl());
+        }
+
+        if (redirectBar == null) {
+            redirectBar = new LinearLayout(this);
+            redirectBar.setOrientation(LinearLayout.HORIZONTAL);
+            redirectBar.setGravity(Gravity.CENTER_VERTICAL);
+            redirectBar.setPadding(dp(10), dp(5), dp(7), dp(5));
+            redirectBar.setBackgroundColor(Color.parseColor("#16284A"));
+
+            redirectSiteLabel = new TextView(this);
+            redirectSiteLabel.setTextColor(Color.WHITE);
+            redirectSiteLabel.setTextSize(12);
+            redirectSiteLabel.setSingleLine(true);
+            redirectBar.addView(redirectSiteLabel, new LinearLayout.LayoutParams(0, dp(38), 1f));
+
+            redirectOpenButton = new Button(this);
+            redirectOpenButton.setText("فتح");
+            redirectOpenButton.setAllCaps(false);
+            redirectOpenButton.setTextColor(Color.WHITE);
+            redirectOpenButton.setTextSize(13);
+            redirectOpenButton.setBackgroundColor(Color.parseColor("#168A55"));
+            redirectBar.addView(redirectOpenButton, new LinearLayout.LayoutParams(dp(64), dp(38)));
+
+            redirectOpenButton.setOnClickListener(v -> {
+                String urlToOpen = pendingRedirectUrl;
+                hideRedirectConsent();
+                openRedirectAfterConsent(urlToOpen);
+            });
+
+            FrameLayout.LayoutParams barParams = new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM);
+            barParams.setMargins(dp(8), 0, dp(8), dp(8));
+            webContainer.addView(redirectBar, barParams);
+        }
+
+        redirectSiteLabel.setText("الموقع: " + siteLabel);
+        redirectBar.setVisibility(View.VISIBLE);
+        redirectBar.bringToFront();
+        if (hideRedirectBarRunnable != null) redirectBar.removeCallbacks(hideRedirectBarRunnable);
+        hideRedirectBarRunnable = this::hideRedirectConsent;
+        redirectBar.postDelayed(hideRedirectBarRunnable, 1000);
+    }
+
+    private String getRedirectSiteName(String url) {
+        if (url == null || url.trim().isEmpty()) return "الموقع";
+        try {
+            Uri uri = Uri.parse(url);
+            String host = uri.getHost();
+            if (host != null && !host.trim().isEmpty()) return host.replaceFirst("^www\\\\.", "");
+            String scheme = uri.getScheme();
+            if (scheme != null) return scheme;
+        } catch (Exception ignored) {}
+        return "الموقع";
+    }
+
+    private void hideRedirectConsent() {
+        if (redirectBar != null) redirectBar.setVisibility(View.GONE);
+        pendingRedirectUrl = "";
+        hideRedirectBarRunnable = null;
+    }
+
+    private void openRedirectAfterConsent(String url) {
+        if (url == null || url.trim().isEmpty()) return;
+        String lower = url.toLowerCase();
+        try {
+            if (lower.startsWith("http://") || lower.startsWith("https://")) {
+                if (isPlayStoreRedirect(url)) {
+                    Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                    if (intent.resolveActivity(getPackageManager()) != null) startActivity(intent);
+                    else {
+                        WebView current = getCurrentWebView();
+                        if (current != null) current.loadUrl(url);
+                    }
+                } else {
+                    WebView current = getCurrentWebView();
+                    if (current != null) current.loadUrl(url);
+                }
+                return;
+            }
+
+            Intent intent = Intent.parseUri(url, Intent.URI_INTENT_SCHEME);
+            String fallback = intent.getStringExtra("browser_fallback_url");
+            if (intent.resolveActivity(getPackageManager()) != null) startActivity(intent);
+            else if (fallback != null && (fallback.startsWith("https://") || fallback.startsWith("http://"))) {
+                WebView current = getCurrentWebView();
+                if (current != null) current.loadUrl(fallback);
+            } else {
+                Intent viewIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+                if (viewIntent.resolveActivity(getPackageManager()) != null) startActivity(viewIntent);
+            }
+        } catch (Exception ignored) {
+            Toast.makeText(this, "تعذر فتح الرابط المطلوب", Toast.LENGTH_SHORT).show();
         }
     }
 
