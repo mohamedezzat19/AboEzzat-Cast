@@ -124,10 +124,14 @@ public class ShareActivity extends Activity {
             return;
         }
 
-        // TikTok LIVE only: try hidden stream capture first; ordinary TikTok videos
-        // continue through the existing Tikwm extraction path unchanged.
-        if (lowerUrl.contains("tiktok.com") &&
-                (lowerUrl.contains("live.tiktok.com") || lowerUrl.matches(".*tiktok\\.com/@[^/]+/live.*"))) {
+        // TikTok LIVE canonical links can be shared as vt.tiktok.com short URLs.
+        // Resolve short links first so LIVE is detected without changing ordinary-video handling.
+        if (lowerUrl.contains("vt.tiktok.com") || lowerUrl.contains("vm.tiktok.com")) {
+            resolveTikTokShortLink(url);
+            return;
+        }
+
+        if (isTikTokLiveUrl(lowerUrl)) {
             startPlatformSniffer(url, "tiktok_live", 5000L, true);
             return;
         }
@@ -146,6 +150,45 @@ public class ShareActivity extends Activity {
 
         Toast.makeText(this, "جاري قنص الفيديو للشاشة...", Toast.LENGTH_SHORT).show();
         startPlatformSniffer(url, "generic");
+    }
+
+    private boolean isTikTokLiveUrl(String value) {
+        if (value == null) return false;
+        String lower = value.toLowerCase();
+        return lower.contains("live.tiktok.com")
+                || lower.matches(".*tiktok\\.com/@[^/]+/live(?:[/?#].*)?");
+    }
+
+    private void resolveTikTokShortLink(final String shortUrl) {
+        Request request = new Request.Builder()
+                .url(shortUrl)
+                .header("User-Agent", "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 Chrome/122.0.0.0 Mobile Safari/537.36")
+                .get()
+                .build();
+
+        client.newCall(request).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call call, IOException e) {
+                // If TikTok cannot resolve the shared short link, open it in the
+                // app browser instead of leaving the user at a failed-capture toast.
+                mainHandler.post(() -> openTikTokLiveInBrowser(shortUrl));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response) throws IOException {
+                String resolvedUrl = response.request().url().toString();
+                response.close();
+
+                mainHandler.post(() -> {
+                    if (isTikTokLiveUrl(resolvedUrl)) {
+                        startPlatformSniffer(resolvedUrl, "tiktok_live", 5000L, true);
+                    } else {
+                        // Ordinary TikTok posts retain their original Tikwm route.
+                        handleTikTok(shortUrl);
+                    }
+                });
+            }
+        });
     }
 
     private void handleTikTok(final String url) {
