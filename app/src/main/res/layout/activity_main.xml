@@ -298,6 +298,18 @@
                         android:layout_marginHorizontal="3dp" />
 
                     <Button
+                        android:id="@+id/btn_stop"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="0.65"
+                        android:text="⏹"
+                        android:textSize="18sp"
+                        android:contentDescription="إيقاف الفيديو وإغلاق التشغيل"
+                        android:textColor="#FFFFFF"
+                        android:backgroundTint="#D32F2F"
+                        android:layout_marginHorizontal="3dp" />
+
+                    <Button
                         android:id="@+id/btn_prev"
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
