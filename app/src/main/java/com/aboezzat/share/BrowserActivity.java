@@ -252,6 +252,9 @@ public class BrowserActivity extends Activity {
         // Keep Home / Media / Library navigation visible while browsing.
         LinearLayout appNavigation = new LinearLayout(this);
         appNavigation.setOrientation(LinearLayout.HORIZONTAL);
+        // Match the fixed left-to-right order used by the home screen:
+        // Home on the left, Media in the middle, Library on the right.
+        appNavigation.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
         appNavigation.setGravity(Gravity.CENTER);
         appNavigation.setPadding(dp(4), dp(3), dp(4), dp(3));
         appNavigation.setBackgroundColor(Color.parseColor("#07132B"));
