@@ -1049,53 +1049,125 @@ private void showManualIpDialog() {
     }
 
     private class LocalMediaServer extends NanoHTTPD {
-        public LocalMediaServer(int port) {
-            super(port);
-        }
+        public LocalMediaServer(int port) { super(port); }
 
         @Override
         public Response serve(IHTTPSession session) {
-            if (selectedMediaUri != null) {
-                try {
-                    AssetFileDescriptor afd = getContentResolver().openAssetFileDescriptor(selectedMediaUri, "r");
-                    if (afd != null) {
-                        long fileLength = afd.getLength();
-                        String mime = getContentResolver().getType(selectedMediaUri);
-                        if (mime == null) mime = "application/octet-stream";
+            // Capture one URI per request; playback may issue several Range requests.
+            final Uri mediaUri = selectedMediaUri;
+            if (mediaUri == null) return newFixedLengthResponse(Response.Status.NOT_FOUND,
+                    "text/plain", "No media selected");
 
-                        Map<String, String> headers = session.getHeaders();
-                        String range = headers.get("range");
+            AssetFileDescriptor afd = null;
+            try {
+                afd = getContentResolver().openAssetFileDescriptor(mediaUri, "r");
+                if (afd == null) return newFixedLengthResponse(Response.Status.NOT_FOUND,
+                        "text/plain", "Media file unavailable");
 
-                        if (range != null && range.startsWith("bytes=")) {
-                            String[] parts = range.substring("bytes=".length()).split("-");
-                            long start = Long.parseLong(parts[0]);
-                            long end = (parts.length > 1 && !parts[1].isEmpty()) ? Long.parseLong(parts[1]) : fileLength - 1;
-                            if (end >= fileLength) end = fileLength - 1;
-                            long contentLength = end - start + 1;
+                long fileLength = afd.getLength();
+                if (fileLength < 0) fileLength = queryMediaLength(mediaUri);
+                if (fileLength <= 0) return newFixedLengthResponse(Response.Status.INTERNAL_ERROR,
+                        "text/plain", "Unable to determine media length");
 
-                            FileInputStream fis = afd.createInputStream();
-                            fis.skip(start);
-
-                            Response res = newFixedLengthResponse(Response.Status.PARTIAL_CONTENT, mime, fis, contentLength);
-                            res.addHeader("Content-Range", "bytes " + start + "-" + end + "/" + fileLength);
-                            res.addHeader("Content-Length", String.valueOf(contentLength));
-                            res.addHeader("Accept-Ranges", "bytes");
-                            res.addHeader("Access-Control-Allow-Origin", "*");
-                            return res;
-                        } else {
-                            FileInputStream fis = afd.createInputStream();
-                            Response res = newFixedLengthResponse(Response.Status.OK, mime, fis, fileLength);
-                            res.addHeader("Content-Length", String.valueOf(fileLength));
-                            res.addHeader("Accept-Ranges", "bytes");
-                            res.addHeader("Access-Control-Allow-Origin", "*");
-                            return res;
+                String mime = getContentResolver().getType(mediaUri);
+                if (mime == null || mime.trim().isEmpty()
+                        || "application/octet-stream".equalsIgnoreCase(mime)) {
+                    String name = getDisplayName(mediaUri);
+                    if (name != null) {
+                        int dot = name.lastIndexOf('.');
+                        if (dot >= 0 && dot < name.length() - 1) {
+                            String guessed = android.webkit.MimeTypeMap.getSingleton()
+                                    .getMimeTypeFromExtension(name.substring(dot + 1).toLowerCase(java.util.Locale.ROOT));
+                            if (guessed != null) mime = guessed;
                         }
                     }
-                } catch (Exception e) {
-                    return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Error loading file");
+                }
+                if (mime == null || mime.trim().isEmpty()) mime = "application/octet-stream";
+
+                long start = 0L, end = fileLength - 1L;
+                boolean partial = false;
+                String range = session.getHeaders().get("range");
+                if (range != null && !range.trim().isEmpty()) {
+                    try {
+                        if (!range.startsWith("bytes=")) throw new IllegalArgumentException("Unsupported range");
+                        String spec = range.substring(6).trim();
+                        int comma = spec.indexOf(',');
+                        if (comma >= 0) spec = spec.substring(0, comma).trim();
+                        int dash = spec.indexOf('-');
+                        if (dash < 0) throw new IllegalArgumentException("Malformed range");
+                        String left = spec.substring(0, dash).trim();
+                        String right = spec.substring(dash + 1).trim();
+                        if (left.isEmpty()) {
+                            long suffix = Long.parseLong(right);
+                            if (suffix <= 0) throw new IllegalArgumentException("Invalid suffix range");
+                            start = Math.max(0L, fileLength - suffix);
+                            end = fileLength - 1L;
+                        } else {
+                            start = Long.parseLong(left);
+                            end = right.isEmpty() ? fileLength - 1L : Long.parseLong(right);
+                        }
+                        if (start < 0 || start >= fileLength || end < start)
+                            throw new IllegalArgumentException("Range outside file");
+                        end = Math.min(end, fileLength - 1L);
+                        partial = true;
+                    } catch (Exception invalidRange) {
+                        Response response = newFixedLengthResponse(Response.Status.RANGE_NOT_SATISFIABLE,
+                                "text/plain", "");
+                        response.addHeader("Content-Range", "bytes */" + fileLength);
+                        response.addHeader("Accept-Ranges", "bytes");
+                        return response;
+                    }
+                }
+
+                long contentLength = end - start + 1L;
+                FileInputStream fis = afd.createInputStream();
+                long toSkip = start;
+                while (toSkip > 0) {
+                    long skipped = fis.skip(toSkip);
+                    if (skipped <= 0) {
+                        if (fis.read() == -1) throw new IOException("Cannot seek to requested range");
+                        skipped = 1;
+                    }
+                    toSkip -= skipped;
+                }
+
+                Response response = newFixedLengthResponse(
+                        partial ? Response.Status.PARTIAL_CONTENT : Response.Status.OK,
+                        mime, fis, contentLength);
+                response.addHeader("Content-Length", String.valueOf(contentLength));
+                response.addHeader("Accept-Ranges", "bytes");
+                response.addHeader("Cache-Control", "no-store");
+                response.addHeader("Access-Control-Allow-Origin", "*");
+                if (partial) response.addHeader("Content-Range",
+                        "bytes " + start + "-" + end + "/" + fileLength);
+                return response;
+            } catch (Exception e) {
+                android.util.Log.e("AboEzzatCast", "Failed to serve local media", e);
+                return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "text/plain",
+                        "Error loading local media");
+            } finally {
+                // NanoHTTPD closes the returned response stream; close descriptor on setup failure.
+                if (afd != null) {
+                    try { afd.close(); } catch (Exception ignored) {}
                 }
             }
-            return newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "No media selected");
+        }
+
+        private long queryMediaLength(Uri uri) {
+            android.database.Cursor cursor = null;
+            try {
+                cursor = getContentResolver().query(uri,
+                        new String[]{android.provider.OpenableColumns.SIZE}, null, null, null);
+                if (cursor != null && cursor.moveToFirst()) {
+                    int column = cursor.getColumnIndex(android.provider.OpenableColumns.SIZE);
+                    if (column >= 0 && !cursor.isNull(column)) return cursor.getLong(column);
+                }
+            } catch (Exception e) {
+                android.util.Log.w("AboEzzatCast", "Could not query local media size", e);
+            } finally {
+                if (cursor != null) cursor.close();
+            }
+            return -1L;
         }
     }
 
