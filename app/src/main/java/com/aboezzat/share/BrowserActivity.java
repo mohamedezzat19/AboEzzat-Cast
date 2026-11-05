@@ -381,6 +381,7 @@ public class BrowserActivity extends Activity {
             public void doUpdateVisitedHistory(WebView view, String loadedUrl, boolean isReload) {
                 super.doUpdateVisitedHistory(view, loadedUrl, isReload);
                 injectAdKiller(view);
+                recordVisitedUrl(loadedUrl);
             }
 
             @Override
@@ -1320,6 +1321,25 @@ public class BrowserActivity extends Activity {
         webContainer.removeView(toRemove);
         toRemove.destroy();
         switchToTab(Math.max(0, currentTabIndex - 1));
+    }
+
+    private void recordVisitedUrl(String url) {
+        if (url == null || !(url.startsWith("http://") || url.startsWith("https://"))) return;
+        SharedPreferences historyPrefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
+        String title = url;
+        WebView current = getCurrentWebView();
+        if (current != null && url.equals(current.getUrl())) {
+            String pageTitle = current.getTitle();
+            if (pageTitle != null && !pageTitle.trim().isEmpty()) title = pageTitle.trim();
+        }
+        Set<String> history = new HashSet<>(historyPrefs.getStringSet("browser_history", new HashSet<String>()));
+        history.remove(url);
+        history.add(url);
+        historyPrefs.edit().putStringSet("browser_history", history)
+                .putString("history_title_" + url, title)
+                .putLong("history_time_" + url, System.currentTimeMillis())
+                .putInt("visit_count_" + url, historyPrefs.getInt("visit_count_" + url, 0) + 1)
+                .apply();
     }
 
     @Override
