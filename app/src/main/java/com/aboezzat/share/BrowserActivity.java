@@ -277,14 +277,17 @@ public class BrowserActivity extends Activity {
             navLp.setMargins(dp(2), 0, dp(2), 0);
             appNavigation.addView(navButton, navLp);
             navButton.setOnClickListener(v -> {
-                if (destination == 0) {
-                    finish();
-                } else {
-                    Intent homeIntent = new Intent(BrowserActivity.this, MainActivity.class);
-                    homeIntent.putExtra(destination == 1 ? "open_media_picker" : "open_library", true);
-                    startActivity(homeIntent);
-                    finish();
+                // Bring the existing MainActivity forward instead of finishing
+                // BrowserActivity. This keeps WebView tabs, history, scroll state,
+                // and the current browsing session alive underneath it.
+                Intent homeIntent = new Intent(BrowserActivity.this, MainActivity.class);
+                homeIntent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+                if (destination == 1) {
+                    homeIntent.putExtra("open_media_picker", true);
+                } else if (destination == 2) {
+                    homeIntent.putExtra("open_library", true);
                 }
+                startActivity(homeIntent);
             });
         }
         rootLayout.addView(appNavigation);
