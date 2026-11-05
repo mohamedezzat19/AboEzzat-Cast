@@ -268,15 +268,19 @@ public class BrowserActivity extends Activity {
             return;
         }
         android.widget.PopupMenu menu = new android.widget.PopupMenu(this, anchor);
-        menu.getMenu().add("➕ إضافة تبويب").setOnMenuItemClickListener(item -> {
+        menu.getMenu().add("إضافة تبويب").setOnMenuItemClickListener(item -> {
             addNewTab("about:home");
             return true;
         });
-        menu.getMenu().add("▣ علامات التبويب").setOnMenuItemClickListener(item -> {
+        menu.getMenu().add("علامات التبويب").setOnMenuItemClickListener(item -> {
             showTabsDialog();
             return true;
         });
-        menu.getMenu().add("⭐ حفظ الموقع في المفضلة").setOnMenuItemClickListener(item -> {
+        menu.getMenu().add("المواقع السريعة").setOnMenuItemClickListener(item -> {
+            showQuickSitesDialog();
+            return true;
+        });
+        menu.getMenu().add("المفضلة").setOnMenuItemClickListener(item -> {
             WebView current = getCurrentWebView();
             if (current != null && current.getUrl() != null &&
                     (current.getUrl().startsWith("http://") || current.getUrl().startsWith("https://"))) {
@@ -286,23 +290,56 @@ public class BrowserActivity extends Activity {
                 saveCustomSite(siteName, siteUrl);
                 Toast.makeText(this, "تم حفظ الموقع في المفضلة", Toast.LENGTH_SHORT).show();
             } else {
-                Toast.makeText(this, "افتح موقعًا أولاً لحفظه في المفضلة", Toast.LENGTH_SHORT).show();
+                showQuickSitesDialog();
             }
             return true;
         });
-        menu.getMenu().add("📂 التنزيلات").setOnMenuItemClickListener(item -> {
-            openDownloadsFolder();
+        menu.getMenu().add("الإعدادات").setOnMenuItemClickListener(item -> {
+            showBrowserSettingsDialog();
             return true;
         });
-        menu.getMenu().add("🎯 الوسائط المكتشفة").setOnMenuItemClickListener(item -> {
-            showMediaListDialog();
-            return true;
-        });
-        menu.getMenu().add("⚙️ القائمة والإعدادات").setOnMenuItemClickListener(item -> {
+        menu.getMenu().add("القائمة الجانبية").setOnMenuItemClickListener(item -> {
             showSideMenu();
             return true;
         });
         menu.show();
+    }
+
+    private void showQuickSitesDialog() {
+        SharedPreferences prefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
+        Set<String> saved = prefs.getStringSet("custom_sites", new HashSet<String>());
+        List<String> labels = new ArrayList<>();
+        List<String> urls = new ArrayList<>();
+        for (String entry : saved) {
+            if (entry == null) continue;
+            int split = entry.indexOf('|');
+            if (split <= 0 || split >= entry.length() - 1) continue;
+            labels.add(entry.substring(0, split));
+            urls.add(entry.substring(split + 1));
+        }
+        if (labels.isEmpty()) {
+            Toast.makeText(this, "لا توجد مواقع محفوظة بعد", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        new AlertDialog.Builder(this).setTitle("المواقع السريعة")
+                .setItems(labels.toArray(new String[0]), (dialog, which) -> loadTargetUrl(urls.get(which)))
+                .setNegativeButton("إغلاق", null).show();
+    }
+
+    private void showBrowserSettingsDialog() {
+        String[] options = {"إعادة تحميل الصفحة", "مسح ذاكرة التخزين المؤقت", "القائمة والإعدادات العامة"};
+        new AlertDialog.Builder(this).setTitle("إعدادات المتصفح")
+                .setItems(options, (dialog, which) -> {
+                    WebView current = getCurrentWebView();
+                    if (which == 0) {
+                        if (current != null) current.reload();
+                    } else if (which == 1) {
+                        if (current != null) current.clearCache(true);
+                        Toast.makeText(this, "تم مسح ذاكرة المتصفح", Toast.LENGTH_SHORT).show();
+                    } else {
+                        showSideMenu();
+                    }
+                }).setNegativeButton("إغلاق", null).show();
     }
 
     private int dp(float value) {
@@ -313,16 +350,16 @@ public class BrowserActivity extends Activity {
         Button btn = new Button(this);
         btn.setText(text);
         btn.setTextColor(Color.WHITE);
-        btn.setTextSize(20);
+        btn.setTextSize(18);
         btn.setAllCaps(false);
-        btn.setMinHeight(dp(44));
-        btn.setPadding(dp(4), dp(4), dp(4), dp(4));
+        btn.setMinHeight(dp(34));
+        btn.setPadding(dp(3), 0, dp(3), 0);
         android.graphics.drawable.GradientDrawable buttonBg = new android.graphics.drawable.GradientDrawable();
         buttonBg.setColor(Color.parseColor("#14213D"));
         buttonBg.setCornerRadius(dp(12));
         btn.setBackground(buttonBg);
-        LinearLayout.LayoutParams buttonParams = new LinearLayout.LayoutParams(0, dp(44), 1.0f);
-        buttonParams.setMargins(dp(3), 0, dp(3), 0);
+        LinearLayout.LayoutParams buttonParams = new LinearLayout.LayoutParams(0, dp(34), 1.0f);
+        buttonParams.setMargins(dp(2), 0, dp(2), 0);
         btn.setLayoutParams(buttonParams);
         btn.setOnClickListener(listener);
         return btn;
