@@ -107,7 +107,7 @@ public class MainActivity extends Activity {
         if (getIntent().getBooleanExtra("open_media_picker", false)) {
             new Handler(Looper.getMainLooper()).post(() -> openMediaPicker(false));
         } else if (getIntent().getBooleanExtra("open_library", false)) {
-            new Handler(Looper.getMainLooper()).post(() -> showRecentMediaDialog());
+            new Handler(Looper.getMainLooper()).post(() -> showLibraryDialog());
         }
     }
 
@@ -251,16 +251,7 @@ public class MainActivity extends Activity {
             library.setTextColor(0xFFFFD700);
             home.setTextColor(0xFFFFFFFF);
             media.setTextColor(0xFFFFFFFF);
-            new AlertDialog.Builder(MainActivity.this)
-                    .setTitle("مكتبة Abo Ezzat Cast")
-                    .setItems(new String[]{"الوسائط الأخيرة", "قائمة التشغيل", "العلامات المرجعية", "اختيار ملفات من الهاتف"}, (dialog, which) -> {
-                        if (which == 0) showRecentMediaDialog();
-                        else if (which == 1) showPlaylistDialog();
-                        else if (which == 2) showBookmarksDialog();
-                        else openMediaPicker(false);
-                    })
-                    .setNegativeButton("إغلاق", null)
-                    .show();
+            showLibraryDialog();
         });
     }
 
@@ -543,6 +534,191 @@ public class MainActivity extends Activity {
         int slash = name.lastIndexOf('/');
         if (slash >= 0 && slash + 1 < name.length()) name = name.substring(slash + 1);
         return (index + 1) + ". " + name;
+    }
+
+    // Library layout modeled on the supplied screenshot.
+    private void showLibraryDialog() {
+        SharedPreferences browserPrefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
+        android.widget.ScrollView scroll = new android.widget.ScrollView(this);
+        scroll.setFillViewport(true);
+        scroll.setBackgroundColor(0xFF101014);
+        android.widget.LinearLayout content = new android.widget.LinearLayout(this);
+        content.setOrientation(android.widget.LinearLayout.VERTICAL);
+        content.setPadding(dp(20), dp(22), dp(20), dp(20));
+        scroll.addView(content);
+
+        TextView title = new TextView(this);
+        title.setText("مكتبتك");
+        title.setTextColor(0xFFFFFFFF);
+        title.setTextSize(30);
+        title.setTypeface(null, android.graphics.Typeface.BOLD);
+        title.setGravity(android.view.Gravity.RIGHT);
+        content.addView(title);
+
+        TextView subtitle = new TextView(this);
+        subtitle.setText("افتح عنصرًا للرجوع إليه، واضغط مطولًا لحذفه");
+        subtitle.setTextColor(0xFF9B9B9F);
+        subtitle.setTextSize(18);
+        subtitle.setGravity(android.view.Gravity.RIGHT);
+        android.widget.LinearLayout.LayoutParams subtitleParams = new android.widget.LinearLayout.LayoutParams(-1, -2);
+        subtitleParams.topMargin = dp(18);
+        subtitleParams.bottomMargin = dp(28);
+        content.addView(subtitle, subtitleParams);
+
+        addLibrarySectionTitle(content, "☆  المفضلة");
+        Set<String> bookmarks = new HashSet<>(browserPrefs.getStringSet("custom_sites", new HashSet<String>()));
+        List<String> entries = new ArrayList<>(), names = new ArrayList<>(), urls = new ArrayList<>();
+        for (String entry : bookmarks) {
+            String[] parts = entry.split("\\|", 2);
+            if (parts.length == 2) { entries.add(entry); names.add(parts[0]); urls.add(parts[1]); }
+        }
+        if (entries.isEmpty()) {
+            addLibraryEmptyText(content, "لا توجد عناصر بعد");
+        } else {
+            for (int i = 0; i < entries.size(); i++) {
+                final int index = i;
+                TextView card = addLibraryCard(content, names.get(i));
+                card.setOnClickListener(v -> openLibraryUrl(urls.get(index)));
+                card.setOnLongClickListener(v -> {
+                    new AlertDialog.Builder(MainActivity.this)
+                            .setTitle("حذف العلامة المرجعية؟")
+                            .setMessage(names.get(index) + "\n" + urls.get(index))
+                            .setPositiveButton("حذف", (d, w) -> {
+                                Set<String> updated = new HashSet<>(browserPrefs.getStringSet("custom_sites", new HashSet<String>()));
+                                updated.remove(entries.get(index));
+                                browserPrefs.edit().putStringSet("custom_sites", updated).apply();
+                                Toast.makeText(MainActivity.this, "تم حذف العلامة المرجعية", Toast.LENGTH_SHORT).show();
+                                showLibraryDialog();
+                            }).setNegativeButton("إلغاء", null).show();
+                    return true;
+                });
+            }
+        }
+
+        addLibrarySectionTitle(content, "◷  سجل التصفح");
+        Set<String> history = new HashSet<>(browserPrefs.getStringSet("browser_history", new HashSet<String>()));
+        List<String> historyUrls = new ArrayList<>(history);
+        historyUrls.removeIf(url -> url == null || url.trim().isEmpty());
+        historyUrls.sort((a, b) -> Long.compare(browserPrefs.getLong("history_time_" + b, 0),
+                browserPrefs.getLong("history_time_" + a, 0)));
+        for (String url : historyUrls) {
+            final String pageUrl = url;
+            String pageTitle = browserPrefs.getString("history_title_" + url, url);
+            TextView card = addLibraryCard(content, pageTitle);
+            card.setOnClickListener(v -> openLibraryUrl(pageUrl));
+            card.setOnLongClickListener(v -> {
+                String name = browserPrefs.getString("history_title_" + pageUrl, pageUrl);
+                new AlertDialog.Builder(MainActivity.this)
+                        .setTitle("حذف الصفحة من السجل؟")
+                        .setMessage(name + "\n" + pageUrl)
+                        .setPositiveButton("حذف", (d, w) -> {
+                            Set<String> updated = new HashSet<>(browserPrefs.getStringSet("browser_history", new HashSet<String>()));
+                            updated.remove(pageUrl);
+                            browserPrefs.edit().putStringSet("browser_history", updated)
+                                    .remove("history_title_" + pageUrl).remove("history_time_" + pageUrl)
+                                    .remove("visit_count_" + pageUrl).apply();
+                            Toast.makeText(MainActivity.this, "تم حذف الصفحة من السجل", Toast.LENGTH_SHORT).show();
+                            showLibraryDialog();
+                        }).setNegativeButton("إلغاء", null).show();
+                return true;
+            });
+        }
+        if (historyUrls.isEmpty()) addLibraryEmptyText(content, "لا توجد صفحات في سجل التصفح");
+
+        TextView clearHistory = new TextView(this);
+        clearHistory.setText("🗑  مسح سجل التصفح بالكامل");
+        clearHistory.setTextColor(0xFFFFFFFF);
+        clearHistory.setTextSize(21);
+        clearHistory.setTypeface(null, android.graphics.Typeface.BOLD);
+        clearHistory.setGravity(android.view.Gravity.CENTER);
+        clearHistory.setPadding(dp(16), dp(20), dp(16), dp(20));
+        clearHistory.setBackground(libraryCardBackground(0xFF252630));
+        android.widget.LinearLayout.LayoutParams clearParams = new android.widget.LinearLayout.LayoutParams(-1, -2);
+        clearParams.topMargin = dp(32);
+        clearParams.bottomMargin = dp(20);
+        content.addView(clearHistory, clearParams);
+        clearHistory.setOnClickListener(v -> new AlertDialog.Builder(MainActivity.this)
+                .setTitle("مسح سجل التصفح بالكامل؟")
+                .setMessage("سيتم حذف جميع الصفحات المحفوظة في السجل.")
+                .setPositiveButton("مسح", (d, w) -> {
+                    SharedPreferences.Editor edit = browserPrefs.edit();
+                    for (String url : historyUrls) edit.remove("history_title_" + url)
+                            .remove("history_time_" + url).remove("visit_count_" + url);
+                    edit.remove("browser_history").apply();
+                    Toast.makeText(MainActivity.this, "تم مسح سجل التصفح بالكامل", Toast.LENGTH_SHORT).show();
+                    showLibraryDialog();
+                }).setNegativeButton("إلغاء", null).show());
+
+        addLibrarySectionTitle(content, "الوسائط");
+        TextView recent = addLibraryCard(content, "الوسائط الأخيرة");
+        recent.setOnClickListener(v -> showRecentMediaDialog());
+        TextView playlist = addLibraryCard(content, "قائمة التشغيل");
+        playlist.setOnClickListener(v -> showPlaylistDialog());
+        TextView chooseMedia = addLibraryCard(content, "اختيار ملفات من الهاتف");
+        chooseMedia.setOnClickListener(v -> openMediaPicker(false));
+
+        AlertDialog dialog = new AlertDialog.Builder(this).create();
+        dialog.setView(scroll);
+        dialog.show();
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(0xFF101014));
+            dialog.getWindow().setLayout(-1, -1);
+        }
+    }
+
+    private int dp(float value) {
+        return (int) (value * getResources().getDisplayMetrics().density + 0.5f);
+    }
+
+    private void addLibrarySectionTitle(android.widget.LinearLayout content, String text) {
+        TextView heading = new TextView(this);
+        heading.setText(text);
+        heading.setTextColor(0xFFFFD400);
+        heading.setTextSize(24);
+        heading.setTypeface(null, android.graphics.Typeface.BOLD);
+        heading.setGravity(android.view.Gravity.RIGHT | android.view.Gravity.CENTER_VERTICAL);
+        android.widget.LinearLayout.LayoutParams params = new android.widget.LinearLayout.LayoutParams(-1, -2);
+        params.topMargin = dp(12);
+        params.bottomMargin = dp(18);
+        content.addView(heading, params);
+    }
+
+    private void addLibraryEmptyText(android.widget.LinearLayout content, String text) {
+        TextView empty = new TextView(this);
+        empty.setText(text);
+        empty.setTextColor(0xFF99999D);
+        empty.setTextSize(18);
+        empty.setGravity(android.view.Gravity.CENTER);
+        content.addView(empty, new android.widget.LinearLayout.LayoutParams(-1, dp(72)));
+    }
+
+    private TextView addLibraryCard(android.widget.LinearLayout content, String text) {
+        TextView card = new TextView(this);
+        card.setText(text);
+        card.setTextColor(0xFFF7F7F8);
+        card.setTextSize(20);
+        card.setTypeface(null, android.graphics.Typeface.BOLD);
+        card.setGravity(android.view.Gravity.CENTER_VERTICAL | android.view.Gravity.LEFT);
+        card.setPadding(dp(22), dp(20), dp(22), dp(20));
+        card.setBackground(libraryCardBackground(0xFF1B1C22));
+        android.widget.LinearLayout.LayoutParams params = new android.widget.LinearLayout.LayoutParams(-1, dp(88));
+        params.bottomMargin = dp(12);
+        content.addView(card, params);
+        return card;
+    }
+
+    private android.graphics.drawable.GradientDrawable libraryCardBackground(int color) {
+        android.graphics.drawable.GradientDrawable shape = new android.graphics.drawable.GradientDrawable();
+        shape.setColor(color);
+        shape.setCornerRadius(dp(24));
+        return shape;
+    }
+
+    private void openLibraryUrl(String url) {
+        Intent intent = new Intent(MainActivity.this, BrowserActivity.class);
+        intent.putExtra("url", url);
+        intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+        startActivity(intent);
     }
 
     private void showRecentMediaDialog() {
