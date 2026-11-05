@@ -325,26 +325,58 @@ public class MainActivity extends Activity {
                 .show();
     }
 
+    private String getMediaDisplayName(Uri uri, int index) {
+        if (uri == null) return "ملف " + (index + 1);
+        String name = uri.getLastPathSegment();
+        if (name == null || name.trim().isEmpty()) name = uri.toString();
+        int slash = name.lastIndexOf('/');
+        if (slash >= 0 && slash + 1 < name.length()) name = name.substring(slash + 1);
+        return (index + 1) + ". " + name;
+    }
+
     private void showRecentMediaDialog() {
-        if (videoQueue.isEmpty() && slideshowQueue.isEmpty()) {
-            Toast.makeText(this, "لا توجد وسائط تم تشغيلها مؤخراً", Toast.LENGTH_SHORT).show();
+        List<Uri> recent = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        for (Uri uri : videoQueue) {
+            if (uri != null && seen.add(uri.toString())) recent.add(uri);
+        }
+        for (Uri uri : slideshowQueue) {
+            if (uri != null && seen.add(uri.toString())) recent.add(uri);
+        }
+        if (recent.isEmpty()) {
+            Toast.makeText(this, "لا توجد وسائط حديثة. اختر ملفات من قسم الوسائط أولاً.", Toast.LENGTH_SHORT).show();
             return;
         }
-        int total = videoQueue.size() + slideshowQueue.size();
-        Toast.makeText(this, "الوسائط الأخيرة المجهزة: " + total + " ملف", Toast.LENGTH_SHORT).show();
+        String[] labels = new String[recent.size()];
+        for (int i = 0; i < recent.size(); i++) labels[i] = getMediaDisplayName(recent.get(i), i);
+        new AlertDialog.Builder(this)
+                .setTitle("الوسائط الأخيرة")
+                .setItems(labels, (dialog, which) -> {
+                    Uri chosen = recent.get(which);
+                    selectedMediaUri = chosen;
+                    if (videoQueue.contains(chosen)) {
+                        currentVideoIndex = videoQueue.indexOf(chosen);
+                        castLocalMediaToTv(true);
+                    } else {
+                        currentSlideIndex = slideshowQueue.indexOf(chosen);
+                        castLocalMediaToTv(false);
+                    }
+                })
+                .setNegativeButton("إغلاق", null)
+                .show();
     }
 
     private void showPlaylistDialog() {
         if (videoQueue.isEmpty()) {
-            Toast.makeText(this, "قائمة التشغيل فارغة، حدد ملفات من وسائط الهاتف", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "قائمة التشغيل فارغة، حدد ملفات من قسم الوسائط", Toast.LENGTH_SHORT).show();
             return;
         }
         String[] items = new String[videoQueue.size()];
         for (int i = 0; i < videoQueue.size(); i++) {
-            items[i] = "مقطع رقم " + (i + 1);
+            items[i] = getMediaDisplayName(videoQueue.get(i), i);
         }
         new AlertDialog.Builder(this)
-                .setTitle("قائمة التشغيل (" + videoQueue.size() + ")")
+                .setTitle("قائمة التشغيل (" + videoQueue.size() + " ملفات)")
                 .setItems(items, (dialog, which) -> {
                     currentVideoIndex = which;
                     selectedMediaUri = videoQueue.get(currentVideoIndex);
