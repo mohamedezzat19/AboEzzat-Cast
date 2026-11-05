@@ -145,7 +145,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
-                android:background="#101014"
+                android:background="#123B52"
                 android:padding="16dp"
                 android:gravity="center_vertical"
                 android:layout_marginBottom="12dp">
@@ -195,7 +195,7 @@
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:orientation="vertical"
-                    android:background="#101014"
+                    android:background="#17443F"
                     android:padding="16dp"
                     android:layout_marginEnd="6dp">
 
@@ -230,7 +230,7 @@
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:orientation="vertical"
-                    android:background="#101014"
+                    android:background="#263A55"
                     android:padding="16dp"
                     android:layout_marginStart="6dp">
 
@@ -274,7 +274,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:background="#101014"
+                android:background="#102D3A"
                 android:padding="12dp">
 
                 <!-- صف التالي والتشغيل والسابق -->
@@ -302,7 +302,7 @@
                         android:layout_weight="1.2"
                         android:text="⏯️ تشغيل"
                         android:textColor="#000000"
-                        android:backgroundTint="#343846"
+                        android:backgroundTint="#00B8D9"
                         android:layout_marginHorizontal="3dp" />
 
                     <Button
@@ -314,7 +314,7 @@
                         android:textSize="18sp"
                         android:contentDescription="إيقاف الفيديو وإغلاق التشغيل"
                         android:textColor="#FFFFFF"
-                        android:backgroundTint="#343846"
+                        android:backgroundTint="#D95765"
                         android:layout_marginHorizontal="3dp" />
 
                     <Button
@@ -381,7 +381,7 @@
                         android:layout_weight="1"
                         android:text="🔇 كتم"
                         android:textColor="#FFFFFF"
-                        android:backgroundTint="#343846"
+                        android:backgroundTint="#D95765"
                         android:layout_marginHorizontal="4dp" />
 
                     <Button
