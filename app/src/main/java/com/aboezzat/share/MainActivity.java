@@ -110,20 +110,6 @@ public class MainActivity extends Activity {
         }
     }
 
-    @Override
-    protected void onNewIntent(Intent intent) {
-        super.onNewIntent(intent);
-        setIntent(intent);
-
-        if (handleIncomingShareIntent(intent)) return;
-
-        if (intent.getBooleanExtra("open_media_picker", false)) {
-            new Handler(Looper.getMainLooper()).post(() -> openMediaPicker(false));
-        } else if (intent.getBooleanExtra("open_library", false)) {
-            new Handler(Looper.getMainLooper()).post(() -> showRecentMediaDialog());
-        }
-    }
-
     private void initViews() {
         drawerLayout = findViewById(R.id.drawer_layout);
         etTvIp = findViewById(R.id.et_ip);
@@ -727,7 +713,14 @@ private void showManualIpDialog() {
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
-        handleIncomingShareIntent(intent);
+
+        if (handleIncomingShareIntent(intent)) return;
+
+        if (intent != null && intent.getBooleanExtra("open_media_picker", false)) {
+            new Handler(Looper.getMainLooper()).post(() -> openMediaPicker(false));
+        } else if (intent != null && intent.getBooleanExtra("open_library", false)) {
+            new Handler(Looper.getMainLooper()).post(() -> showRecentMediaDialog());
+        }
     }
 
     private boolean handleIncomingShareIntent(Intent intent) {
