@@ -124,7 +124,15 @@ public class ShareActivity extends Activity {
             return;
         }
 
-        if (lowerUrl.contains("tiktok.com") && !lowerUrl.contains("/live") && !lowerUrl.contains("live.tiktok.com")) {
+        // TikTok LIVE only: try hidden stream capture first; ordinary TikTok videos
+        // continue through the existing Tikwm extraction path unchanged.
+        if (lowerUrl.contains("tiktok.com") &&
+                (lowerUrl.contains("live.tiktok.com") || lowerUrl.matches(".*tiktok\\.com/@[^/]+/live.*"))) {
+            startPlatformSniffer(url, "tiktok_live", 5000L, true);
+            return;
+        }
+
+        if (lowerUrl.contains("tiktok.com")) {
             Toast.makeText(this, "جاري استخراج فيديو تيك توك...", Toast.LENGTH_SHORT).show();
             handleTikTok(url);
             return;
@@ -176,6 +184,12 @@ public class ShareActivity extends Activity {
 
     @SuppressLint("SetJavaScriptEnabled")
     private void startPlatformSniffer(String url, final String platformType) {
+        startPlatformSniffer(url, platformType, 16000L, false);
+    }
+
+    @SuppressLint("SetJavaScriptEnabled")
+    private void startPlatformSniffer(String url, final String platformType,
+                                      long timeoutMs, boolean openBrowserOnTimeout) {
         isCaptured = false;
         webView = new WebView(this);
         WebSettings settings = webView.getSettings();
@@ -225,11 +239,27 @@ public class ShareActivity extends Activity {
 
         mainHandler.postDelayed(() -> {
             if (!isCaptured) {
-                Toast.makeText(ShareActivity.this, "تعذر القنص المباشر، جرب فتحه بالمتصفح", Toast.LENGTH_SHORT).show();
                 destroyWebView();
-                finish();
+                if (openBrowserOnTimeout) {
+                    openTikTokLiveInBrowser(url);
+                } else {
+                    Toast.makeText(ShareActivity.this, "تعذر القنص المباشر، جرب فتحه بالمتصفح", Toast.LENGTH_SHORT).show();
+                    finish();
+                }
             }
-        }, 16000);
+        }, timeoutMs);
+    }
+
+    private void openTikTokLiveInBrowser(String url) {
+        try {
+            Intent browserIntent = new Intent(this, BrowserActivity.class);
+            browserIntent.setAction(Intent.ACTION_VIEW);
+            browserIntent.setData(Uri.parse(url));
+            startActivity(browserIntent);
+        } catch (Exception e) {
+            Toast.makeText(this, "تعذر فتح TikTok LIVE في المتصفح", Toast.LENGTH_SHORT).show();
+        }
+        finish();
     }
 
     private synchronized void checkAndSendMedia(String reqUrl, String platformType) {
@@ -247,6 +277,13 @@ public class ShareActivity extends Activity {
 
         if ("threads".equals(platformType)) {
             if (lower.contains(".mp4") || lower.contains("video_playback") || (lower.contains("cdninstagram.com") && lower.contains("/v/"))) {
+                matched = true;
+            }
+        } else if ("tiktok_live".equals(platformType)) {
+            // LIVE capture is intentionally limited to stream-like TikTok resources.
+            // Do not accept ordinary .mp4 video links in this branch.
+            if (lower.contains("pull-") ||
+                    (lower.contains("tiktok") && (lower.contains(".m3u8") || lower.contains(".flv")))) {
                 matched = true;
             }
         } else {
