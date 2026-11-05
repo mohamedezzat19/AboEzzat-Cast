@@ -4,10 +4,18 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <!-- الواجهة القديمة الأصلية بدون أي تعديل أو حذف -->
-    <ScrollView
+    <!-- المحتوى الرئيسي مع شريط تنقل سفلي ثابت -->
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:background="#101014">
+
+    <ScrollView
+        android:id="@+id/main_content_scroll"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
         android:background="#101014"
         android:fillViewport="true">
 
@@ -390,6 +398,54 @@
 
         </LinearLayout>
     </ScrollView>
+
+    <LinearLayout
+        android:id="@+id/bottom_navigation"
+        android:layout_width="match_parent"
+        android:layout_height="62dp"
+        android:orientation="horizontal"
+        android:layoutDirection="ltr"
+        android:gravity="center"
+        android:background="#1B1C23"
+        android:elevation="8dp">
+
+        <Button
+            android:id="@+id/bottom_home"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:text="⌂\nالرئيسية"
+            android:textSize="12sp"
+            android:textColor="#FFD700"
+            android:backgroundTint="#1B1C23"
+            android:minHeight="0dp"
+            android:padding="2dp"/>
+
+        <Button
+            android:id="@+id/bottom_media"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:text="▣\nالوسائط"
+            android:textSize="12sp"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="#1B1C23"
+            android:minHeight="0dp"
+            android:padding="2dp"/>
+
+        <Button
+            android:id="@+id/bottom_library"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:text="▤\nالمكتبة"
+            android:textSize="12sp"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="#1B1C23"
+            android:minHeight="0dp"
+            android:padding="2dp"/>
+    </LinearLayout>
+    </LinearLayout>
     <!-- القائمة الجانبية المنسحبة بنفس ترتيب وأدوات صورتك تماماً -->
     <ScrollView
         android:id="@+id/nav_view"
