@@ -439,8 +439,9 @@ public class BrowserActivity extends Activity {
         settings.setDatabaseEnabled(true);
         settings.setMediaPlaybackRequiresUserGesture(false);
 
-        settings.setJavaScriptCanOpenWindowsAutomatically(false);
-        settings.setSupportMultipleWindows(false);
+        // Support OAuth/login popup windows used by social websites.
+        settings.setJavaScriptCanOpenWindowsAutomatically(true);
+        settings.setSupportMultipleWindows(true);
 
         settings.setUseWideViewPort(true);
         settings.setLoadWithOverviewMode(true);
@@ -472,6 +473,62 @@ public class BrowserActivity extends Activity {
                     }
                 }
                 injectAdKiller(view);
+            }
+
+            @Override
+            public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture, android.os.Message resultMsg) {
+                final Dialog popupDialog = new Dialog(BrowserActivity.this);
+                final WebView popup = new WebView(BrowserActivity.this);
+                WebSettings popupSettings = popup.getSettings();
+                popupSettings.setJavaScriptEnabled(true);
+                popupSettings.setDomStorageEnabled(true);
+                popupSettings.setDatabaseEnabled(true);
+                popupSettings.setJavaScriptCanOpenWindowsAutomatically(true);
+                popupSettings.setSupportMultipleWindows(true);
+                popupSettings.setUserAgentString(view.getSettings().getUserAgentString());
+                CookieManager cookies = CookieManager.getInstance();
+                cookies.setAcceptCookie(true);
+                cookies.setAcceptThirdPartyCookies(popup, true);
+
+                popup.setWebChromeClient(new WebChromeClient() {
+                    @Override public boolean onCreateWindow(WebView child, boolean dialog, boolean gesture, android.os.Message message) {
+                        return false;
+                    }
+                    @Override public void onCloseWindow(WebView window) {
+                        try { popupDialog.dismiss(); } catch (Exception ignored) {}
+                    }
+                });
+                popup.setWebViewClient(new WebViewClient() {
+                    @Override public boolean shouldOverrideUrlLoading(WebView child, WebResourceRequest request) {
+                        Uri uri = request.getUrl();
+                        String scheme = uri.getScheme();
+                        if ("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme)) return false;
+                        try {
+                            Intent intent = Intent.parseUri(uri.toString(), Intent.URI_INTENT_SCHEME);
+                            if (intent.resolveActivity(getPackageManager()) != null) startActivity(intent);
+                            else {
+                                String fallback = intent.getStringExtra("browser_fallback_url");
+                                if (fallback != null && (fallback.startsWith("https://") || fallback.startsWith("http://"))) child.loadUrl(fallback);
+                            }
+                        } catch (Exception ignored) {}
+                        return true;
+                    }
+                });
+
+                popupDialog.setContentView(popup);
+                popupDialog.setOnDismissListener(dialog -> {
+                    try { popup.stopLoading(); popup.destroy(); } catch (Exception ignored) {}
+                });
+                popupDialog.show();
+                Window popupWindow = popupDialog.getWindow();
+                if (popupWindow != null) {
+                    popupWindow.setBackgroundDrawable(new ColorDrawable(Color.BLACK));
+                    popupWindow.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+                }
+                WebView.WebViewTransport transport = (WebView.WebViewTransport) resultMsg.obj;
+                transport.setWebView(popup);
+                resultMsg.sendToTarget();
+                return true;
             }
 
             @Override
@@ -542,9 +599,25 @@ public class BrowserActivity extends Activity {
                 String targetUrl = request.getUrl().toString();
                 String lower = targetUrl.toLowerCase();
 
-                if (lower.contains("popads") || lower.contains("bet365") || lower.contains("redirect") ||
-                    targetUrl.contains("onelink.me") || targetUrl.contains("snssdk") || 
-                    targetUrl.startsWith("intent://") || (!targetUrl.startsWith("http://") && !targetUrl.startsWith("https://"))) {
+                // Block only known ad destinations. OAuth/login redirect URLs must remain allowed.
+                if (lower.contains("popads") || lower.contains("bet365")) return true;
+
+                if (targetUrl.startsWith("intent://")) {
+                    try {
+                        Intent intent = Intent.parseUri(targetUrl, Intent.URI_INTENT_SCHEME);
+                        if (intent.resolveActivity(getPackageManager()) != null) startActivity(intent);
+                        else {
+                            String fallback = intent.getStringExtra("browser_fallback_url");
+                            if (fallback != null && (fallback.startsWith("https://") || fallback.startsWith("http://"))) view.loadUrl(fallback);
+                        }
+                    } catch (Exception ignored) {}
+                    return true;
+                }
+                if (!targetUrl.startsWith("http://") && !targetUrl.startsWith("https://")) {
+                    try {
+                        Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(targetUrl));
+                        if (intent.resolveActivity(getPackageManager()) != null) startActivity(intent);
+                    } catch (Exception ignored) {}
                     return true;
                 }
                 return false;
