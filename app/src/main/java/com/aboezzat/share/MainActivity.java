@@ -1072,7 +1072,7 @@ private void showManualIpDialog() {
                 String mime = getContentResolver().getType(mediaUri);
                 if (mime == null || mime.trim().isEmpty()
                         || "application/octet-stream".equalsIgnoreCase(mime)) {
-                    String name = getDisplayName(mediaUri);
+                    String name = getMediaDisplayName(mediaUri, 0);
                     if (name != null) {
                         int dot = name.lastIndexOf('.');
                         if (dot >= 0 && dot < name.length() - 1) {
