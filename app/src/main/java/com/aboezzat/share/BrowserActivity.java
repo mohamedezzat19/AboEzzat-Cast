@@ -787,9 +787,11 @@ public class BrowserActivity extends Activity {
                 if (lower.contains("audio") || lower.contains("dash_ln_heaac")) {
                     type = 2;
                     format = "🎵 مسار صوت مؤكد";
-                } else if (lower.contains(".mp4") || lower.contains(".m3u8") || lower.contains(".flv")) {
+                } else if (lower.contains(".mp4") || lower.contains(".m3u8") || lower.contains(".flv") ||
+                        (lower.contains("tiktok") && lower.contains("pull-"))) {
+                    // TikTok LIVE may expose a pull stream URL without a file extension.
                     type = 1;
-                    format = "🎬 مسار فيديو مؤكد";
+                    format = lower.contains("pull-") ? "📡 بث تيك توك مباشر" : "🎬 مسار فيديو مؤكد";
                 }
 
                 String realTitle = !lastDiscoveredTitle.isEmpty() ? lastDiscoveredTitle : (!title.isEmpty() ? title : "مقطع وسائط");
