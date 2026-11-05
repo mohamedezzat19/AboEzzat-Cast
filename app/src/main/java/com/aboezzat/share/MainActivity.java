@@ -287,14 +287,13 @@ public class MainActivity extends Activity {
         // 7. سجل المتصفح
         findViewById(R.id.menu_history).setOnClickListener(v -> {
             closeDrawer();
-            Toast.makeText(this, "سجل التصفح فارغ حالياً", Toast.LENGTH_SHORT).show();
+            showBrowserHistory(false);
         });
 
         // 8. الأكثر زيارة
         findViewById(R.id.menu_most_visited).setOnClickListener(v -> {
             closeDrawer();
-            Intent intent = new Intent(MainActivity.this, BrowserActivity.class);
-            startActivity(intent);
+            showBrowserHistory(true);
         });
 
         // 9. التنزيلات
@@ -337,6 +336,50 @@ public class MainActivity extends Activity {
             closeDrawer();
             finishAffinity();
         });
+    }
+
+    private void showBrowserHistory(boolean mostVisited) {
+        SharedPreferences browserPrefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
+        Set<String> saved = new HashSet<>(browserPrefs.getStringSet("browser_history", new HashSet<String>()));
+        List<String> urls = new ArrayList<>(saved);
+        urls.removeIf(url -> url == null || url.trim().isEmpty());
+        if (mostVisited) {
+            urls.sort((a, b) -> Integer.compare(browserPrefs.getInt("visit_count_" + b, 0),
+                    browserPrefs.getInt("visit_count_" + a, 0)));
+        } else {
+            urls.sort((a, b) -> Long.compare(browserPrefs.getLong("history_time_" + b, 0),
+                    browserPrefs.getLong("history_time_" + a, 0)));
+        }
+        if (urls.isEmpty()) {
+            new AlertDialog.Builder(this).setTitle(mostVisited ? "الأكثر زيارة" : "سجل التصفح")
+                    .setMessage("لسه مفيش صفحات اتسجلت. افتح مواقع من المتصفح الأول.")
+                    .setPositiveButton("فتح المتصفح", (d, w) -> startActivity(new Intent(this, BrowserActivity.class)))
+                    .setNegativeButton("إغلاق", null).show();
+            return;
+        }
+        String[] labels = new String[urls.size()];
+        for (int i = 0; i < urls.size(); i++) {
+            String url = urls.get(i);
+            String title = browserPrefs.getString("history_title_" + url, url);
+            labels[i] = (mostVisited ? (browserPrefs.getInt("visit_count_" + url, 0) + " زيارة · ") : "")
+                    + title + "\\n" + url;
+        }
+        new AlertDialog.Builder(this).setTitle(mostVisited ? "الأكثر زيارة" : "سجل التصفح")
+                .setItems(labels, (dialog, which) -> {
+                    Intent intent = new Intent(MainActivity.this, BrowserActivity.class);
+                    intent.putExtra("url", urls.get(which));
+                    startActivity(intent);
+                })
+                .setNeutralButton("مسح السجل", (dialog, which) -> {
+                    SharedPreferences.Editor edit = browserPrefs.edit();
+                    for (String url : urls) {
+                        edit.remove("history_title_" + url).remove("history_time_" + url)
+                                .remove("visit_count_" + url);
+                    }
+                    edit.remove("browser_history").apply();
+                    Toast.makeText(this, "تم مسح سجل التصفح", Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton("إغلاق", null).show();
     }
 
     private void closeDrawer() {
