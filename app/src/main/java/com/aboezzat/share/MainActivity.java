@@ -305,13 +305,13 @@ public class MainActivity extends Activity {
         // 10. الوضع المظلم
         findViewById(R.id.menu_dark_mode).setOnClickListener(v -> {
             closeDrawer();
-            Toast.makeText(this, "الوضع المظلم مفعل افتراضياً ✓", Toast.LENGTH_SHORT).show();
+            toggleDarkMode();
         });
 
         // 11. النسخ الاحتياطي / استعادة
         findViewById(R.id.menu_backup).setOnClickListener(v -> {
             closeDrawer();
-            Toast.makeText(this, "تم حفظ نسخة احتياطية من الإعدادات ✓", Toast.LENGTH_SHORT).show();
+            showBackupRestoreDialog();
         });
 
         // 12. إعدادات
@@ -338,6 +338,84 @@ public class MainActivity extends Activity {
         });
     }
 
+
+    private void toggleDarkMode() {
+        boolean enabled = !prefs.getBoolean("dark_mode", true);
+        prefs.edit().putBoolean("dark_mode", enabled).apply();
+        applyDarkMode(findViewById(R.id.drawer_layout), enabled);
+        Toast.makeText(this, enabled ? "تم تفعيل الوضع المظلم" : "تم إيقاف الوضع المظلم", Toast.LENGTH_SHORT).show();
+    }
+
+    private void applyDarkMode(View view, boolean dark) {
+        if (view == null) return;
+        if (view instanceof android.view.ViewGroup) {
+            android.view.ViewGroup group = (android.view.ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) applyDarkMode(group.getChildAt(i), dark);
+        }
+        if (view instanceof TextView) {
+            TextView text = (TextView) view;
+            text.setTextColor(dark ? 0xFFFFFFFF : 0xFF202124);
+            if (view instanceof EditText) ((EditText) view).setHintTextColor(dark ? 0xFFAAAAAA : 0xFF666666);
+        }
+        if (view instanceof Button) {
+            view.setBackgroundTintList(android.content.res.ColorStateList.valueOf(dark ? 0xFF343846 : 0xFFE0E0E0));
+        } else if (view instanceof android.widget.LinearLayout || view instanceof android.widget.ScrollView) {
+            view.setBackgroundColor(dark ? 0xFF101014 : 0xFFF4F4F4);
+        } else if (view instanceof EditText) {
+            view.setBackgroundColor(dark ? 0xFF262833 : 0xFFFFFFFF);
+        }
+    }
+
+    private void showBackupRestoreDialog() {
+        new AlertDialog.Builder(this).setTitle("النسخ الاحتياطي والاستعادة")
+                .setItems(new String[]{"تصدير الإعدادات إلى ملف", "استعادة الإعدادات من ملف"}, (dialog, which) -> {
+                    Intent intent = new Intent(which == 0 ? Intent.ACTION_CREATE_DOCUMENT : Intent.ACTION_OPEN_DOCUMENT);
+                    intent.addCategory(Intent.CATEGORY_OPENABLE);
+                    intent.setType(which == 0 ? "application/json" : "*/*");
+                    if (which == 0) intent.putExtra(Intent.EXTRA_TITLE, "AboEzzatCast-settings.json");
+                    startActivityForResult(intent, which == 0 ? 501 : 502);
+                }).setNegativeButton("إغلاق", null).show();
+    }
+
+    private void exportSettings(Uri uri) {
+        try (java.io.OutputStream out = getContentResolver().openOutputStream(uri)) {
+            if (out == null) throw new IOException("تعذر فتح الملف");
+            org.json.JSONObject json = new org.json.JSONObject();
+            json.put("tv_ip", prefs.getString("tv_ip", ""));
+            json.put("custom_sites", new org.json.JSONArray(new ArrayList<>(prefs.getStringSet("custom_sites", new HashSet<String>()))));
+            json.put("dark_mode", prefs.getBoolean("dark_mode", true));
+            out.write(json.toString(2).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            Toast.makeText(this, "تم تصدير الإعدادات", Toast.LENGTH_SHORT).show();
+        } catch (Exception e) {
+            Toast.makeText(this, "فشل التصدير: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void importSettings(Uri uri) {
+        try (java.io.InputStream in = getContentResolver().openInputStream(uri)) {
+            if (in == null) throw new IOException("تعذر قراءة الملف");
+            java.io.ByteArrayOutputStream buffer = new java.io.ByteArrayOutputStream();
+            byte[] bytes = new byte[4096]; int count;
+            while ((count = in.read(bytes)) != -1) buffer.write(bytes, 0, count);
+            org.json.JSONObject json = new org.json.JSONObject(buffer.toString("UTF-8"));
+            SharedPreferences.Editor edit = prefs.edit();
+            if (json.has("tv_ip")) edit.putString("tv_ip", json.optString("tv_ip", ""));
+            if (json.has("dark_mode")) edit.putBoolean("dark_mode", json.optBoolean("dark_mode", true));
+            if (json.has("custom_sites")) {
+                org.json.JSONArray array = json.optJSONArray("custom_sites");
+                Set<String> sites = new HashSet<>();
+                if (array != null) for (int i = 0; i < array.length(); i++) sites.add(array.optString(i));
+                edit.putStringSet("custom_sites", sites);
+            }
+            edit.apply();
+            if (etTvIp != null) etTvIp.setText(prefs.getString("tv_ip", ""));
+            updateReceiverStatus();
+            applyDarkMode(findViewById(R.id.drawer_layout), prefs.getBoolean("dark_mode", true));
+            Toast.makeText(this, "تم استعادة الإعدادات", Toast.LENGTH_SHORT).show();
+        } catch (Exception e) {
+            Toast.makeText(this, "فشل الاستعادة: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
     private void showBrowserHistory(boolean mostVisited) {
         SharedPreferences browserPrefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
         Set<String> saved = new HashSet<>(browserPrefs.getStringSet("browser_history", new HashSet<String>()));
@@ -717,6 +795,13 @@ private void showManualIpDialog() {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == 501 || requestCode == 502) {
+            if (resultCode == RESULT_OK && data != null && data.getData() != null) {
+                if (requestCode == 501) exportSettings(data.getData());
+                else importSettings(data.getData());
+            }
+            return;
+        }
         if (requestCode == VOICE_SEARCH_REQUEST) {
             if (resultCode == RESULT_OK && data != null) {
                 ArrayList<String> voiceResults = data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
