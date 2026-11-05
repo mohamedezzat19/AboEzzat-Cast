@@ -24,11 +24,13 @@ import java.io.IOException;
 import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import okhttp3.Call;
 import okhttp3.Callback;
+import okhttp3.EventListener;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
@@ -282,29 +284,76 @@ public class ShareActivity extends Activity {
                 tvIp = tvIp + ":" + TARGET_PORT;
             }
 
+            final String receiverEndpoint = tvIp;
             String paramName = isQueue ? "queue" : "url";
-            String fullUrl = tvIp + "/?" + paramName + "=" + URLEncoder.encode(mediaUrl, "UTF-8");
-            Request request = new Request.Builder().url(fullUrl).build();
+            String fullUrl = receiverEndpoint + "/?" + paramName + "="
+                    + URLEncoder.encode(mediaUrl, "UTF-8");
+            Request request = new Request.Builder().url(fullUrl).get().build();
+            AtomicBoolean requestHeadersSent = new AtomicBoolean(false);
+            OkHttpClient trackedClient = client.newBuilder()
+                    .eventListener(new EventListener() {
+                        @Override
+                        public void requestHeadersEnd(Call call, Request request) {
+                            requestHeadersSent.set(true);
+                        }
+                    }).build();
 
-            client.newCall(request).enqueue(new Callback() {
-                @Override
-                public void onFailure(Call call, IOException e) {
+            trackedClient.newCall(request).enqueue(new Callback() {
+                private void showResult(String message) {
                     mainHandler.post(() -> {
-                        Toast.makeText(ShareActivity.this, "تعذر الإرسال للشاشة", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(ShareActivity.this, message, Toast.LENGTH_SHORT).show();
                         finish();
+                    });
+                }
+
+                @Override
+                public void onFailure(Call call, IOException error) {
+                    // The Receiver may start playback and close the original socket before
+                    // the sender receives the HTTP response. Its ping endpoint tells us
+                    // whether the Receiver is still reachable after that ambiguous failure.
+                    Request ping = new Request.Builder()
+                            .url(receiverEndpoint + "/?command=ping")
+                            .get()
+                            .build();
+                    client.newCall(ping).enqueue(new Callback() {
+                        @Override
+                        public void onFailure(Call pingCall, IOException pingError) {
+                            showResult(requestHeadersSent.get()
+                                    ? "تم إرسال الطلب، لكن تعذر تأكيد رد الشاشة"
+                                    : "تعذر الاتصال بالشاشة");
+                        }
+
+                        @Override
+                        public void onResponse(Call pingCall, Response pingResponse) {
+                            boolean receiverAlive = pingResponse.isSuccessful();
+                            pingResponse.close();
+                            if (receiverAlive && requestHeadersSent.get()) {
+                                showResult(isQueue
+                                        ? "تم إرسال الطلب للشاشة ✓"
+                                        : "تم الإرسال والتشغيل بنجاح ✓");
+                            } else if (receiverAlive) {
+                                showResult("الشاشة متصلة، لكن لم يتأكد إرسال الوسائط");
+                            } else {
+                                showResult("تعذر تأكيد استقبال الطلب");
+                            }
+                        }
                     });
                 }
 
                 @Override
                 public void onResponse(Call call, Response response) {
-                    mainHandler.post(() -> {
-                        Toast.makeText(ShareActivity.this, isQueue ? "تمت الإضافة لقائمة التشغيل ✓" : "تم الإرسال والتشغيل بنجاح ✓", Toast.LENGTH_SHORT).show();
-                        finish();
-                    });
+                    boolean accepted = response.isSuccessful();
+                    response.close();
+                    showResult(accepted
+                            ? (isQueue ? "تمت الإضافة لقائمة التشغيل ✓" : "تم الإرسال والتشغيل بنجاح ✓")
+                            : "الشاشة رفضت الطلب (HTTP)");
                 }
             });
         } catch (Exception e) {
-            mainHandler.post(this::finish);
+            mainHandler.post(() -> {
+                Toast.makeText(this, "تعذر تجهيز الإرسال للشاشة", Toast.LENGTH_SHORT).show();
+                finish();
+            });
         }
     }
 
