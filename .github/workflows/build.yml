@@ -80,8 +80,9 @@ jobs:
         run: |
           APK="app/build/outputs/apk/release/app-release.apk"
           test -s "$APK"
-          "$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -n 1)/apksigner" verify --verbose "$APK"
-          BADGING="$(aapt dump badging "$APK")"
+          BUILD_TOOLS="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -n 1)"
+          "$BUILD_TOOLS/apksigner" verify --verbose "$APK"
+          BADGING="$("$BUILD_TOOLS/aapt" dump badging "$APK")"
           echo "$BADGING" | grep -q "package: name='com.aboezzat.share.legacy'"
           echo "$BADGING" | grep -q "versionCode='${GITHUB_RUN_NUMBER}'"
 
