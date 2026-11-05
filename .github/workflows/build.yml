@@ -44,9 +44,9 @@ jobs:
       - name: Detect signing configuration
         id: signing
         env:
-          KEYSTORE_BASE64: ${{ secrets.ABOEZZAT_OLD_SHARE_KEYSTORE }}
-          STORE_PASSWORD: ${{ secrets.ABOEZZAT_OLD_SHARE_KEYSTORE_PASSWORD }}
-          KEY_PASSWORD: ${{ secrets.ABOEZZAT_OLD_SHARE_KEY_ALIAS_PASSWORD }}
+          KEYSTORE_BASE64: ${{ secrets.ABOEZZAT_SHARE_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ABOEZZAT_SHARE_KEYSTORE_BASE64_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.ABOEZZAT_SHARE_KEY_ALIAS_PASSWORD }}
         shell: bash
         run: |
           if [[ -z "$KEYSTORE_BASE64" || -z "$STORE_PASSWORD" || -z "$KEY_PASSWORD" ]]; then
@@ -55,10 +55,10 @@ jobs:
             exit 0
           fi
           echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/classic-release-keystore.jks"
-          ALIAS="$(keytool -list -keystore "$RUNNER_TEMP/classic-release-keystore.jks" -storepass "$STORE_PASSWORD" -v 2>/dev/null | sed -n 's/^Alias name: //p' | head -n 1)"
+          ALIAS="${{ secrets.ABOEZZAT_SHARE_KEY_ALIAS }}"
           if [[ -z "$ALIAS" ]]; then
             echo "HAS_SIGNING=false" >> "$GITHUB_ENV"
-            echo "::warning::Could not read signing alias; check AboEzzat Cast keystore secrets."
+            echo "::warning::Signing alias secret is missing."
             exit 0
           fi
           echo "KEYSTORE_FILE=$RUNNER_TEMP/classic-release-keystore.jks" >> "$GITHUB_ENV"
@@ -69,9 +69,9 @@ jobs:
         if: ${{ env.HAS_SIGNING == 'true' }}
         env:
           KEYSTORE_FILE: ${{ runner.temp }}/classic-release-keystore.jks
-          KEYSTORE_PASSWORD: ${{ secrets.ABOEZZAT_OLD_SHARE_KEYSTORE_PASSWORD }}
+          KEYSTORE_PASSWORD: ${{ secrets.ABOEZZAT_SHARE_KEYSTORE_BASE64_PASSWORD }}
           KEY_ALIAS: ${{ env.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.ABOEZZAT_OLD_SHARE_KEY_ALIAS_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.ABOEZZAT_SHARE_KEY_ALIAS_PASSWORD }}
         run: gradle assembleRelease --no-daemon
 
       - name: Verify signed Classic APK
