@@ -550,7 +550,7 @@ public class MainActivity extends Activity {
         TextView title = new TextView(this);
         title.setText("مكتبتك");
         title.setTextColor(0xFFFFFFFF);
-        title.setTextSize(30);
+        title.setTextSize(23);
         title.setTypeface(null, android.graphics.Typeface.BOLD);
         title.setGravity(android.view.Gravity.RIGHT);
         content.addView(title);
@@ -558,7 +558,7 @@ public class MainActivity extends Activity {
         TextView subtitle = new TextView(this);
         subtitle.setText("افتح عنصرًا للرجوع إليه، واضغط مطولًا لحذفه");
         subtitle.setTextColor(0xFF9B9B9F);
-        subtitle.setTextSize(18);
+        subtitle.setTextSize(13);
         subtitle.setGravity(android.view.Gravity.RIGHT);
         android.widget.LinearLayout.LayoutParams subtitleParams = new android.widget.LinearLayout.LayoutParams(-1, -2);
         subtitleParams.topMargin = dp(18);
@@ -674,7 +674,7 @@ public class MainActivity extends Activity {
         TextView heading = new TextView(this);
         heading.setText(text);
         heading.setTextColor(0xFFFFD400);
-        heading.setTextSize(24);
+        heading.setTextSize(17);
         heading.setTypeface(null, android.graphics.Typeface.BOLD);
         heading.setGravity(android.view.Gravity.RIGHT | android.view.Gravity.CENTER_VERTICAL);
         android.widget.LinearLayout.LayoutParams params = new android.widget.LinearLayout.LayoutParams(-1, -2);
@@ -696,12 +696,12 @@ public class MainActivity extends Activity {
         TextView card = new TextView(this);
         card.setText(text);
         card.setTextColor(0xFFF7F7F8);
-        card.setTextSize(20);
+        card.setTextSize(15);
         card.setTypeface(null, android.graphics.Typeface.BOLD);
         card.setGravity(android.view.Gravity.CENTER_VERTICAL | android.view.Gravity.LEFT);
-        card.setPadding(dp(22), dp(20), dp(22), dp(20));
+        card.setPadding(dp(14), dp(10), dp(14), dp(10));
         card.setBackground(libraryCardBackground(0xFF1B1C22));
-        android.widget.LinearLayout.LayoutParams params = new android.widget.LinearLayout.LayoutParams(-1, dp(88));
+        android.widget.LinearLayout.LayoutParams params = new android.widget.LinearLayout.LayoutParams(-1, dp(56));
         params.bottomMargin = dp(12);
         content.addView(card, params);
         return card;
@@ -710,7 +710,7 @@ public class MainActivity extends Activity {
     private android.graphics.drawable.GradientDrawable libraryCardBackground(int color) {
         android.graphics.drawable.GradientDrawable shape = new android.graphics.drawable.GradientDrawable();
         shape.setColor(color);
-        shape.setCornerRadius(dp(24));
+        shape.setCornerRadius(dp(14));
         return shape;
     }
 
