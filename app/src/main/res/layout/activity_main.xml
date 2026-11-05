@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <androidx.drawerlayout.widget.DrawerLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/drawer_layout"
-    android:background="#080C27"
+    android:background="@drawable/bg_starfield"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
@@ -10,14 +10,14 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="vertical"
-        android:background="#080C27">
+        android:background="@drawable/bg_starfield">
 
     <ScrollView
         android:id="@+id/main_content_scroll"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:background="#080C27"
+        android:background="@drawable/bg_starfield"
         android:fillViewport="true">
 
         <LinearLayout
@@ -65,7 +65,7 @@
                     android:text="☰"
                     android:textColor="#FFFFFF"
                     android:textSize="22sp"
-                    android:background="#182442"/>
+                    android:background="#10254A"/>
             </LinearLayout>
 
             <!-- شريط البحث بدل كارت IP القديم -->
@@ -75,7 +75,7 @@
                 android:orientation="horizontal"
                 android:layoutDirection="ltr"
                 android:gravity="center_vertical"
-                android:background="#101A38"
+                android:background="#07142D"
                 android:padding="8dp"
                 android:layout_marginBottom="20dp">
                 <EditText
@@ -99,7 +99,7 @@
                     android:text="🎙"
                     android:textSize="16sp"
                     android:textColor="#FFFFFF"
-                    android:backgroundTint="#24475B"
+                    android:backgroundTint="#153B60"
                     android:layout_marginStart="4dp"/>
                 <Button
                     android:id="@+id/btn_search_clear"
@@ -107,7 +107,7 @@
                     android:layout_height="44dp"
                     android:text="✕"
                     android:textColor="#FFFFFF"
-                    android:backgroundTint="#253457"
+                    android:backgroundTint="#152A50"
                     android:layout_marginStart="3dp"/>
                 <Button
                     android:id="@+id/btn_search_go"
@@ -135,7 +135,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="أدوات ومصادر البث"
-                android:textColor="#9E9E9E"
+                android:textColor="#DCEBFF"
                 android:textSize="13sp"
                 android:textStyle="bold"
                 android:layout_marginBottom="10dp" />
@@ -146,7 +146,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
-                android:background="#123B52"
+                android:background="@drawable/card_browser_gradient"
                 android:padding="16dp"
                 android:gravity="center_vertical"
                 android:layout_marginBottom="12dp">
@@ -176,7 +176,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="تصفح مواقع الفيديو، إنستجرام، فيسبوك وبث فوري"
-                        android:textColor="#88A0B8"
+                        android:textColor="#B9D8F2"
                         android:textSize="12sp"
                         android:layout_marginTop="2dp" />
                 </LinearLayout>
@@ -196,7 +196,7 @@
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:orientation="vertical"
-                    android:background="#17443F"
+                    android:background="@drawable/card_media_gradient"
                     android:padding="16dp"
                     android:layout_marginEnd="6dp">
 
@@ -219,7 +219,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="بث فيديو، صورة أو صوت منفرد"
-                        android:textColor="#B090B8"
+                        android:textColor="#B9D8F2"
                         android:textSize="11sp"
                         android:layout_marginTop="2dp" />
                 </LinearLayout>
@@ -231,7 +231,7 @@
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:orientation="vertical"
-                    android:background="#263A55"
+                    android:background="@drawable/card_gallery_gradient"
                     android:padding="16dp"
                     android:layout_marginStart="6dp">
 
@@ -254,7 +254,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="عرض ألبوم صور وراء بعض"
-                        android:textColor="#88B89E"
+                        android:textColor="#B9D8F2"
                         android:textSize="11sp"
                         android:layout_marginTop="2dp" />
                 </LinearLayout>
@@ -275,7 +275,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:background="#102D3A"
+                android:background="@drawable/panel_remote_gradient"
                 android:padding="12dp">
 
                 <!-- صف التالي والتشغيل والسابق -->
@@ -325,7 +325,7 @@
                         android:layout_weight="1"
                         android:text="⏮️ السابق"
                         android:textColor="#FFFFFF"
-                        android:backgroundTint="#2D303E"
+                        android:backgroundTint="#152A50"
                         android:layout_marginStart="3dp" />
                 </LinearLayout>
 
@@ -344,7 +344,7 @@
                         android:layout_weight="1"
                         android:text="10s تقديم ⏩"
                         android:textColor="#FFFFFF"
-                        android:backgroundTint="#262833"
+                        android:backgroundTint="#152A50"
                         android:layout_marginEnd="4dp" />
 
                     <Button
@@ -453,7 +453,7 @@
         android:layout_width="290dp"
         android:layout_height="match_parent"
         android:layout_gravity="start"
-        android:background="#0D1733"
+        android:background="#07132B"
         android:fillViewport="true">
 
         <LinearLayout
