@@ -966,6 +966,21 @@ public class BrowserActivity extends Activity {
         WebView current = getCurrentWebView();
         if (current == null) return;
 
+        // Stop any webpage audio/video before returning to the browser home screen.
+        // This prevents Facebook/YouTube/TikTok playback from continuing underneath
+        // the social-site launcher page.
+        try {
+            current.evaluateJavascript(
+                    "(function(){try{"
+                    + "document.querySelectorAll('video,audio').forEach(function(m){"
+                    + "try{m.pause();}catch(e){}"
+                    + "try{m.currentTime=0;}catch(e){}"
+                    + "try{m.removeAttribute('src');m.load();}catch(e){}"
+                    + "});"
+                    + "try{if(window.__aboTikTokLiveSniffer){window.__aboTikTokLiveSniffer=false;}}catch(e){}"
+                    + "}catch(e){}})()", null);
+        } catch (Exception ignored) {}
+
         capturedList.clear();
         btnCast.setText("📺 0");
         btnCast.setVisibility(View.GONE);
