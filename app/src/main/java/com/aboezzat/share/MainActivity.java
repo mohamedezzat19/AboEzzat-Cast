@@ -91,6 +91,7 @@ public class MainActivity extends Activity {
         setContentView(R.layout.activity_main);
 
         prefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
+        restoreMediaQueues();
         startLocalServer();
 
         // Silently check the Classic app's own release channel on launch.
@@ -180,11 +181,10 @@ public class MainActivity extends Activity {
             // Stop the local slideshow timer first, then stop playback on Receiver.
             isSlideshowRunning = false;
             slideHandler.removeCallbacks(slideRunnable);
-            slideshowQueue.clear();
-            videoQueue.clear();
             currentSlideIndex = 0;
             currentVideoIndex = 0;
             selectedMediaUri = null;
+            persistMediaQueues();
             sendRemoteCommand("stop");
             Toast.makeText(this, "تم إرسال أمر إيقاف الفيديو ⏹", Toast.LENGTH_SHORT).show();
         });
@@ -464,6 +464,7 @@ public class MainActivity extends Activity {
                         edit.remove("history_title_" + url).remove("history_time_" + url)
                                 .remove("visit_count_" + url);
                     }
+                    edit.putLong("history_cleared_at", System.currentTimeMillis());
                     edit.remove("browser_history").apply();
                     Toast.makeText(this, "تم مسح سجل التصفح بالكامل", Toast.LENGTH_SHORT).show();
                 })
@@ -643,6 +644,7 @@ public class MainActivity extends Activity {
                     SharedPreferences.Editor edit = browserPrefs.edit();
                     for (String url : historyUrls) edit.remove("history_title_" + url)
                             .remove("history_time_" + url).remove("visit_count_" + url);
+                    edit.putLong("history_cleared_at", System.currentTimeMillis());
                     edit.remove("browser_history").apply();
                     Toast.makeText(MainActivity.this, "تم مسح سجل التصفح بالكامل", Toast.LENGTH_SHORT).show();
                     showLibraryDialog();
@@ -653,9 +655,6 @@ public class MainActivity extends Activity {
         recent.setOnClickListener(v -> showRecentMediaDialog());
         TextView playlist = addLibraryCard(content, "قائمة التشغيل");
         playlist.setOnClickListener(v -> showPlaylistDialog());
-        TextView chooseMedia = addLibraryCard(content, "اختيار ملفات من الهاتف");
-        chooseMedia.setOnClickListener(v -> openMediaPicker(false));
-
         AlertDialog dialog = new AlertDialog.Builder(this).create();
         dialog.setView(scroll);
         dialog.show();
@@ -722,55 +721,43 @@ public class MainActivity extends Activity {
     }
 
     private void showRecentMediaDialog() {
-        List<Uri> recent = new ArrayList<>();
-        Set<String> seen = new HashSet<>();
-        for (Uri uri : videoQueue) {
-            if (uri != null && seen.add(uri.toString())) recent.add(uri);
-        }
-        for (Uri uri : slideshowQueue) {
-            if (uri != null && seen.add(uri.toString())) recent.add(uri);
-        }
+        List<Uri> recent = readUriList("recent_media_uris");
         if (recent.isEmpty()) {
-            Toast.makeText(this, "لا توجد وسائط حديثة. اختر ملفات من قسم الوسائط أولاً.", Toast.LENGTH_SHORT).show();
+            new AlertDialog.Builder(this).setTitle("الوسائط الأخيرة")
+                    .setMessage("لا توجد وسائط حديثة محفوظة. اختر فيديو أو صورة من زر الوسائط لإضافتها هنا.")
+                    .setPositiveButton("اختيار ملفات", (d, w) -> openMediaPicker(false))
+                    .setNegativeButton("إغلاق", null).show();
             return;
         }
         String[] labels = new String[recent.size()];
         for (int i = 0; i < recent.size(); i++) labels[i] = getMediaDisplayName(recent.get(i), i);
-        new AlertDialog.Builder(this)
-                .setTitle("الوسائط الأخيرة")
+        new AlertDialog.Builder(this).setTitle("الوسائط الأخيرة")
                 .setItems(labels, (dialog, which) -> {
                     Uri chosen = recent.get(which);
                     selectedMediaUri = chosen;
-                    if (videoQueue.contains(chosen)) {
-                        currentVideoIndex = videoQueue.indexOf(chosen);
-                        castLocalMediaToTv(true);
-                    } else {
-                        currentSlideIndex = slideshowQueue.indexOf(chosen);
-                        castLocalMediaToTv(false);
-                    }
-                })
-                .setNegativeButton("إغلاق", null)
-                .show();
+                    if (videoQueue.contains(chosen)) currentVideoIndex = videoQueue.indexOf(chosen);
+                    if (slideshowQueue.contains(chosen)) currentSlideIndex = slideshowQueue.indexOf(chosen);
+                    castLocalMediaToTv(true);
+                }).setNegativeButton("إغلاق", null).show();
     }
 
     private void showPlaylistDialog() {
         if (videoQueue.isEmpty()) {
-            Toast.makeText(this, "قائمة التشغيل فارغة، حدد ملفات من قسم الوسائط", Toast.LENGTH_SHORT).show();
+            new AlertDialog.Builder(this).setTitle("قائمة التشغيل")
+                    .setMessage("قائمة التشغيل فارغة. أضف فيديوهات من زر الوسائط أولاً.")
+                    .setPositiveButton("إضافة فيديوهات", (d, w) -> openMediaPicker(false))
+                    .setNegativeButton("إغلاق", null).show();
             return;
         }
         String[] items = new String[videoQueue.size()];
-        for (int i = 0; i < videoQueue.size(); i++) {
-            items[i] = getMediaDisplayName(videoQueue.get(i), i);
-        }
-        new AlertDialog.Builder(this)
-                .setTitle("قائمة التشغيل (" + videoQueue.size() + " ملفات)")
+        for (int i = 0; i < videoQueue.size(); i++) items[i] = getMediaDisplayName(videoQueue.get(i), i);
+        new AlertDialog.Builder(this).setTitle("قائمة التشغيل (" + videoQueue.size() + " ملفات)")
                 .setItems(items, (dialog, which) -> {
                     currentVideoIndex = which;
                     selectedMediaUri = videoQueue.get(currentVideoIndex);
                     castLocalMediaToTv(true);
-                })
-                .setNegativeButton("إغلاق", null)
-                .show();
+                }).setPositiveButton("إضافة فيديوهات", (d, w) -> openMediaPicker(false))
+                .setNegativeButton("إغلاق", null).show();
     }
 
     private void showBookmarksDialog() {
@@ -979,7 +966,9 @@ private void showManualIpDialog() {
         if (intent != null && intent.getBooleanExtra("open_media_picker", false)) {
             new Handler(Looper.getMainLooper()).post(() -> openMediaPicker(false));
         } else if (intent != null && intent.getBooleanExtra("open_library", false)) {
-            new Handler(Looper.getMainLooper()).post(() -> showRecentMediaDialog());
+            // The Library tab must always open bookmarks and browsing history.
+            // Recent media is a separate action and must not run on Library navigation.
+            new Handler(Looper.getMainLooper()).post(() -> showLibraryDialog());
         }
     }
 
@@ -1137,7 +1126,6 @@ private void showManualIpDialog() {
         if (resultCode == RESULT_OK && data != null) {
             if (requestCode == PICK_MEDIA_REQUEST) {
                 videoQueue.clear();
-                slideshowQueue.clear();
                 ClipData clipData = data.getClipData();
 
                 if (clipData != null) {
@@ -1153,6 +1141,8 @@ private void showManualIpDialog() {
 
                 if (!videoQueue.isEmpty()) {
                     currentVideoIndex = 0;
+                    persistMediaQueues();
+                    for (Uri mediaUri : videoQueue) addRecentMedia(mediaUri);
                     selectedMediaUri = videoQueue.get(0);
                     castLocalMediaToTv(true);
                     if (videoQueue.size() > 1) {
@@ -1160,7 +1150,6 @@ private void showManualIpDialog() {
                     }
                 }
             } else if (requestCode == PICK_SLIDESHOW_REQUEST) {
-                videoQueue.clear();
                 slideshowQueue.clear();
                 ClipData clipData = data.getClipData();
 
@@ -1177,6 +1166,8 @@ private void showManualIpDialog() {
 
                 if (!slideshowQueue.isEmpty()) {
                     currentSlideIndex = 0;
+                    persistMediaQueues();
+                    for (Uri mediaUri : slideshowQueue) addRecentMedia(mediaUri);
                     selectedMediaUri = slideshowQueue.get(0);
                     castLocalMediaToTv(true);
                     if (slideshowQueue.size() > 1) {
@@ -1187,6 +1178,50 @@ private void showManualIpDialog() {
                 }
             }
         }
+    }
+
+    private List<Uri> readUriList(String key) {
+        List<Uri> result = new ArrayList<>();
+        try {
+            org.json.JSONArray array = new org.json.JSONArray(prefs.getString(key, "[]"));
+            for (int i = 0; i < array.length(); i++) {
+                String value = array.optString(i, "");
+                if (!value.isEmpty()) {
+                    Uri uri = Uri.parse(value);
+                    if (!result.contains(uri)) result.add(uri);
+                }
+            }
+        } catch (Exception ignored) {}
+        return result;
+    }
+
+    private void writeUriList(String key, List<Uri> values) {
+        org.json.JSONArray array = new org.json.JSONArray();
+        for (Uri uri : values) if (uri != null) array.put(uri.toString());
+        prefs.edit().putString(key, array.toString()).apply();
+    }
+
+    private void restoreMediaQueues() {
+        videoQueue.clear();
+        videoQueue.addAll(readUriList("video_queue_uris"));
+        slideshowQueue.clear();
+        slideshowQueue.addAll(readUriList("slideshow_queue_uris"));
+        currentVideoIndex = 0;
+        currentSlideIndex = 0;
+    }
+
+    private void persistMediaQueues() {
+        writeUriList("video_queue_uris", videoQueue);
+        writeUriList("slideshow_queue_uris", slideshowQueue);
+    }
+
+    private void addRecentMedia(Uri uri) {
+        if (uri == null) return;
+        List<Uri> recent = readUriList("recent_media_uris");
+        recent.remove(uri);
+        recent.add(0, uri);
+        while (recent.size() > 30) recent.remove(recent.size() - 1);
+        writeUriList("recent_media_uris", recent);
     }
 
     private void takePermissions(Uri uri) {
