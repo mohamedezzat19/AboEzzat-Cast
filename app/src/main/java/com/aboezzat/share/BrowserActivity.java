@@ -77,6 +77,7 @@ public class BrowserActivity extends Activity {
 
     private final List<WebView> tabList = new ArrayList<>();
     private final List<String> tabTitles = new ArrayList<>();
+    private final Map<WebView, Long> navigationStartedAt = new HashMap<>();
     private int currentTabIndex = -1;
 
     private LinearLayout rootLayout;
@@ -525,7 +526,8 @@ public class BrowserActivity extends Activity {
             public void doUpdateVisitedHistory(WebView view, String loadedUrl, boolean isReload) {
                 super.doUpdateVisitedHistory(view, loadedUrl, isReload);
                 injectAdKiller(view);
-                recordVisitedUrl(loadedUrl);
+                navigationStartedAt.put(view, System.currentTimeMillis());
+                recordVisitedUrl(view, loadedUrl);
             }
 
             @Override
@@ -598,6 +600,7 @@ public class BrowserActivity extends Activity {
             @Override
             public void onPageStarted(WebView view, String loadedUrl, android.graphics.Bitmap favicon) {
                 super.onPageStarted(view, loadedUrl, favicon);
+                navigationStartedAt.put(view, System.currentTimeMillis());
                 if (getCurrentWebView() == view && loadedUrl != null
                         && loadedUrl.startsWith("http")) {
                     synchronized (capturedList) {
@@ -1736,14 +1739,21 @@ public class BrowserActivity extends Activity {
         if (tabList.size() <= 1) return;
         WebView toRemove = tabList.remove(currentTabIndex);
         tabTitles.remove(currentTabIndex);
+        navigationStartedAt.remove(toRemove);
         webContainer.removeView(toRemove);
         toRemove.destroy();
         switchToTab(Math.max(0, currentTabIndex - 1));
     }
 
-    private void recordVisitedUrl(String url) {
+    private void recordVisitedUrl(WebView sourceView, String url) {
         if (url == null || !(url.startsWith("http://") || url.startsWith("https://"))) return;
         SharedPreferences historyPrefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
+        long clearedAt = historyPrefs.getLong("history_cleared_at", 0L);
+        long navigationAt = navigationStartedAt.containsKey(sourceView)
+                ? navigationStartedAt.get(sourceView) : 0L;
+        // Ignore a delayed WebView history callback for a page that was already open
+        // when the user cleared history. A later navigation is recorded normally.
+        if (clearedAt > 0L && navigationAt <= clearedAt) return;
         String title = url;
         WebView current = getCurrentWebView();
         if (current != null && url.equals(current.getUrl())) {
