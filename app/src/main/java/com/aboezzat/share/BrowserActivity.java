@@ -766,7 +766,8 @@ public class BrowserActivity extends Activity {
                 "      var adPlaying = document.querySelector('.ad-showing, .ad-interrupting, .ytp-ad-player, [data-ad-playing=\"true\"]');" +
                 "      if(src && src.indexOf('http') === 0 && !adPlaying && !this.classList.contains('ad-interrupting') && (!this.duration || this.duration > 3)){" +
                 "        if(this instanceof HTMLVideoElement && window.__aboLastActiveVideoSrc !== src){window.__aboLastActiveVideoSrc=src;window.AboEzzatBridge.onActiveVideoChanged(src);}" +
-                "        window.AboEzzatBridge.onVideoPlayingWithPoster(src, '', '');" +
+                "        if(this instanceof HTMLAudioElement)window.AboEzzatBridge.onAudioTrackCaptured(src, '');" +
+                "        else window.AboEzzatBridge.onVideoPlayingWithPoster(src, '', '');" +
                 "      }" +
                 "      return origPlay.apply(this, arguments);" +
                 "    };" +
@@ -810,6 +811,16 @@ public class BrowserActivity extends Activity {
                 btnCast.setText("📺 0");
                 btnCast.setVisibility(View.GONE);
             });
+        }
+
+        @JavascriptInterface
+        public void onAudioTrackCaptured(String mediaUrl, String title) {
+            if (mediaUrl == null || mediaUrl.isEmpty() || !mediaUrl.startsWith("http")) return;
+            String lower = mediaUrl.toLowerCase();
+            if (lower.contains("doubleclick") || lower.contains("googlesyndication")
+                    || lower.contains("googleadservices") || lower.contains("analytics")
+                    || lower.contains("tracking") || lower.contains("/ads/")) return;
+            addCapturedAudioTrack(mediaUrl, title);
         }
 
         @JavascriptInterface
@@ -1185,7 +1196,7 @@ public class BrowserActivity extends Activity {
                 "for(var ri=0;ri<resources.length;ri++){var re=resources[ri],ru=re.name||'',rl=ru.toLowerCase();" +
                 "if(!ru||ru.indexOf('http')!==0||now-re.startTime>20000)continue;" +
                 "if(re.initiatorType!=='video'&&re.initiatorType!=='media'&&re.initiatorType!=='audio')continue;" +
-                "if(/(?:mime=audio|type=audio|contenttype=audio|dash_ln_heaac|\\\\.(aac|m4a|mp3|opus|ogg)(?:[?#]|$))/i.test(rl)){send(ru,'active-player-audio');continue;}" +
+                "if(re.initiatorType==='audio'||/(?:mime=audio|type=audio|contenttype=audio|dash_ln_heaac|\\\\.(aac|m4a|mp3|opus|ogg)(?:[?#]|$))/i.test(rl)){window.AboEzzatBridge.onAudioTrackCaptured(ru,title);continue;}" +
                 "if(/\\\\.(ts|m4s|jpg|jpeg|png|webp|gif|js|css)(?:[?#]|$)/i.test(rl))continue;" +
                 "if(/doubleclick|googlesyndication|googleadservices|analytics|tracking|\\\\/ads\\\\//i.test(rl))continue;" +
                 "if(/\\\\.(m3u8|mpd|mp4|m4v|webm|flv)(?:[?#]|$)/i.test(rl)||/mime=video|contenttype=video|type=video|videoplayback|video\\\\/tos/i.test(rl))related.push({url:ru,time:re.startTime});}" +
