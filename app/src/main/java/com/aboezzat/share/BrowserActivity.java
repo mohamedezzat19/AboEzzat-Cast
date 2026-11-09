@@ -859,7 +859,7 @@ public class BrowserActivity extends Activity {
     private int classifyCapturedMedia(String mediaUrl) {
         if (mediaUrl == null) return 0;
         String lower = mediaUrl.toLowerCase();
-        if (lower.matches(".*\\.(jpg|jpeg|png|webp|gif|bmp|svg|ts|m4s|m4a|aac|mp3|js|css)(?:[?#].*)?$")) return 0;
+        if (lower.matches(".*\\.(jpg|jpeg|png|webp|gif|bmp|svg|ts|m4s|js|css)(?:[?#].*)?$")) return 0;
 
         boolean audio = lower.contains("mime=audio") || lower.contains("type=audio")
                 || lower.contains("contenttype=audio") || lower.contains("dash_ln_heaac")
