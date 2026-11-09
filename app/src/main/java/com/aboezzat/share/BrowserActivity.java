@@ -552,18 +552,13 @@ public class BrowserActivity extends Activity {
                             cleanMedia = cleanMedia.replaceAll("&bytestart=\\d+", "").replaceAll("&byteend=\\d+", "");
                         }
 
-                        int type = 0;
-                        String format = "⚠️ مسار غير معروف";
-
-                        if (lowerUrl.contains("audio") || lowerUrl.contains("dash_ln_heaac") || (lowerUrl.contains("bytestart=0") && lowerUrl.contains("mime=audio"))) {
-                            type = 2;
-                            format = "🎵 مسار صوت مؤكد";
-                        } else if (lowerUrl.contains("video") || lowerUrl.contains(".mp4") || lowerUrl.contains(".m3u8") || lowerUrl.contains(".flv")) {
-                            type = 1;
-                            format = "🎬 مسار فيديو مؤكد";
-                            if (lowerUrl.contains(".flv") || lowerUrl.contains("pull-")) format = "📡 بث حي - flv";
-                            else if (lowerUrl.contains(".m3u8")) format = "📡 بث مباشر - m3u8";
-                        }
+                        int type = classifyCapturedMedia(cleanMedia);
+                        if (type == 0) return super.shouldInterceptRequest(view, request);
+                        String format = type == 2 ? "🎵 مسار صوت مؤكد"
+                                : lowerUrl.contains("pull-") ? "📡 بث حي"
+                                : lowerUrl.contains(".m3u8") ? "📡 بث مباشر - m3u8"
+                                : lowerUrl.contains(".mpd") ? "🎬 فيديو DASH"
+                                : "🎬 مسار فيديو مؤكد";
 
                         String cleanName = !lastDiscoveredTitle.isEmpty() ? lastDiscoveredTitle : "مقطع وسائط";
                         try {
@@ -818,21 +813,19 @@ public class BrowserActivity extends Activity {
                 if (cleanMedia.contains("&bytestart=")) {
                     cleanMedia = cleanMedia.replaceAll("&bytestart=\\d+", "").replaceAll("&byteend=\\d+", "");
                 }
-                
-                int type = 0;
-                String lower = cleanMedia.toLowerCase();
-                String format = "⚠️ مسار غير معروف";
-                if (lower.contains("audio") || lower.contains("dash_ln_heaac")) {
-                    type = 2;
-                    format = "🎵 مسار صوت مؤكد";
-                } else if (lower.contains(".mp4") || lower.contains(".m3u8") || lower.contains(".flv") ||
-                        (lower.contains("tiktok") && lower.contains("pull-"))) {
-                    // TikTok LIVE may expose a pull stream URL without a file extension.
-                    type = 1;
-                    format = lower.contains("pull-") ? "📡 بث تيك توك مباشر" : "🎬 مسار فيديو مؤكد";
-                }
 
-                String realTitle = !lastDiscoveredTitle.isEmpty() ? lastDiscoveredTitle : (!title.isEmpty() ? title : "مقطع وسائط");
+                int type = classifyCapturedMedia(cleanMedia);
+                // Never expose unknown resources, images, GIFs or segment files.
+                if (type == 0) return;
+
+                String lower = cleanMedia.toLowerCase();
+                String format = type == 2 ? "🎵 مسار صوت مؤكد"
+                        : lower.contains("pull-") ? "📡 بث تيك توك مباشر"
+                        : lower.contains(".m3u8") ? "📡 بث مباشر - m3u8"
+                        : lower.contains(".mpd") ? "🎬 فيديو DASH"
+                        : "🎬 مسار فيديو مؤكد";
+
+                String realTitle = !lastDiscoveredTitle.isEmpty() ? lastDiscoveredTitle : (!title.isEmpty() ? title : "مقطع فيديو");
                 String realPoster = !posterUrl.isEmpty() ? posterUrl : lastDiscoveredPoster;
                 addCapturedMedia(cleanMedia, realTitle, format, realPoster, type);
             }
@@ -845,9 +838,27 @@ public class BrowserActivity extends Activity {
         }
     }
 
+    private int classifyCapturedMedia(String mediaUrl) {
+        if (mediaUrl == null) return 0;
+        String lower = mediaUrl.toLowerCase();
+        if (lower.matches(".*\\\\.(jpg|jpeg|png|webp|gif|bmp|svg|ts|m4s|m4a|aac|mp3|js|css)(?:[?#].*)?$")) return 0;
+
+        boolean audio = lower.contains("mime=audio") || lower.contains("type=audio")
+                || lower.contains("contenttype=audio") || lower.contains("dash_ln_heaac")
+                || lower.matches(".*\\\\.(aac|m4a|mp3|opus|ogg)(?:[?#].*)?$");
+        if (audio) return 2;
+
+        boolean video = lower.matches(".*\\\\.(mp4|m4v|m3u8|mpd|webm|flv|mov)(?:[?#].*)?$")
+                || lower.contains("mime=video") || lower.contains("type=video")
+                || lower.contains("contenttype=video") || lower.contains("videoplayback")
+                || lower.contains("video/tos") || lower.contains("pull-");
+        return video ? 1 : 0;
+    }
+
     private synchronized void addCapturedMedia(String url, String title, String format, String posterUrl, int mediaType) {
+        if (mediaType != 1 && mediaType != 2) return;
         for (CapturedMedia item : capturedList) {
-            if (item.url.equalsIgnoreCase(url) || (item.url.contains("manifest") && url.contains("manifest"))) {
+            if (item.url.equalsIgnoreCase(url)) {
                 if (item.posterUrl == null && posterUrl != null) {
                     item.posterUrl = posterUrl;
                     loadThumbnailAsync(item);
@@ -1075,6 +1086,17 @@ public class BrowserActivity extends Activity {
     private void triggerManualSniff() {
         final WebView current = getCurrentWebView();
         if (current == null) return;
+
+        // A manual capture is a fresh selection: never mix results from the
+        // previously watched page/video with the one being inspected now.
+        synchronized (capturedList) {
+            capturedList.clear();
+        }
+        lastDiscoveredPoster = "";
+        lastDiscoveredTitle = "";
+        btnCast.clearAnimation();
+        btnCast.setText("📺 0");
+        btnCast.setVisibility(View.GONE);
 
         Toast.makeText(this, "جاري قنص الفيديو الذي تشاهده...", Toast.LENGTH_SHORT).show();
 
