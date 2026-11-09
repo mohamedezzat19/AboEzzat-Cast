@@ -125,10 +125,13 @@ public class BrowserActivity extends Activity {
     }
 
     private final List<CapturedMedia> capturedList = Collections.synchronizedList(new ArrayList<CapturedMedia>());
+    // Audio tracks stay hidden from the picker; they are paired with the active video when available.
+    private final List<CapturedMedia> capturedAudioTracks = Collections.synchronizedList(new ArrayList<CapturedMedia>());
     private final OkHttpClient client = new OkHttpClient();
     private String tvIp = "";
     private String lastDiscoveredPoster = "";
     private String lastDiscoveredTitle = "";
+    private String lastActiveVideoUrl = "";
 
     private final List<String> adDomains = Arrays.asList(
             "doubleclick.net", "googleads", "pagead2", "adservice.google",
@@ -536,42 +539,6 @@ public class BrowserActivity extends Activity {
                     }
                 }
 
-                boolean isJunk = lowerUrl.contains(".ts") || lowerUrl.contains("seg-") ||
-                                 lowerUrl.contains(".js") || lowerUrl.contains(".css") ||
-                                 lowerUrl.contains("preview") || lowerUrl.contains("rsrc.php") ||
-                                 lowerUrl.contains("google_ads") || lowerUrl.contains("ad-interrupting");
-
-                if (!isJunk) {
-                    if (lowerUrl.contains(".mp4") || lowerUrl.contains(".flv") || 
-                        lowerUrl.contains("pull-") || lowerUrl.contains(".m3u8") || 
-                        lowerUrl.contains("mime=video") || lowerUrl.contains("mime=audio") || 
-                        lowerUrl.contains("fbcdn.net")) {
-                        
-                        String cleanMedia = reqUrl;
-                        if (cleanMedia.contains("&bytestart=")) {
-                            cleanMedia = cleanMedia.replaceAll("&bytestart=\\d+", "").replaceAll("&byteend=\\d+", "");
-                        }
-
-                        int type = classifyCapturedMedia(cleanMedia);
-                        if (type == 0) return super.shouldInterceptRequest(view, request);
-                        String format = type == 2 ? "🎵 مسار صوت مؤكد"
-                                : lowerUrl.contains("pull-") ? "📡 بث حي"
-                                : lowerUrl.contains(".m3u8") ? "📡 بث مباشر - m3u8"
-                                : lowerUrl.contains(".mpd") ? "🎬 فيديو DASH"
-                                : "🎬 مسار فيديو مؤكد";
-
-                        String cleanName = !lastDiscoveredTitle.isEmpty() ? lastDiscoveredTitle : "مقطع وسائط";
-                        try {
-                            String pageTitle = view.getTitle();
-                            if (pageTitle != null && !pageTitle.isEmpty() && !pageTitle.contains("http") && !pageTitle.contains("Instagram")) {
-                                cleanName = pageTitle;
-                            }
-                        } catch (Exception ignored) {}
-
-                        addCapturedMedia(cleanMedia, cleanName, format, lastDiscoveredPoster, type);
-                    }
-                }
-
                 return super.shouldInterceptRequest(view, request);
             }
 
@@ -583,8 +550,10 @@ public class BrowserActivity extends Activity {
                     synchronized (capturedList) {
                         capturedList.clear();
                     }
+                    synchronized (capturedAudioTracks) { capturedAudioTracks.clear(); }
                     lastDiscoveredPoster = "";
                     lastDiscoveredTitle = "";
+                    lastActiveVideoUrl = "";
                     runOnUiThread(() -> {
                         btnCast.clearAnimation();
                         btnCast.setText("📺 0");
@@ -795,8 +764,11 @@ public class BrowserActivity extends Activity {
                 "    var origPlay = HTMLMediaElement.prototype.play;" +
                 "    HTMLMediaElement.prototype.play = function(){" +
                 "      var src = this.currentSrc || this.src;" +
-                "      if(src && src.indexOf('http') === 0 && !this.classList.contains('ad-interrupting')){" +
-                "        window.AboEzzatBridge.onVideoPlayingWithPoster(src, '', '');" +
+                "      var adPlaying = document.querySelector('.ad-showing, .ad-interrupting, .ytp-ad-player, [data-ad-playing=\"true\"]');" +
+                "      if(src && src.indexOf('http') === 0 && !adPlaying && !this.classList.contains('ad-interrupting') && (!this.duration || this.duration > 3)){" +
+                "        if(this instanceof HTMLVideoElement && window.__aboLastActiveVideoSrc !== src){window.__aboLastActiveVideoSrc=src;window.AboEzzatBridge.onActiveVideoChanged(src);}" +
+                "        if(this instanceof HTMLAudioElement)window.AboEzzatBridge.onAudioTrackCaptured(src, '');" +
+                "        else window.AboEzzatBridge.onVideoPlayingWithPoster(src, '', '');" +
                 "      }" +
                 "      return origPlay.apply(this, arguments);" +
                 "    };" +
@@ -825,6 +797,34 @@ public class BrowserActivity extends Activity {
         }
 
         @JavascriptInterface
+        public void onActiveVideoChanged(String activeUrl) {
+            if (activeUrl == null || activeUrl.isEmpty()) return;
+            synchronized (BrowserActivity.this) {
+                if (activeUrl.equals(lastActiveVideoUrl)) return;
+                lastActiveVideoUrl = activeUrl;
+                synchronized (capturedList) {
+                    capturedList.clear();
+                }
+                synchronized (capturedAudioTracks) { capturedAudioTracks.clear(); }
+            }
+            runOnUiThread(() -> {
+                btnCast.clearAnimation();
+                btnCast.setText("📺 0");
+                btnCast.setVisibility(View.GONE);
+            });
+        }
+
+        @JavascriptInterface
+        public void onAudioTrackCaptured(String mediaUrl, String title) {
+            if (mediaUrl == null || mediaUrl.isEmpty() || !mediaUrl.startsWith("http")) return;
+            String lower = mediaUrl.toLowerCase();
+            if (lower.contains("doubleclick") || lower.contains("googlesyndication")
+                    || lower.contains("googleadservices") || lower.contains("analytics")
+                    || lower.contains("tracking") || lower.contains("/ads/")) return;
+            addCapturedAudioTrack(mediaUrl, title);
+        }
+
+        @JavascriptInterface
         public void onVideoPlayingWithPoster(String mediaUrl, String title, String posterUrl) {
             if (mediaUrl != null && !mediaUrl.isEmpty() && mediaUrl.startsWith("http")) {
                 String cleanMedia = mediaUrl;
@@ -833,8 +833,13 @@ public class BrowserActivity extends Activity {
                 }
 
                 int type = classifyCapturedMedia(cleanMedia);
+                // Audio-only tracks are stored privately for pairing; they never appear as picker rows.
+                if (type == 2) {
+                    addCapturedAudioTrack(cleanMedia, title);
+                    return;
+                }
                 // Never expose unknown resources, images, GIFs or segment files.
-                if (type == 0) return;
+                if (type != 1) return;
 
                 String lower = cleanMedia.toLowerCase();
                 String format = type == 2 ? "🎵 مسار صوت مؤكد"
@@ -857,24 +862,51 @@ public class BrowserActivity extends Activity {
     }
 
     private int classifyCapturedMedia(String mediaUrl) {
-        if (mediaUrl == null) return 0;
+        if (mediaUrl == null || mediaUrl.trim().isEmpty()) return 0;
         String lower = mediaUrl.toLowerCase();
-        if (lower.matches(".*\\.(jpg|jpeg|png|webp|gif|bmp|svg|ts|m4s|js|css)(?:[?#].*)?$")) return 0;
 
+        // Reject non-playable page assets, images, GIFs, thumbnails and HLS/DASH segments.
+        if (lower.matches(".*\\.(jpg|jpeg|png|webp|gif|bmp|svg|ico|ts|m4s|m4a|aac|mp3|opus|ogg|js|css|vtt|srt)(?:[?#].*)?$")) return 0;
+        if (lower.contains("doubleclick") || lower.contains("googlesyndication")
+                || lower.contains("googleadservices") || lower.contains("adservice")
+                || lower.contains("analytics") || lower.contains("tracking")
+                || lower.contains("/ads/") || lower.contains("ad_video")) return 0;
+
+        // Audio-only tracks are kept privately for pairing with the active video.
         boolean audio = lower.contains("mime=audio") || lower.contains("type=audio")
                 || lower.contains("contenttype=audio") || lower.contains("dash_ln_heaac")
                 || lower.matches(".*\\.(aac|m4a|mp3|opus|ogg)(?:[?#].*)?$");
         if (audio) return 2;
 
-        // TikTok LIVE pull URLs are not guaranteed to have a file extension
-        // or an explicit video MIME marker. Keep recognizing the stream endpoint.
+        // TikTok LIVE endpoints can be extension-less; retain the known pull-* pattern.
         boolean tiktokLiveStream = lower.contains("pull-")
                 || (lower.contains("live") && (lower.contains("video") || lower.contains("stream")));
+        // Known social CDNs often serve signed, extension-less video URLs.
+        boolean knownSocialVideo = lower.contains("video.twimg.com")
+                || ((lower.contains("fbcdn.net") || lower.contains("fbsbx.com"))
+                    && (lower.contains("/v/t") || lower.contains("/o1/v/t") || lower.contains("/video/")))
+                || (lower.contains("cdninstagram.com")
+                    && (lower.contains("/v/t") || lower.contains("/video/")))
+                || ((lower.contains("tiktokcdn") || lower.contains("tiktokv")
+                    || lower.contains("byteoversea") || lower.contains("ibytedtos"))
+                    && (lower.contains("/video/") || lower.contains("/obj/") || lower.contains("/tos/")));
         boolean video = lower.matches(".*\\.(mp4|m4v|m3u8|mpd|webm|flv|mov)(?:[?#].*)?$")
                 || lower.contains("mime=video") || lower.contains("type=video")
                 || lower.contains("contenttype=video") || lower.contains("videoplayback")
-                || lower.contains("video/tos") || tiktokLiveStream;
+                || lower.contains("video/tos") || tiktokLiveStream || knownSocialVideo;
         return video ? 1 : 0;
+    }
+
+    private void addCapturedAudioTrack(String url, String title) {
+        if (url == null || url.isEmpty()) return;
+        synchronized (capturedAudioTracks) {
+            for (CapturedMedia item : capturedAudioTracks) {
+                if (item.url.equalsIgnoreCase(url)) return;
+            }
+            String cleanTitle = (title == null || title.isEmpty()) ? "مسار صوت للفيديو الحالي" : title;
+            capturedAudioTracks.add(0, new CapturedMedia(url, cleanTitle, "مسار صوت مخفي", null, 2));
+            while (capturedAudioTracks.size() > 4) capturedAudioTracks.remove(capturedAudioTracks.size() - 1);
+        }
     }
 
     private synchronized void addCapturedMedia(String url, String title, String format, String posterUrl, int mediaType) {
@@ -975,8 +1007,10 @@ public class BrowserActivity extends Activity {
         if (current == null || target.isEmpty()) return;
 
         capturedList.clear();
+        capturedAudioTracks.clear();
         lastDiscoveredPoster = "";
         lastDiscoveredTitle = "";
+        lastActiveVideoUrl = "";
         btnCast.setText("📺 0");
         btnCast.setVisibility(View.GONE);
 
@@ -1015,6 +1049,7 @@ public class BrowserActivity extends Activity {
         } catch (Exception ignored) {}
 
         capturedList.clear();
+        capturedAudioTracks.clear();
         btnCast.setText("📺 0");
         btnCast.setVisibility(View.GONE);
         etUrl.setText("");
@@ -1114,6 +1149,7 @@ public class BrowserActivity extends Activity {
         synchronized (capturedList) {
             capturedList.clear();
         }
+        synchronized (capturedAudioTracks) { capturedAudioTracks.clear(); }
         lastDiscoveredPoster = "";
         lastDiscoveredTitle = "";
         btnCast.clearAnimation();
@@ -1139,31 +1175,35 @@ public class BrowserActivity extends Activity {
                 "if(mi&&mi.content)poster=mi.content;" +
                 "if(window.AboEzzatBridge)window.AboEzzatBridge.onMetaFound(title,poster);" +
                 "var sent={};function send(u,kind){if(!u||typeof u!=='string'||u.indexOf('http')!==0||sent[u])return;" +
-                "var l=u.toLowerCase();if(l.indexOf('.ts')>-1||l.indexOf('.m4s')>-1||l.indexOf('.aac')>-1)return;" +
+                "var l=u.toLowerCase();if(l.indexOf('.ts')>-1||l.indexOf('.m4s')>-1)return;" +
                 "sent[u]=1;window.AboEzzatBridge.onVideoPlayingWithPoster(u,title,poster);}" +
                 "var vids=[].slice.call(document.querySelectorAll('video'));" +
                 "vids.sort(function(a,b){var as=(!a.paused&&!a.ended?100:0)+(a.readyState>=2?20:0)+(a.currentTime>0?10:0);" +
                 "var bs=(!b.paused&&!b.ended?100:0)+(b.readyState>=2?20:0)+(b.currentTime>0?10:0);return bs-as;});" +
-                "var active=vids.filter(function(v){return !v.paused&&!v.ended&&v.readyState>=2;});" +
-                "var chosen=active.length?active:vids.filter(function(v){return v.readyState>=2&&v.currentTime>0;}).slice(0,1);" +
+                "function visiblePlayer(v){var r=v.getBoundingClientRect(),st=getComputedStyle(v);" +
+                "var area=Math.max(0,r.width)*Math.max(0,r.height);" +
+                "var ad=v.closest('.ad-showing,.ad-interrupting,.ytp-ad-player,[data-ad-playing=\\\"true\\\"],[class*=\\\"ad-container\\\"]');" +
+                "return !ad&&st.display!=='none'&&st.visibility!=='hidden'&&area>16000?area:0;}" +
+                "var active=vids.filter(function(v){return !v.paused&&!v.ended&&v.readyState>=2&&visiblePlayer(v)>0;});" +
+                "var chosen=active.length?active:vids.filter(function(v){return v.readyState>=2&&v.currentTime>0&&visiblePlayer(v)>0;});" +
+                "chosen.sort(function(a,b){return visiblePlayer(b)-visiblePlayer(a);});chosen=chosen.slice(0,1);" +
                 "chosen.forEach(function(v){send(v.currentSrc||v.src,'video');" +
                 "var ss=v.querySelectorAll('source');for(var k=0;k<ss.length;k++)send(ss[k].src,'video');" +
                 "});" +
-                "var entries=performance.getEntriesByType('resource'),now=performance.now(),candidates=[];" +
-                "for(var i=0;i<entries.length;i++){var e=entries[i],u=e.name||'',l=u.toLowerCase();" +
-                "if(!u||u.indexOf('http')!==0)continue;" +
-                "var age=now-e.startTime;if(age>90000)continue;" +
-                "var media=(/\\.(m3u8|mpd|mp4|m4v|webm|flv)(?:[?#]|$)/i.test(l)||" +
-                "/(?:mime=video|contenttype=video|type=video|pull-|video\\/tos|tiktokcdn|fbcdn|videoplayback|manifest)/i.test(l));" +
-                "if(!media||/\\.(ts|m4s|aac|jpg|jpeg|png|webp|gif|js|css)(?:[?#]|$)/i.test(l))continue;" +
-                "var score=0;if(/\\.m3u8(?:[?#]|$)/i.test(l))score+=100;" +
-                "if(/\\.mpd(?:[?#]|$)/i.test(l))score+=90;if(/\\.mp4(?:[?#]|$)/i.test(l))score+=80;" +
-                "if(/mime=video|contenttype=video|type=video/i.test(l))score+=60;" +
-                "if(/pull-|video\\/tos|tiktokcdn|fbcdn|videoplayback/i.test(l))score+=30;" +
-                "if(e.initiatorType==='video'||e.initiatorType==='media')score+=20;" +
-                "candidates.push({u:u,s:score,t:e.startTime});}" +
-                "candidates.sort(function(a,b){return b.s-a.s||b.t-a.t;});" +
-                "for(var j=0;j<candidates.length&&j<25;j++)send(candidates[j].u,'resource');" +
+                // Some sites expose a blob: URL on the active video while the actual
+                // HLS/DASH manifest is fetched as a media-initiated network resource.
+                // Consider only very recent media-initiated requests while one player is active.
+                "if(chosen.length){var now=performance.now(),resources=performance.getEntriesByType('resource'),related=[];" +
+                "for(var ri=0;ri<resources.length;ri++){var re=resources[ri],ru=re.name||'',rl=ru.toLowerCase();" +
+                "if(!ru||ru.indexOf('http')!==0||now-re.startTime>20000)continue;" +
+                "if(re.initiatorType!=='video'&&re.initiatorType!=='media'&&re.initiatorType!=='audio')continue;" +
+                "if(re.initiatorType==='audio'||/(?:mime=audio|type=audio|contenttype=audio|dash_ln_heaac|\\\\.(aac|m4a|mp3|opus|ogg)(?:[?#]|$))/i.test(rl)){window.AboEzzatBridge.onAudioTrackCaptured(ru,title);continue;}" +
+                "if(/\\\\.(ts|m4s|jpg|jpeg|png|webp|gif|js|css)(?:[?#]|$)/i.test(rl))continue;" +
+                "if(/doubleclick|googlesyndication|googleadservices|analytics|tracking|\\\\/ads\\\\//i.test(rl))continue;" +
+                "if(/\\\\.(m3u8|mpd|mp4|m4v|webm|flv)(?:[?#]|$)/i.test(rl)||/mime=video|contenttype=video|type=video|videoplayback|video\\\\/tos/i.test(rl))related.push({url:ru,time:re.startTime});}" +
+                "related.sort(function(a,b){return b.time-a.time;});for(var ri=0;ri<related.length&&ri<3;ri++)send(related[ri].url,'active-player-resource');}" +
+                "}" +
+                "var entries=performance.getEntriesByType('resource');" +
                 // Restore the legacy TikTok LIVE resource sweep used by the manual
                 // capture button; some LIVE endpoints have no standard extension.
                 "var pageUrl=location.href.toLowerCase();" +
@@ -1275,7 +1315,7 @@ public class BrowserActivity extends Activity {
 
                 row.setOnClickListener(v -> {
                     dialog.dismiss();
-                    showMediaOptionsDialog(item);
+                    castSelectedVideo(item.url);
                 });
 
                 return row;
@@ -1336,6 +1376,7 @@ public class BrowserActivity extends Activity {
         btnClear.setBackgroundColor(Color.parseColor("#2A2A2A"));
         btnClear.setOnClickListener(v -> {
             capturedList.clear();
+            capturedAudioTracks.clear();
             btnCast.setText("📺 0");
             btnCast.setVisibility(View.GONE);
             dialog.dismiss();
@@ -1423,38 +1464,16 @@ public class BrowserActivity extends Activity {
         }
 
         if (audioTrack.isEmpty()) {
+            synchronized (capturedAudioTracks) {
+                if (!capturedAudioTracks.isEmpty()) audioTrack = capturedAudioTracks.get(0).url;
+            }
+        }
+
+        if (audioTrack.isEmpty()) {
             castToTv(videoTrack);
-            return;
+        } else {
+            castVideoAndAudioToTv(videoTrack, audioTrack);
         }
-
-        if (tvIp.isEmpty()) {
-            Toast.makeText(this, "يرجى تعيين IP الشاشة أولاً", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        Toast.makeText(this, "جاري إرسال البث المدمج للشاشة...", Toast.LENGTH_SHORT).show();
-
-        try {
-            String endpoint = tvIp;
-            if (!endpoint.startsWith("http://") && !endpoint.startsWith("https://")) endpoint = "http://" + endpoint;
-            if (!endpoint.contains(":8081")) endpoint += ":8081";
-
-            String fullUrl = endpoint + "/?video=" + URLEncoder.encode(videoTrack, "UTF-8") 
-                                      + "&audio=" + URLEncoder.encode(audioTrack, "UTF-8");
-
-            Request req = new Request.Builder().url(fullUrl).build();
-            client.newCall(req).enqueue(new Callback() {
-                @Override
-                public void onFailure(Call call, IOException e) {
-                    runOnUiThread(() -> Toast.makeText(BrowserActivity.this, "تعذر الإرسال للشاشة", Toast.LENGTH_SHORT).show());
-                }
-
-                @Override
-                public void onResponse(Call call, Response response) {
-                    runOnUiThread(() -> Toast.makeText(BrowserActivity.this, "تم بدء البث المدمج في الشاشة بنجاح ✓", Toast.LENGTH_SHORT).show());
-                }
-            });
-        } catch (Exception ignored) {}
     }
 
     private void showMediaOptionsDialog(final CapturedMedia media) {
@@ -1536,6 +1555,47 @@ public class BrowserActivity extends Activity {
             });
         } catch (Exception e) {
             Toast.makeText(this, "خطأ في الرابط", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void castSelectedVideo(String videoUrl) {
+        String audioUrl = "";
+        synchronized (capturedAudioTracks) {
+            if (!capturedAudioTracks.isEmpty()) audioUrl = capturedAudioTracks.get(0).url;
+        }
+        if (audioUrl.isEmpty()) {
+            castToTv(videoUrl);
+        } else {
+            castVideoAndAudioToTv(videoUrl, audioUrl);
+        }
+    }
+
+    private void castVideoAndAudioToTv(String videoTrackUrl, String audioTrackUrl) {
+        if (tvIp.isEmpty()) {
+            Toast.makeText(this, "يرجى تعيين IP الشاشة أولاً", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        try {
+            String endpoint = tvIp;
+            if (!endpoint.startsWith("http://") && !endpoint.startsWith("https://")) endpoint = "http://" + endpoint;
+            if (!endpoint.contains(":8081")) endpoint = endpoint + ":8081";
+            String fullUrl = endpoint + "/?video=" + URLEncoder.encode(videoTrackUrl, "UTF-8")
+                    + "&audio=" + URLEncoder.encode(audioTrackUrl, "UTF-8");
+            Request req = new Request.Builder().url(fullUrl).get().build();
+            client.newCall(req).enqueue(new Callback() {
+                @Override public void onFailure(Call call, IOException e) {
+                    runOnUiThread(() -> Toast.makeText(BrowserActivity.this, "تعذر الإرسال للشاشة، تأكد من الاتصال", Toast.LENGTH_SHORT).show());
+                }
+                @Override public void onResponse(Call call, Response response) {
+                    boolean ok = response.isSuccessful();
+                    response.close();
+                    runOnUiThread(() -> Toast.makeText(BrowserActivity.this,
+                            ok ? "تم إرسال الفيديو والصوت للشاشة ✓" : "الشاشة رفضت تشغيل الفيديو",
+                            Toast.LENGTH_SHORT).show());
+                }
+            });
+        } catch (Exception e) {
+            Toast.makeText(this, "خطأ في رابط الفيديو أو الصوت", Toast.LENGTH_SHORT).show();
         }
     }
 
