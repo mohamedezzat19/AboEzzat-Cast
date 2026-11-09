@@ -561,7 +561,7 @@ public class BrowserActivity extends Activity {
 
                 // Ignore every page/list/thumbnail request until a specific visible
                 // player has been activated by the user in the browser.
-                if (!activePlaybackKey.isEmpty()) {
+                if (view == getCurrentWebView() && !activePlaybackKey.isEmpty()) {
                     boolean isJunk = lowerUrl.matches(".*\\.(jpg|jpeg|png|webp|gif|bmp|svg|ts|m4s|js|css)(?:[?#].*)?$")
                             || lowerUrl.contains("preview") || lowerUrl.contains("thumbnail")
                             || lowerUrl.contains("google_ads") || lowerUrl.contains("ad-interrupting");
@@ -744,7 +744,10 @@ public class BrowserActivity extends Activity {
     private void injectAdKiller(WebView view) {
         String js = "javascript:(function(){try{" +
                 "if(window.__aboActiveCaptureInstalled)return;window.__aboActiveCaptureInstalled=true;" +
-                "var armed=false,activeKey='',lastScan=0;" +
+                "var armed=false,activeKey='';" +
+                "var style=document.getElementById('abo-ezzat-adblock');if(!style){style=document.createElement('style');style.id='abo-ezzat-adblock';" +
+                "style.innerHTML='.ytp-ad-overlay-container,.ytp-ad-message-container,ytd-promoted-sparkles-web-renderer,ytd-banner-promo-renderer,ytd-ad-slot-renderer,.ad-container,.ad-div,ytd-in-feed-ad-layout-renderer,ytm-promoted-sparkles-web-renderer,.ytp-ad-action-interstitial,[id^=\\\"google_ads_\\\"],iframe[src*=\\\"doubleclick\\\"]{display:none!important;width:0!important;height:0!important}';document.head.appendChild(style);}" +
+                "if(!window.AboEzzatKillerLoop){window.AboEzzatKillerLoop=setInterval(function(){try{var b=document.querySelector('.ytp-ad-skip-button,.ytp-ad-skip-button-modern,.ytp-skip-ad-button,.videoAdUiSkipButton');if(b)b.click();}catch(e){}},300);}" +
                 "function titleFor(v){try{var a=v.closest('article');if(a){var t=(a.innerText||'').trim();if(t)return t.substring(0,90);}" +
                 "}catch(e){}return document.title||'فيديو';}" +
                 "function posterFor(v){return v.poster||'';}" +
@@ -779,9 +782,11 @@ public class BrowserActivity extends Activity {
                 "var v=active[0],idx=vids.indexOf(v),key=(v.currentSrc||v.src||'')+'|'+idx;" +
                 "if(!key||key==='|'+idx)return;bridgeStart(v,key);scanResources(v);" +
                 "}catch(e){}}" +
-                "function armFromTap(e){try{var v=e.target&&e.target.closest?e.target.closest('video'):null;" +
-                "if(!v){var vids=[].slice.call(document.querySelectorAll('video')).filter(visible);vids.sort(function(a,b){return area(b)-area(a);});v=vids[0];}" +
+                "function armFromTap(e){try{var x=e.clientX,y=e.clientY;if(e.changedTouches&&e.changedTouches.length){x=e.changedTouches[0].clientX;y=e.changedTouches[0].clientY;}" +
+                "var vids=[].slice.call(document.querySelectorAll('video')),v=null,best=0;for(var i=0;i<vids.length;i++){var r=vids[i].getBoundingClientRect();" +
+                "if(x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom&&area(vids[i])>best){v=vids[i];best=area(vids[i]);}}" +
                 "if(v){armed=true;setTimeout(pick,80);setTimeout(pick,500);}}catch(e){}}" +
+                "window.__aboArmActiveCapture=function(){armed=true;pick();};" +
                 "document.addEventListener('click',armFromTap,true);document.addEventListener('touchend',armFromTap,true);" +
                 "document.addEventListener('playing',function(e){if(armed)setTimeout(pick,80);},true);" +
                 "document.addEventListener('pause',function(){setTimeout(pick,250);},true);" +
@@ -966,6 +971,10 @@ public class BrowserActivity extends Activity {
 
     private void switchToTab(int index) {
         if (index < 0 || index >= tabList.size()) return;
+        if (currentTabIndex != index) {
+            activePlaybackKey = "";
+            clearCapturedMedia();
+        }
         currentTabIndex = index;
         for (int i = 0; i < tabList.size(); i++) {
             tabList.get(i).setVisibility(i == index ? View.VISIBLE : View.GONE);
@@ -1119,6 +1128,7 @@ public class BrowserActivity extends Activity {
         Toast.makeText(this, "شغّل الفيديو واضغط عليه أولاً، ثم جرّب القنص", Toast.LENGTH_SHORT).show();
 
         String js = "javascript:(function(){try{" +
+                "if(window.__aboArmActiveCapture)window.__aboArmActiveCapture();" +
                 "var vids=[].slice.call(document.querySelectorAll('video'));" +
                 "vids=vids.filter(function(v){var r=v.getBoundingClientRect();return !v.paused&&!v.ended&&v.readyState>=2&&" +
                 "r.width>0&&r.height>0&&r.bottom>0&&r.top<innerHeight;});" +
