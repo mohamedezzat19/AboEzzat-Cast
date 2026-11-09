@@ -751,9 +751,17 @@ public class BrowserActivity extends Activity {
                 "var b=document.querySelector('.ytp-ad-skip-button,.ytp-ad-skip-button-modern,.ytp-skip-ad-button,.videoAdUiSkipButton');if(b)b.click();" +
                 "var av=document.querySelectorAll('video');for(var ai=0;ai<av.length;ai++){var x=av[ai];if(document.querySelector('.ad-interrupting,.ad-showing')||x.classList.contains('ad-interrupting')){" +
                 "x.muted=true;if(!isNaN(x.duration)&&x.duration>0)x.currentTime=x.duration+1;}}}catch(e){}},200);}" +
-                "function titleFor(v){try{var a=v.closest('article');if(a){var t=(a.innerText||'').trim();if(t)return t.substring(0,90);}" +
-                "}catch(e){}return document.title||'فيديو';}" +
-                "function posterFor(v){return v.poster||'';}" +
+                "function titleFor(v){try{var a=v.closest('article')||v.parentElement,owner='',caption='';" +
+                "if(a){var links=[].slice.call(a.querySelectorAll('a[href]'));for(var i=0;i<links.length;i++){var h=links[i].getAttribute('href')||'';var m=h.match(/\\/@([A-Za-z0-9._-]{2,})/);if(m){owner='@'+m[1];break;}" +
+                "var al=links[i].getAttribute('aria-label')||links[i].innerText||'';if(!owner&&/^@?[A-Za-z0-9._-]{2,}$/.test(al.trim()))owner=al.trim().charAt(0)==='@'?al.trim():'@'+al.trim();}" +
+                "var c=a.querySelector('[data-e2e*=\\\"video-desc\\\"],[data-testid*=\\\"text\\\"],[dir=\\\"auto\\\"]');caption=c?(c.innerText||c.textContent||'').trim():(a.innerText||'').trim();" +
+                "caption=caption.replace(/\\s+/g,' ').substring(0,95);}" +
+                "var t=(owner?owner+' — ':'')+caption;return t||document.title||'فيديو قيد التشغيل';" +
+                "}catch(e){}return document.title||'فيديو قيد التشغيل';}" +
+                "function posterFor(v){try{if(v.poster&&/^https?:/i.test(v.poster))return v.poster;var a=v.closest('article')||v.parentElement;" +
+                "if(a){var imgs=[].slice.call(a.querySelectorAll('img[src],img[data-src]'));imgs.sort(function(x,y){var r=x.getBoundingClientRect(),q=y.getBoundingClientRect();return (q.width*q.height)-(r.width*r.height);});" +
+                "for(var i=0;i<imgs.length;i++){var u=imgs[i].currentSrc||imgs[i].src||imgs[i].getAttribute('data-src')||'';if(/^https?:/i.test(u)&&!/(avatar|profile|emoji|icon)/i.test(u))return u;}}" +
+                "}catch(e){}return '';}" +
                 "function area(v){try{var r=v.getBoundingClientRect();var w=Math.max(0,Math.min(innerWidth,r.right)-Math.max(0,r.left));" +
                 "var h=Math.max(0,Math.min(innerHeight,r.bottom)-Math.max(0,r.top));return w*h;}catch(e){return 0;}}" +
                 "function visible(v){return area(v)>Math.max(12000,(innerWidth*innerHeight)*0.025);}" +
