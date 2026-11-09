@@ -980,7 +980,9 @@ private void showManualIpDialog() {
         if (intent != null && intent.getBooleanExtra("open_media_picker", false)) {
             new Handler(Looper.getMainLooper()).post(() -> openMediaPicker(false));
         } else if (intent != null && intent.getBooleanExtra("open_library", false)) {
-            new Handler(Looper.getMainLooper()).post(() -> showRecentMediaDialog());
+            // The Library tab must always open bookmarks and browsing history.
+            // Recent media is a separate action and must not run on Library navigation.
+            new Handler(Looper.getMainLooper()).post(() -> showLibraryDialog());
         }
     }
 
