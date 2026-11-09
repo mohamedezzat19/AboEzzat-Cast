@@ -552,18 +552,13 @@ public class BrowserActivity extends Activity {
                             cleanMedia = cleanMedia.replaceAll("&bytestart=\\d+", "").replaceAll("&byteend=\\d+", "");
                         }
 
-                        int type = 0;
-                        String format = "⚠️ مسار غير معروف";
-
-                        if (lowerUrl.contains("audio") || lowerUrl.contains("dash_ln_heaac") || (lowerUrl.contains("bytestart=0") && lowerUrl.contains("mime=audio"))) {
-                            type = 2;
-                            format = "🎵 مسار صوت مؤكد";
-                        } else if (lowerUrl.contains("video") || lowerUrl.contains(".mp4") || lowerUrl.contains(".m3u8") || lowerUrl.contains(".flv")) {
-                            type = 1;
-                            format = "🎬 مسار فيديو مؤكد";
-                            if (lowerUrl.contains(".flv") || lowerUrl.contains("pull-")) format = "📡 بث حي - flv";
-                            else if (lowerUrl.contains(".m3u8")) format = "📡 بث مباشر - m3u8";
-                        }
+                        int type = classifyCapturedMedia(cleanMedia);
+                        if (type == 0) return super.shouldInterceptRequest(view, request);
+                        String format = type == 2 ? "🎵 مسار صوت مؤكد"
+                                : lowerUrl.contains("pull-") ? "📡 بث حي"
+                                : lowerUrl.contains(".m3u8") ? "📡 بث مباشر - m3u8"
+                                : lowerUrl.contains(".mpd") ? "🎬 فيديو DASH"
+                                : "🎬 مسار فيديو مؤكد";
 
                         String cleanName = !lastDiscoveredTitle.isEmpty() ? lastDiscoveredTitle : "مقطع وسائط";
                         try {
@@ -578,6 +573,24 @@ public class BrowserActivity extends Activity {
                 }
 
                 return super.shouldInterceptRequest(view, request);
+            }
+
+            @Override
+            public void onPageStarted(WebView view, String loadedUrl, android.graphics.Bitmap favicon) {
+                super.onPageStarted(view, loadedUrl, favicon);
+                if (getCurrentWebView() == view && loadedUrl != null
+                        && loadedUrl.startsWith("http")) {
+                    synchronized (capturedList) {
+                        capturedList.clear();
+                    }
+                    lastDiscoveredPoster = "";
+                    lastDiscoveredTitle = "";
+                    runOnUiThread(() -> {
+                        btnCast.clearAnimation();
+                        btnCast.setText("📺 0");
+                        btnCast.setVisibility(View.GONE);
+                    });
+                }
             }
 
             @Override
@@ -818,21 +831,19 @@ public class BrowserActivity extends Activity {
                 if (cleanMedia.contains("&bytestart=")) {
                     cleanMedia = cleanMedia.replaceAll("&bytestart=\\d+", "").replaceAll("&byteend=\\d+", "");
                 }
-                
-                int type = 0;
-                String lower = cleanMedia.toLowerCase();
-                String format = "⚠️ مسار غير معروف";
-                if (lower.contains("audio") || lower.contains("dash_ln_heaac")) {
-                    type = 2;
-                    format = "🎵 مسار صوت مؤكد";
-                } else if (lower.contains(".mp4") || lower.contains(".m3u8") || lower.contains(".flv") ||
-                        (lower.contains("tiktok") && lower.contains("pull-"))) {
-                    // TikTok LIVE may expose a pull stream URL without a file extension.
-                    type = 1;
-                    format = lower.contains("pull-") ? "📡 بث تيك توك مباشر" : "🎬 مسار فيديو مؤكد";
-                }
 
-                String realTitle = !lastDiscoveredTitle.isEmpty() ? lastDiscoveredTitle : (!title.isEmpty() ? title : "مقطع وسائط");
+                int type = classifyCapturedMedia(cleanMedia);
+                // Never expose unknown resources, images, GIFs or segment files.
+                if (type == 0) return;
+
+                String lower = cleanMedia.toLowerCase();
+                String format = type == 2 ? "🎵 مسار صوت مؤكد"
+                        : lower.contains("pull-") ? "📡 بث تيك توك مباشر"
+                        : lower.contains(".m3u8") ? "📡 بث مباشر - m3u8"
+                        : lower.contains(".mpd") ? "🎬 فيديو DASH"
+                        : "🎬 مسار فيديو مؤكد";
+
+                String realTitle = !lastDiscoveredTitle.isEmpty() ? lastDiscoveredTitle : (!title.isEmpty() ? title : "مقطع فيديو");
                 String realPoster = !posterUrl.isEmpty() ? posterUrl : lastDiscoveredPoster;
                 addCapturedMedia(cleanMedia, realTitle, format, realPoster, type);
             }
@@ -845,9 +856,31 @@ public class BrowserActivity extends Activity {
         }
     }
 
+    private int classifyCapturedMedia(String mediaUrl) {
+        if (mediaUrl == null) return 0;
+        String lower = mediaUrl.toLowerCase();
+        if (lower.matches(".*\\.(jpg|jpeg|png|webp|gif|bmp|svg|ts|m4s|js|css)(?:[?#].*)?$")) return 0;
+
+        boolean audio = lower.contains("mime=audio") || lower.contains("type=audio")
+                || lower.contains("contenttype=audio") || lower.contains("dash_ln_heaac")
+                || lower.matches(".*\\.(aac|m4a|mp3|opus|ogg)(?:[?#].*)?$");
+        if (audio) return 2;
+
+        // TikTok LIVE pull URLs are not guaranteed to have a file extension
+        // or an explicit video MIME marker. Keep recognizing the stream endpoint.
+        boolean tiktokLiveStream = lower.contains("pull-")
+                || (lower.contains("live") && (lower.contains("video") || lower.contains("stream")));
+        boolean video = lower.matches(".*\\.(mp4|m4v|m3u8|mpd|webm|flv|mov)(?:[?#].*)?$")
+                || lower.contains("mime=video") || lower.contains("type=video")
+                || lower.contains("contenttype=video") || lower.contains("videoplayback")
+                || lower.contains("video/tos") || tiktokLiveStream;
+        return video ? 1 : 0;
+    }
+
     private synchronized void addCapturedMedia(String url, String title, String format, String posterUrl, int mediaType) {
+        if (mediaType != 1 && mediaType != 2) return;
         for (CapturedMedia item : capturedList) {
-            if (item.url.equalsIgnoreCase(url) || (item.url.contains("manifest") && url.contains("manifest"))) {
+            if (item.url.equalsIgnoreCase(url)) {
                 if (item.posterUrl == null && posterUrl != null) {
                     item.posterUrl = posterUrl;
                     loadThumbnailAsync(item);
@@ -1075,7 +1108,19 @@ public class BrowserActivity extends Activity {
     private void triggerManualSniff() {
         final WebView current = getCurrentWebView();
         if (current == null) return;
-        Toast.makeText(this, "جاري فحص وتأكيد الفيديو...", Toast.LENGTH_SHORT).show();
+
+        // A manual capture is a fresh selection: never mix results from the
+        // previously watched page/video with the one being inspected now.
+        synchronized (capturedList) {
+            capturedList.clear();
+        }
+        lastDiscoveredPoster = "";
+        lastDiscoveredTitle = "";
+        btnCast.clearAnimation();
+        btnCast.setText("📺 0");
+        btnCast.setVisibility(View.GONE);
+
+        Toast.makeText(this, "جاري قنص الفيديو الذي تشاهده...", Toast.LENGTH_SHORT).show();
 
         String curUrl = current.getUrl();
         if (curUrl != null && (curUrl.contains("watch") || curUrl.contains("youtu.be"))) {
@@ -1083,31 +1128,52 @@ public class BrowserActivity extends Activity {
             return;
         }
 
-        // Keep the existing sniff path unchanged for every platform. TikTok LIVE gets
-        // an additional targeted scan for the actual HLS/live media URL.
-        String js = "javascript:(function(){"+
-                "var title=''; var poster='';"+
-                "var mt=document.querySelector('meta[property=\\\"og:title\\\"],meta[name=\\\"twitter:title\\\"]');"+
-                "if(mt&&mt.content)title=mt.content;"+
-                "var mi=document.querySelector('meta[property=\\\"og:image\\\"],meta[name=\\\"twitter:image\\\"]');"+
-                "if(mi&&mi.content)poster=mi.content;"+
-                "if(title||poster)window.AboEzzatBridge.onMetaFound(title,poster);"+
-                "var meta=document.querySelector('meta[property=\\\"og:video\\\"],meta[property=\\\"og:video:secure_url\\\"]');"+
-                "if(meta&&meta.content)window.AboEzzatBridge.onVideoPlayingWithPoster(meta.content,title||document.title,poster);"+
-                "var vids=document.getElementsByTagName('video');"+
-                "for(var i=0;i<vids.length;i++){var src=vids[i].currentSrc||vids[i].src;"+
-                "if(src&&src.indexOf('http')===0&&!vids[i].classList.contains('ad-interrupting'))"+
-                "window.AboEzzatBridge.onVideoPlayingWithPoster(src,title||document.title,poster);}"+
-                "var u=location.href.toLowerCase();"+
-                "if(u.indexOf('tiktok.com')!==-1&&(u.indexOf('/live')!==-1||u.indexOf('live')!==-1)){"+
-                "try{var entries=performance.getEntriesByType('resource');"+
-                "for(var j=0;j<entries.length;j++){var ru=entries[j].name;var rl=ru.toLowerCase();"+
-                "if(rl.indexOf('.m3u8')!==-1||rl.indexOf('pull-')!==-1||rl.indexOf('live')!==-1&&"+
-                "(rl.indexOf('video')!==-1||rl.indexOf('stream')!==-1)){"+
-                "window.AboEzzatBridge.onVideoPlayingWithPoster(ru,title||document.title,poster);}}"+
-                "}catch(e){}}"+
-                "})()";
-        current.loadUrl(js);
+        // Manual capture only: preserve the existing direct-share flow and all
+        // existing WebView/network hooks. Inspect the active player first, then
+        // recent media resources loaded by this page.
+        String js = "javascript:(function(){try{" +
+                "var title=document.title||'مقطع فيديو',poster='';" +
+                "var mt=document.querySelector('meta[property=\\\"og:title\\\"],meta[name=\\\"twitter:title\\\"]');" +
+                "if(mt&&mt.content)title=mt.content;" +
+                "var mi=document.querySelector('meta[property=\\\"og:image\\\"],meta[name=\\\"twitter:image\\\"]');" +
+                "if(mi&&mi.content)poster=mi.content;" +
+                "if(window.AboEzzatBridge)window.AboEzzatBridge.onMetaFound(title,poster);" +
+                "var sent={};function send(u,kind){if(!u||typeof u!=='string'||u.indexOf('http')!==0||sent[u])return;" +
+                "var l=u.toLowerCase();if(l.indexOf('.ts')>-1||l.indexOf('.m4s')>-1||l.indexOf('.aac')>-1)return;" +
+                "sent[u]=1;window.AboEzzatBridge.onVideoPlayingWithPoster(u,title,poster);}" +
+                "var vids=[].slice.call(document.querySelectorAll('video'));" +
+                "vids.sort(function(a,b){var as=(!a.paused&&!a.ended?100:0)+(a.readyState>=2?20:0)+(a.currentTime>0?10:0);" +
+                "var bs=(!b.paused&&!b.ended?100:0)+(b.readyState>=2?20:0)+(b.currentTime>0?10:0);return bs-as;});" +
+                "var active=vids.filter(function(v){return !v.paused&&!v.ended&&v.readyState>=2;});" +
+                "var chosen=active.length?active:vids.filter(function(v){return v.readyState>=2&&v.currentTime>0;}).slice(0,1);" +
+                "chosen.forEach(function(v){send(v.currentSrc||v.src,'video');" +
+                "var ss=v.querySelectorAll('source');for(var k=0;k<ss.length;k++)send(ss[k].src,'video');" +
+                "});" +
+                "var entries=performance.getEntriesByType('resource'),now=performance.now(),candidates=[];" +
+                "for(var i=0;i<entries.length;i++){var e=entries[i],u=e.name||'',l=u.toLowerCase();" +
+                "if(!u||u.indexOf('http')!==0)continue;" +
+                "var age=now-e.startTime;if(age>90000)continue;" +
+                "var media=(/\\.(m3u8|mpd|mp4|m4v|webm|flv)(?:[?#]|$)/i.test(l)||" +
+                "/(?:mime=video|contenttype=video|type=video|pull-|video\\/tos|tiktokcdn|fbcdn|videoplayback|manifest)/i.test(l));" +
+                "if(!media||/\\.(ts|m4s|aac|jpg|jpeg|png|webp|gif|js|css)(?:[?#]|$)/i.test(l))continue;" +
+                "var score=0;if(/\\.m3u8(?:[?#]|$)/i.test(l))score+=100;" +
+                "if(/\\.mpd(?:[?#]|$)/i.test(l))score+=90;if(/\\.mp4(?:[?#]|$)/i.test(l))score+=80;" +
+                "if(/mime=video|contenttype=video|type=video/i.test(l))score+=60;" +
+                "if(/pull-|video\\/tos|tiktokcdn|fbcdn|videoplayback/i.test(l))score+=30;" +
+                "if(e.initiatorType==='video'||e.initiatorType==='media')score+=20;" +
+                "candidates.push({u:u,s:score,t:e.startTime});}" +
+                "candidates.sort(function(a,b){return b.s-a.s||b.t-a.t;});" +
+                "for(var j=0;j<candidates.length&&j<25;j++)send(candidates[j].u,'resource');" +
+                // Restore the legacy TikTok LIVE resource sweep used by the manual
+                // capture button; some LIVE endpoints have no standard extension.
+                "var pageUrl=location.href.toLowerCase();" +
+                "if(pageUrl.indexOf('tiktok.com')!==-1&&pageUrl.indexOf('live')!==-1){" +
+                "for(var k=0;k<entries.length;k++){var liveUrl=entries[k].name||'',liveLower=liveUrl.toLowerCase();" +
+                "if(liveLower.indexOf('.m3u8')!==-1||liveLower.indexOf('pull-')!==-1||" +
+                "(liveLower.indexOf('live')!==-1&&(liveLower.indexOf('video')!==-1||liveLower.indexOf('stream')!==-1)))" +
+                "send(liveUrl,'tiktok-live');}}" +
+                "}catch(e){}})()";
+        current.evaluateJavascript(js, null);
     }
 
     private void showMediaListDialog() {
