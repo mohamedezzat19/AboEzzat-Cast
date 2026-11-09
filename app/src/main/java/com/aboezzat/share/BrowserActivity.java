@@ -130,6 +130,8 @@ public class BrowserActivity extends Activity {
     private String tvIp = "";
     private String lastDiscoveredPoster = "";
     private String lastDiscoveredTitle = "";
+    // Only capture resources after the user activates a visible video player.
+    private volatile String activePlaybackKey = "";
 
     private final List<String> adDomains = Arrays.asList(
             "doubleclick.net", "googleads", "pagead2", "adservice.google",
@@ -557,39 +559,26 @@ public class BrowserActivity extends Activity {
                     }
                 }
 
-                boolean isJunk = lowerUrl.contains(".ts") || lowerUrl.contains("seg-") ||
-                                 lowerUrl.contains(".js") || lowerUrl.contains(".css") ||
-                                 lowerUrl.contains("preview") || lowerUrl.contains("rsrc.php") ||
-                                 lowerUrl.contains("google_ads") || lowerUrl.contains("ad-interrupting");
-
-                if (!isJunk) {
-                    if (lowerUrl.contains(".mp4") || lowerUrl.contains(".flv") || 
-                        lowerUrl.contains("pull-") || lowerUrl.contains(".m3u8") || 
-                        lowerUrl.contains("mime=video") || lowerUrl.contains("mime=audio") || 
-                        lowerUrl.contains("fbcdn.net")) {
-                        
-                        String cleanMedia = reqUrl;
-                        if (cleanMedia.contains("&bytestart=")) {
-                            cleanMedia = cleanMedia.replaceAll("&bytestart=\\d+", "").replaceAll("&byteend=\\d+", "");
+                // Ignore every page/list/thumbnail request until a specific visible
+                // player has been activated by the user in the browser.
+                if (!activePlaybackKey.isEmpty()) {
+                    boolean isJunk = lowerUrl.matches(".*\\.(jpg|jpeg|png|webp|gif|bmp|svg|ts|m4s|js|css)(?:[?#].*)?$")
+                            || lowerUrl.contains("preview") || lowerUrl.contains("thumbnail")
+                            || lowerUrl.contains("google_ads") || lowerUrl.contains("ad-interrupting");
+                    if (!isJunk) {
+                        int type = classifyCapturedMedia(reqUrl);
+                        if (type != 0) {
+                            String cleanMedia = reqUrl.replaceAll("&bytestart=\\d+", "")
+                                    .replaceAll("&byteend=\\d+", "");
+                            String format = type == 2 ? "🎵 مسار صوت"
+                                    : lowerUrl.contains("pull-") ? "📡 بث تيك توك مباشر"
+                                    : lowerUrl.contains(".m3u8") ? "📡 بث مباشر - m3u8"
+                                    : lowerUrl.contains(".mpd") ? "🎬 فيديو DASH"
+                                    : "🎬 فيديو";
+                            String title = !lastDiscoveredTitle.isEmpty()
+                                    ? lastDiscoveredTitle : "فيديو قيد التشغيل";
+                            addCapturedMedia(cleanMedia, title, format, lastDiscoveredPoster, type);
                         }
-
-                        int type = classifyCapturedMedia(cleanMedia);
-                        if (type == 0) return super.shouldInterceptRequest(view, request);
-                        String format = type == 2 ? "🎵 مسار صوت مؤكد"
-                                : lowerUrl.contains("pull-") ? "📡 بث حي"
-                                : lowerUrl.contains(".m3u8") ? "📡 بث مباشر - m3u8"
-                                : lowerUrl.contains(".mpd") ? "🎬 فيديو DASH"
-                                : "🎬 مسار فيديو مؤكد";
-
-                        String cleanName = !lastDiscoveredTitle.isEmpty() ? lastDiscoveredTitle : "مقطع وسائط";
-                        try {
-                            String pageTitle = view.getTitle();
-                            if (pageTitle != null && !pageTitle.isEmpty() && !pageTitle.contains("http") && !pageTitle.contains("Instagram")) {
-                                cleanName = pageTitle;
-                            }
-                        } catch (Exception ignored) {}
-
-                        addCapturedMedia(cleanMedia, cleanName, format, lastDiscoveredPoster, type);
                     }
                 }
 
@@ -602,16 +591,8 @@ public class BrowserActivity extends Activity {
                 navigationStartedAt.put(view, System.currentTimeMillis());
                 if (getCurrentWebView() == view && loadedUrl != null
                         && loadedUrl.startsWith("http")) {
-                    synchronized (capturedList) {
-                        capturedList.clear();
-                    }
-                    lastDiscoveredPoster = "";
-                    lastDiscoveredTitle = "";
-                    runOnUiThread(() -> {
-                        btnCast.clearAnimation();
-                        btnCast.setText("📺 0");
-                        btnCast.setVisibility(View.GONE);
-                    });
+                    activePlaybackKey = "";
+                    clearCapturedMedia();
                 }
             }
 
@@ -756,119 +737,111 @@ public class BrowserActivity extends Activity {
     // TikTok LIVE only: wait for the user to start playback, then watch for the
     // actual live pull/HLS resource. Ordinary video sniffing remains untouched.
     private void injectTikTokLiveSniffer(WebView view) {
-        String js = "javascript:(function(){try{var u=location.href.toLowerCase();"
-                + "if(u.indexOf('tiktok.com')<0||u.indexOf('/live')<0)return;"
-                + "if(window.__aboTikTokLiveSniffer)return;window.__aboTikTokLiveSniffer=true;"
-                + "var sent={};function scan(){try{var vids=document.querySelectorAll('video');"
-                + "var playing=false;for(var i=0;i<vids.length;i++){var v=vids[i];"
-                + "if(!v.paused&&!v.ended&&v.readyState>=2)playing=true;"
-                + "if(v.currentSrc||v.src){var vu=(v.currentSrc||v.src);var vl=vu.toLowerCase();"
-                + "if(playing&&(vl.indexOf('pull-')>=0||vl.indexOf('.m3u8')>=0))send(vu);}}"
-                + "if(!playing)return;var es=performance.getEntriesByType('resource');"
-                + "for(var j=0;j<es.length;j++){var ru=es[j].name,rl=ru.toLowerCase();"
-                + "if(rl.indexOf('pull-')>=0||rl.indexOf('.m3u8')>=0)send(ru);"
-                + "}}catch(e){}}function send(url){if(!url||sent[url])return;sent[url]=1;"
-                + "window.AboEzzatBridge.onVideoPlayingWithPoster(url,document.title,'');}"
-                + "document.addEventListener('playing',scan,true);document.addEventListener('play',scan,true);"
-                + "setInterval(scan,1200); }catch(e){}})()";
-        view.evaluateJavascript(js, null);
+        // The shared active-player tracker below also handles TikTok LIVE URLs.
+        injectAdKiller(view);
     }
 
     private void injectAdKiller(WebView view) {
-        String adBlockAndSniffJs = "javascript:(function(){" +
-                "  try {" +
-                "    var style = document.getElementById('abo-ezzat-adblock');" +
-                "    if(!style){" +
-                "      style = document.createElement('style');" +
-                "      style.id = 'abo-ezzat-adblock';" +
-                "      style.innerHTML = '.ytp-ad-overlay-container, .ytp-ad-message-container, " +
-                "                         ytd-promoted-sparkles-web-renderer, ytd-banner-promo-renderer, " +
-                "                         ytd-ad-slot-renderer, .ad-container, .ad-div, ytd-in-feed-ad-layout-renderer, " +
-                "                         ytm-promoted-sparkles-web-renderer, .ytp-ad-action-interstitial, " +
-                "                         [id^=\"google_ads_\"], iframe[src*=\"doubleclick\"] { display: none !important; width:0px!important; height:0px!important; }';" +
-                "      document.head.appendChild(style);" +
-                "    }" +
-                "  } catch(e){}" +
-                "  if (!window.AboEzzatKillerLoop) {" +
-                "    window.AboEzzatKillerLoop = setInterval(function(){" +
-                "      try {" +
-                "        var skipBtn = document.querySelector('.ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-skip-ad-button, .videoAdUiSkipButton');" +
-                "        if (skipBtn) { skipBtn.click(); }" +
-                "        var adVideos = document.querySelectorAll('video');" +
-                "        for(var i=0; i<adVideos.length; i++){" +
-                "          var v = adVideos[i];" +
-                "          if (document.querySelector('.ad-interrupting, .ad-showing') || v.classList.contains('ad-interrupting')) {" +
-                "            v.muted = true;" +
-                "            if(!isNaN(v.duration) && v.duration > 0){ v.currentTime = v.duration + 1; }" +
-                "          }" +
-                "        }" +
-                "      } catch(e) {}" +
-                "    }, 200);" +
-                "  }" +
-                "  try{" +
-                "    var title = ''; var poster = '';" +
-                "    var metaTitle = document.querySelector('meta[property=\"og:title\"], meta[name=\"twitter:title\"]');" +
-                "    if(metaTitle && metaTitle.content){ title = metaTitle.content; }" +
-                "    var metaImg = document.querySelector('meta[property=\"og:image\"], meta[name=\"twitter:image\"]');" +
-                "    if(metaImg && metaImg.content){ poster = metaImg.content; }" +
-                "    window.AboEzzatBridge.onMetaFound(title, poster);" +
-                "  }catch(e){}" +
-                "  try{" +
-                "    var origPlay = HTMLMediaElement.prototype.play;" +
-                "    HTMLMediaElement.prototype.play = function(){" +
-                "      var src = this.currentSrc || this.src;" +
-                "      if(src && src.indexOf('http') === 0 && !this.classList.contains('ad-interrupting')){" +
-                "        window.AboEzzatBridge.onVideoPlayingWithPoster(src, '', '');" +
-                "      }" +
-                "      return origPlay.apply(this, arguments);" +
-                "    };" +
-                "  }catch(e){}" +
-                "})()";
-        view.evaluateJavascript(adBlockAndSniffJs, null);
+        String js = "javascript:(function(){try{" +
+                "if(window.__aboActiveCaptureInstalled)return;window.__aboActiveCaptureInstalled=true;" +
+                "var armed=false,activeKey='',lastScan=0;" +
+                "function titleFor(v){try{var a=v.closest('article');if(a){var t=(a.innerText||'').trim();if(t)return t.substring(0,90);}" +
+                "}catch(e){}return document.title||'فيديو';}" +
+                "function posterFor(v){return v.poster||'';}" +
+                "function area(v){try{var r=v.getBoundingClientRect();var w=Math.max(0,Math.min(innerWidth,r.right)-Math.max(0,r.left));" +
+                "var h=Math.max(0,Math.min(innerHeight,r.bottom)-Math.max(0,r.top));return w*h;}catch(e){return 0;}}" +
+                "function visible(v){return area(v)>Math.max(12000,(innerWidth*innerHeight)*0.025);}" +
+                "function bridgeStart(v,key){var t=titleFor(v),p=posterFor(v);" +
+                "if(key!==activeKey){activeKey=key;window.AboEzzatBridge.onActiveVideoChanged(key,t,p);}" +
+                "var src=v.currentSrc||v.src||'';if(/^https?:/i.test(src))window.AboEzzatBridge.onVideoPlayingWithPoster(src,t,p);" +
+                "}" +
+                "function scanResources(v){try{var entries=performance.getEntriesByType('resource'),now=performance.now();" +
+                "var bestVideo=null,bestAudio=null;" +
+                "for(var i=0;i<entries.length;i++){var e=entries[i],u=e.name||'',l=u.toLowerCase();if(!/^https?:/i.test(u))continue;" +
+                "if(now-e.startTime>25000)continue;" +
+                "if(/\\.(jpg|jpeg|png|webp|gif|bmp|svg|ts|m4s|js|css)(?:[?#]|$)/i.test(l))continue;" +
+                "var audio=/mime=audio|type=audio|contenttype=audio|dash_ln_heaac|\\.(aac|m4a|mp3|opus|ogg)(?:[?#]|$)/i.test(l);" +
+                "var video=/mime=video|type=video|contenttype=video|video\\/tos|pull-|videoplayback|\\.(mp4|m4v|m3u8|mpd|webm|flv|mov)(?:[?#]|$)/i.test(l);" +
+                "if(!audio&&!video)continue;" +
+                "var score=(e.initiatorType==='video'||e.initiatorType==='media'?40:0)+(now-e.startTime<8000?20:0)+" +
+                "(/\\.(m3u8|mpd)(?:[?#]|$)/i.test(l)?25:0)+(audio?10:0);" +
+                "var item={url:u,score:score,time:e.startTime};" +
+                "if(audio){if(!bestAudio||item.score>bestAudio.score||item.time>bestAudio.time)bestAudio=item;}" +
+                "else if(video){if(!bestVideo||item.score>bestVideo.score||item.time>bestVideo.time)bestVideo=item;}" +
+                "}" +
+                "if(bestVideo)window.AboEzzatBridge.onVideoPlayingWithPoster(bestVideo.url,titleFor(v),posterFor(v));" +
+                "if(bestAudio)window.AboEzzatBridge.onVideoPlayingWithPoster(bestAudio.url,titleFor(v),posterFor(v));" +
+                "}catch(e){}}" +
+                "function pick(){try{if(!armed)return;var vids=[].slice.call(document.querySelectorAll('video'));" +
+                "var active=vids.filter(function(v){return !v.paused&&!v.ended&&v.readyState>=2&&visible(v);});" +
+                "active.sort(function(a,b){return area(b)-area(a);});" +
+                "if(!active.length){if(activeKey){var old=activeKey;activeKey='';window.AboEzzatBridge.onActivePlaybackStopped(old);}return;}" +
+                "var v=active[0],idx=vids.indexOf(v),key=(v.currentSrc||v.src||'')+'|'+idx;" +
+                "if(!key||key==='|'+idx)return;bridgeStart(v,key);scanResources(v);" +
+                "}catch(e){}}" +
+                "function armFromTap(e){try{var v=e.target&&e.target.closest?e.target.closest('video'):null;" +
+                "if(!v){var vids=[].slice.call(document.querySelectorAll('video')).filter(visible);vids.sort(function(a,b){return area(b)-area(a);});v=vids[0];}" +
+                "if(v){armed=true;setTimeout(pick,80);setTimeout(pick,500);}}catch(e){}}" +
+                "document.addEventListener('click',armFromTap,true);document.addEventListener('touchend',armFromTap,true);" +
+                "document.addEventListener('playing',function(e){if(armed)setTimeout(pick,80);},true);" +
+                "document.addEventListener('pause',function(){setTimeout(pick,250);},true);" +
+                "window.addEventListener('scroll',function(){if(armed)setTimeout(pick,250);},true);" +
+                "setInterval(function(){if(armed)pick();},900);" +
+                "}catch(e){}})()";
+        view.evaluateJavascript(js, null);
     }
+
     private class JsBridge {
         @JavascriptInterface
         public void onMetaFound(String title, String posterUrl) {
             if (title != null && !title.isEmpty()) {
                 lastDiscoveredTitle = title.replace("Instagram: ", "").replace("on Instagram", "").trim();
             }
-            if (posterUrl != null && !posterUrl.isEmpty()) {
-                lastDiscoveredPoster = posterUrl;
-            }
-            for (CapturedMedia item : capturedList) {
-                if (item.posterBitmap == null && !lastDiscoveredPoster.isEmpty()) {
-                    item.posterUrl = lastDiscoveredPoster;
-                    loadThumbnailAsync(item);
+            if (posterUrl != null && !posterUrl.isEmpty()) lastDiscoveredPoster = posterUrl;
+        }
+
+        @JavascriptInterface
+        public void onActiveVideoChanged(String key, String title, String posterUrl) {
+            if (key == null || key.isEmpty()) return;
+            synchronized (BrowserActivity.this) {
+                if (!key.equals(activePlaybackKey)) {
+                    activePlaybackKey = key;
+                    clearCapturedMedia();
                 }
-                if (!lastDiscoveredTitle.isEmpty() && (item.title.equals("مقطع إنستجرام") || item.title.equals("مقطع وسائط"))) {
-                    item.title = lastDiscoveredTitle;
+                if (title != null && !title.trim().isEmpty()) lastDiscoveredTitle = title.trim();
+                if (posterUrl != null && !posterUrl.trim().isEmpty()) lastDiscoveredPoster = posterUrl;
+            }
+        }
+
+        @JavascriptInterface
+        public void onActivePlaybackStopped(String key) {
+            synchronized (BrowserActivity.this) {
+                if (key != null && key.equals(activePlaybackKey)) {
+                    activePlaybackKey = "";
+                    clearCapturedMedia();
                 }
             }
         }
 
         @JavascriptInterface
         public void onVideoPlayingWithPoster(String mediaUrl, String title, String posterUrl) {
-            if (mediaUrl != null && !mediaUrl.isEmpty() && mediaUrl.startsWith("http")) {
-                String cleanMedia = mediaUrl;
-                if (cleanMedia.contains("&bytestart=")) {
-                    cleanMedia = cleanMedia.replaceAll("&bytestart=\\d+", "").replaceAll("&byteend=\\d+", "");
-                }
+            if (activePlaybackKey.isEmpty() || mediaUrl == null || mediaUrl.isEmpty()
+                    || !mediaUrl.startsWith("http")) return;
+            String cleanMedia = mediaUrl.replaceAll("&bytestart=\\d+", "")
+                    .replaceAll("&byteend=\\d+", "");
+            int type = classifyCapturedMedia(cleanMedia);
+            if (type == 0) return;
 
-                int type = classifyCapturedMedia(cleanMedia);
-                // Never expose unknown resources, images, GIFs or segment files.
-                if (type == 0) return;
-
-                String lower = cleanMedia.toLowerCase();
-                String format = type == 2 ? "🎵 مسار صوت مؤكد"
-                        : lower.contains("pull-") ? "📡 بث تيك توك مباشر"
-                        : lower.contains(".m3u8") ? "📡 بث مباشر - m3u8"
-                        : lower.contains(".mpd") ? "🎬 فيديو DASH"
-                        : "🎬 مسار فيديو مؤكد";
-
-                String realTitle = !lastDiscoveredTitle.isEmpty() ? lastDiscoveredTitle : (!title.isEmpty() ? title : "مقطع فيديو");
-                String realPoster = !posterUrl.isEmpty() ? posterUrl : lastDiscoveredPoster;
-                addCapturedMedia(cleanMedia, realTitle, format, realPoster, type);
-            }
+            String lower = cleanMedia.toLowerCase();
+            String format = type == 2 ? "🎵 مسار صوت"
+                    : lower.contains("pull-") ? "📡 بث تيك توك مباشر"
+                    : lower.contains(".m3u8") ? "📡 بث مباشر - m3u8"
+                    : lower.contains(".mpd") ? "🎬 فيديو DASH"
+                    : "🎬 فيديو";
+            String realTitle = title != null && !title.trim().isEmpty()
+                    ? title.trim() : (!lastDiscoveredTitle.isEmpty() ? lastDiscoveredTitle : "فيديو قيد التشغيل");
+            String realPoster = posterUrl != null && !posterUrl.isEmpty() ? posterUrl : lastDiscoveredPoster;
+            addCapturedMedia(cleanMedia, realTitle, format, realPoster, type);
         }
 
         @JavascriptInterface
@@ -876,6 +849,21 @@ public class BrowserActivity extends Activity {
             saveCustomSite(name, siteUrl);
             runOnUiThread(() -> loadHomePage());
         }
+    }
+
+    private void clearCapturedMedia() {
+        synchronized (capturedList) {
+            capturedList.clear();
+        }
+        lastDiscoveredPoster = "";
+        lastDiscoveredTitle = "";
+        runOnUiThread(() -> {
+            if (btnCast != null) {
+                btnCast.clearAnimation();
+                btnCast.setText("📺 0");
+                btnCast.setVisibility(View.GONE);
+            }
+        });
     }
 
     private int classifyCapturedMedia(String mediaUrl) {
@@ -895,43 +883,41 @@ public class BrowserActivity extends Activity {
         boolean video = lower.matches(".*\\.(mp4|m4v|m3u8|mpd|webm|flv|mov)(?:[?#].*)?$")
                 || lower.contains("mime=video") || lower.contains("type=video")
                 || lower.contains("contenttype=video") || lower.contains("videoplayback")
-                || lower.contains("video/tos") || tiktokLiveStream;
+                || lower.contains("video/tos") || lower.contains("/video/tos/") || tiktokLiveStream;
         return video ? 1 : 0;
     }
 
     private synchronized void addCapturedMedia(String url, String title, String format, String posterUrl, int mediaType) {
-        if (mediaType != 1 && mediaType != 2) return;
-        for (CapturedMedia item : capturedList) {
-            if (item.url.equalsIgnoreCase(url)) {
-                if (item.posterUrl == null && posterUrl != null) {
-                    item.posterUrl = posterUrl;
-                    loadThumbnailAsync(item);
+        if ((mediaType != 1 && mediaType != 2) || activePlaybackKey.isEmpty()) return;
+        synchronized (capturedList) {
+            for (CapturedMedia item : capturedList) {
+                if (item.url.equalsIgnoreCase(url)) {
+                    if ((item.posterUrl == null || item.posterUrl.isEmpty()) && posterUrl != null && !posterUrl.isEmpty()) {
+                        item.posterUrl = posterUrl;
+                        loadThumbnailAsync(item);
+                    }
+                    return;
                 }
-                return;
+                // A single active player can contribute at most one video and
+                // one separate audio track. Never accumulate feed/list resources.
+                if (item.mediaType == mediaType) return;
             }
-        }
 
-        String cleanTitle = (title != null && !title.isEmpty()) ? title : "مقطع فيديو";
-        if (cleanTitle.length() > 50) {
-            cleanTitle = cleanTitle.substring(0, 50) + "...";
-        }
-        final CapturedMedia newMedia = new CapturedMedia(url, cleanTitle, format, posterUrl, mediaType);
-        capturedList.add(0, newMedia);
-
-        autoSelectTracks();
-
-        if (posterUrl != null && !posterUrl.isEmpty()) {
-            loadThumbnailAsync(newMedia);
+            String cleanTitle = (title != null && !title.trim().isEmpty()) ? title.trim() : "فيديو قيد التشغيل";
+            if (cleanTitle.length() > 70) cleanTitle = cleanTitle.substring(0, 70) + "...";
+            CapturedMedia newMedia = new CapturedMedia(url, cleanTitle, format, posterUrl, mediaType);
+            newMedia.isSelected = true;
+            capturedList.add(newMedia);
+            if (posterUrl != null && !posterUrl.isEmpty()) loadThumbnailAsync(newMedia);
         }
 
         runOnUiThread(() -> {
             btnCast.setVisibility(View.VISIBLE);
             btnCast.setText("📺 " + capturedList.size());
-
             Animation blink = new AlphaAnimation(0.3f, 1.0f);
             blink.setDuration(350);
             blink.setRepeatMode(Animation.REVERSE);
-            blink.setRepeatCount(4);
+            blink.setRepeatCount(2);
             btnCast.startAnimation(blink);
         });
     }
@@ -1130,70 +1116,27 @@ public class BrowserActivity extends Activity {
     private void triggerManualSniff() {
         final WebView current = getCurrentWebView();
         if (current == null) return;
+        Toast.makeText(this, "شغّل الفيديو واضغط عليه أولاً، ثم جرّب القنص", Toast.LENGTH_SHORT).show();
 
-        // A manual capture is a fresh selection: never mix results from the
-        // previously watched page/video with the one being inspected now.
-        synchronized (capturedList) {
-            capturedList.clear();
-        }
-        lastDiscoveredPoster = "";
-        lastDiscoveredTitle = "";
-        btnCast.clearAnimation();
-        btnCast.setText("📺 0");
-        btnCast.setVisibility(View.GONE);
-
-        Toast.makeText(this, "جاري قنص الفيديو الذي تشاهده...", Toast.LENGTH_SHORT).show();
-
-        String curUrl = current.getUrl();
-        if (curUrl != null && (curUrl.contains("watch") || curUrl.contains("youtu.be"))) {
-            addCapturedMedia(curUrl, current.getTitle() != null ? current.getTitle() : "فيديو يوتيوب", "🎬 فيديو مباشر", null, 1);
-            return;
-        }
-
-        // Manual capture only: preserve the existing direct-share flow and all
-        // existing WebView/network hooks. Inspect the active player first, then
-        // recent media resources loaded by this page.
         String js = "javascript:(function(){try{" +
-                "var title=document.title||'مقطع فيديو',poster='';" +
-                "var mt=document.querySelector('meta[property=\\\"og:title\\\"],meta[name=\\\"twitter:title\\\"]');" +
-                "if(mt&&mt.content)title=mt.content;" +
-                "var mi=document.querySelector('meta[property=\\\"og:image\\\"],meta[name=\\\"twitter:image\\\"]');" +
-                "if(mi&&mi.content)poster=mi.content;" +
-                "if(window.AboEzzatBridge)window.AboEzzatBridge.onMetaFound(title,poster);" +
-                "var sent={};function send(u,kind){if(!u||typeof u!=='string'||u.indexOf('http')!==0||sent[u])return;" +
-                "var l=u.toLowerCase();if(l.indexOf('.ts')>-1||l.indexOf('.m4s')>-1||l.indexOf('.aac')>-1)return;" +
-                "sent[u]=1;window.AboEzzatBridge.onVideoPlayingWithPoster(u,title,poster);}" +
                 "var vids=[].slice.call(document.querySelectorAll('video'));" +
-                "vids.sort(function(a,b){var as=(!a.paused&&!a.ended?100:0)+(a.readyState>=2?20:0)+(a.currentTime>0?10:0);" +
-                "var bs=(!b.paused&&!b.ended?100:0)+(b.readyState>=2?20:0)+(b.currentTime>0?10:0);return bs-as;});" +
-                "var active=vids.filter(function(v){return !v.paused&&!v.ended&&v.readyState>=2;});" +
-                "var chosen=active.length?active:vids.filter(function(v){return v.readyState>=2&&v.currentTime>0;}).slice(0,1);" +
-                "chosen.forEach(function(v){send(v.currentSrc||v.src,'video');" +
-                "var ss=v.querySelectorAll('source');for(var k=0;k<ss.length;k++)send(ss[k].src,'video');" +
-                "});" +
-                "var entries=performance.getEntriesByType('resource'),now=performance.now(),candidates=[];" +
-                "for(var i=0;i<entries.length;i++){var e=entries[i],u=e.name||'',l=u.toLowerCase();" +
-                "if(!u||u.indexOf('http')!==0)continue;" +
-                "var age=now-e.startTime;if(age>90000)continue;" +
-                "var media=(/\\.(m3u8|mpd|mp4|m4v|webm|flv)(?:[?#]|$)/i.test(l)||" +
-                "/(?:mime=video|contenttype=video|type=video|pull-|video\\/tos|tiktokcdn|fbcdn|videoplayback|manifest)/i.test(l));" +
-                "if(!media||/\\.(ts|m4s|aac|jpg|jpeg|png|webp|gif|js|css)(?:[?#]|$)/i.test(l))continue;" +
-                "var score=0;if(/\\.m3u8(?:[?#]|$)/i.test(l))score+=100;" +
-                "if(/\\.mpd(?:[?#]|$)/i.test(l))score+=90;if(/\\.mp4(?:[?#]|$)/i.test(l))score+=80;" +
-                "if(/mime=video|contenttype=video|type=video/i.test(l))score+=60;" +
-                "if(/pull-|video\\/tos|tiktokcdn|fbcdn|videoplayback/i.test(l))score+=30;" +
-                "if(e.initiatorType==='video'||e.initiatorType==='media')score+=20;" +
-                "candidates.push({u:u,s:score,t:e.startTime});}" +
-                "candidates.sort(function(a,b){return b.s-a.s||b.t-a.t;});" +
-                "for(var j=0;j<candidates.length&&j<25;j++)send(candidates[j].u,'resource');" +
-                // Restore the legacy TikTok LIVE resource sweep used by the manual
-                // capture button; some LIVE endpoints have no standard extension.
-                "var pageUrl=location.href.toLowerCase();" +
-                "if(pageUrl.indexOf('tiktok.com')!==-1&&pageUrl.indexOf('live')!==-1){" +
-                "for(var k=0;k<entries.length;k++){var liveUrl=entries[k].name||'',liveLower=liveUrl.toLowerCase();" +
-                "if(liveLower.indexOf('.m3u8')!==-1||liveLower.indexOf('pull-')!==-1||" +
-                "(liveLower.indexOf('live')!==-1&&(liveLower.indexOf('video')!==-1||liveLower.indexOf('stream')!==-1)))" +
-                "send(liveUrl,'tiktok-live');}}" +
+                "vids=vids.filter(function(v){var r=v.getBoundingClientRect();return !v.paused&&!v.ended&&v.readyState>=2&&" +
+                "r.width>0&&r.height>0&&r.bottom>0&&r.top<innerHeight;});" +
+                "vids.sort(function(a,b){var x=a.getBoundingClientRect(),y=b.getBoundingClientRect();return (y.width*y.height)-(x.width*x.height);});" +
+                "if(!vids.length){window.AboEzzatBridge.onActivePlaybackStopped('');return;}" +
+                "var v=vids[0],key=(v.currentSrc||v.src||'')+'|'+[].indexOf.call(document.querySelectorAll('video'),v);" +
+                "var t=(v.closest('article')&&(v.closest('article').innerText||'').trim())||document.title||'فيديو';" +
+                "window.AboEzzatBridge.onActiveVideoChanged(key,t.substring(0,90),v.poster||'');" +
+                "if(v.currentSrc||v.src)window.AboEzzatBridge.onVideoPlayingWithPoster(v.currentSrc||v.src,t,v.poster||'');" +
+                "var es=performance.getEntriesByType('resource'),now=performance.now(),bv=null,ba=null;" +
+                "for(var i=0;i<es.length;i++){var e=es[i],u=e.name||'',l=u.toLowerCase();if(!/^https?:/i.test(u)||now-e.startTime>25000)continue;" +
+                "if(/\\.(jpg|jpeg|png|webp|gif|ts|m4s|js|css)(?:[?#]|$)/i.test(l))continue;" +
+                "var a=/mime=audio|type=audio|contenttype=audio|dash_ln_heaac|\\.(aac|m4a|mp3|opus|ogg)(?:[?#]|$)/i.test(l);" +
+                "var z=/mime=video|type=video|contenttype=video|video\\/tos|pull-|videoplayback|\\.(mp4|m4v|m3u8|mpd|webm|flv|mov)(?:[?#]|$)/i.test(l);" +
+                "if(!a&&!z)continue;var q=(e.initiatorType==='video'||e.initiatorType==='media'?50:0)+(now-e.startTime<8000?20:0);" +
+                "if(a){if(!ba||q>ba.q)ba={u:u,q:q};}else if(z){if(!bv||q>bv.q)bv={u:u,q:q};}}" +
+                "if(bv)window.AboEzzatBridge.onVideoPlayingWithPoster(bv.u,t,v.poster||'');" +
+                "if(ba)window.AboEzzatBridge.onVideoPlayingWithPoster(ba.u,t,v.poster||'');" +
                 "}catch(e){}})()";
         current.evaluateJavascript(js, null);
     }
