@@ -866,10 +866,14 @@ public class BrowserActivity extends Activity {
                 || lower.matches(".*\\.(aac|m4a|mp3|opus|ogg)(?:[?#].*)?$");
         if (audio) return 2;
 
+        // TikTok LIVE pull URLs are not guaranteed to have a file extension
+        // or an explicit video MIME marker. Keep recognizing the stream endpoint.
+        boolean tiktokLiveStream = lower.contains("pull-")
+                || (lower.contains("live") && (lower.contains("video") || lower.contains("stream")));
         boolean video = lower.matches(".*\\.(mp4|m4v|m3u8|mpd|webm|flv|mov)(?:[?#].*)?$")
                 || lower.contains("mime=video") || lower.contains("type=video")
                 || lower.contains("contenttype=video") || lower.contains("videoplayback")
-                || lower.contains("video/tos") || lower.contains("pull-");
+                || lower.contains("video/tos") || tiktokLiveStream;
         return video ? 1 : 0;
     }
 
