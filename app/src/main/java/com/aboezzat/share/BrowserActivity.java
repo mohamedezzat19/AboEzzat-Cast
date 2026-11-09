@@ -1134,11 +1134,28 @@ public class BrowserActivity extends Activity {
                 "var vids=[].slice.call(document.querySelectorAll('video'));" +
                 "vids.sort(function(a,b){var as=(!a.paused&&!a.ended?100:0)+(a.readyState>=2?20:0)+(a.currentTime>0?10:0);" +
                 "var bs=(!b.paused&&!b.ended?100:0)+(b.readyState>=2?20:0)+(b.currentTime>0?10:0);return bs-as;});" +
-                "var active=vids.filter(function(v){return !v.paused&&!v.ended&&v.readyState>=2;});" +
-                "var chosen=active.length?active:vids.filter(function(v){return v.readyState>=2&&v.currentTime>0;}).slice(0,1);" +
+                "function visiblePlayer(v){var r=v.getBoundingClientRect(),st=getComputedStyle(v);" +
+                "var area=Math.max(0,r.width)*Math.max(0,r.height);" +
+                "var ad=v.closest('.ad-showing,.ad-interrupting,.ytp-ad-player,[data-ad-playing=\\\"true\\\"],[class*=\\\"ad-container\\\"]');" +
+                "return !ad&&st.display!=='none'&&st.visibility!=='hidden'&&area>16000?area:0;}" +
+                "var active=vids.filter(function(v){return !v.paused&&!v.ended&&v.readyState>=2&&visiblePlayer(v)>0;});" +
+                "var chosen=active.length?active:vids.filter(function(v){return v.readyState>=2&&v.currentTime>0&&visiblePlayer(v)>0;});" +
+                "chosen.sort(function(a,b){return visiblePlayer(b)-visiblePlayer(a);});chosen=chosen.slice(0,1);" +
                 "chosen.forEach(function(v){send(v.currentSrc||v.src,'video');" +
                 "var ss=v.querySelectorAll('source');for(var k=0;k<ss.length;k++)send(ss[k].src,'video');" +
                 "});" +
+                // Some sites expose a blob: URL on the active video while the actual
+                // HLS/DASH manifest is fetched as a media-initiated network resource.
+                // Consider only very recent media-initiated requests while one player is active.
+                "if(chosen.length){var now=performance.now(),resources=performance.getEntriesByType('resource'),related=[];" +
+                "for(var ri=0;ri<resources.length;ri++){var re=resources[ri],ru=re.name||'',rl=ru.toLowerCase();" +
+                "if(!ru||ru.indexOf('http')!==0||now-re.startTime>20000)continue;" +
+                "if(re.initiatorType!=='video'&&re.initiatorType!=='media')continue;" +
+                "if(/\\\\.(ts|m4s|aac|m4a|mp3|jpg|jpeg|png|webp|gif|js|css)(?:[?#]|$)/i.test(rl))continue;" +
+                "if(/doubleclick|googlesyndication|googleadservices|analytics|tracking|\\\\/ads\\\\//i.test(rl))continue;" +
+                "if(/\\\\.(m3u8|mpd|mp4|m4v|webm|flv)(?:[?#]|$)/i.test(rl)||/mime=video|contenttype=video|type=video|videoplayback|video\\\\/tos/i.test(rl))related.push({url:ru,time:re.startTime});}" +
+                "related.sort(function(a,b){return b.time-a.time;});for(var ri=0;ri<related.length&&ri<3;ri++)send(related[ri].url,'active-player-resource');}" +
+                "}" +
                 "var entries=performance.getEntriesByType('resource');" +
                 // Restore the legacy TikTok LIVE resource sweep used by the manual
                 // capture button; some LIVE endpoints have no standard extension.
