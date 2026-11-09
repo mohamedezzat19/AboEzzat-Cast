@@ -129,6 +129,7 @@ public class BrowserActivity extends Activity {
     private String tvIp = "";
     private String lastDiscoveredPoster = "";
     private String lastDiscoveredTitle = "";
+    private String lastActiveVideoUrl = "";
 
     private final List<String> adDomains = Arrays.asList(
             "doubleclick.net", "googleads", "pagead2", "adservice.google",
@@ -549,6 +550,7 @@ public class BrowserActivity extends Activity {
                     }
                     lastDiscoveredPoster = "";
                     lastDiscoveredTitle = "";
+                    lastActiveVideoUrl = "";
                     runOnUiThread(() -> {
                         btnCast.clearAnimation();
                         btnCast.setText("📺 0");
@@ -761,6 +763,7 @@ public class BrowserActivity extends Activity {
                 "      var src = this.currentSrc || this.src;" +
                 "      var adPlaying = document.querySelector('.ad-showing, .ad-interrupting, .ytp-ad-player, [data-ad-playing=\"true\"]');" +
                 "      if(src && src.indexOf('http') === 0 && !adPlaying && !this.classList.contains('ad-interrupting') && (!this.duration || this.duration > 3)){" +
+                "        if(window.__aboLastActiveVideoSrc !== src){window.__aboLastActiveVideoSrc=src;window.AboEzzatBridge.onActiveVideoChanged(src);}" +
                 "        window.AboEzzatBridge.onVideoPlayingWithPoster(src, '', '');" +
                 "      }" +
                 "      return origPlay.apply(this, arguments);" +
@@ -787,6 +790,23 @@ public class BrowserActivity extends Activity {
                     item.title = lastDiscoveredTitle;
                 }
             }
+        }
+
+        @JavascriptInterface
+        public void onActiveVideoChanged(String activeUrl) {
+            if (activeUrl == null || activeUrl.isEmpty()) return;
+            synchronized (BrowserActivity.this) {
+                if (activeUrl.equals(lastActiveVideoUrl)) return;
+                lastActiveVideoUrl = activeUrl;
+                synchronized (capturedList) {
+                    capturedList.clear();
+                }
+            }
+            runOnUiThread(() -> {
+                btnCast.clearAnimation();
+                btnCast.setText("📺 0");
+                btnCast.setVisibility(View.GONE);
+            });
         }
 
         @JavascriptInterface
@@ -823,7 +843,7 @@ public class BrowserActivity extends Activity {
 
     private int classifyCapturedMedia(String mediaUrl) {
         if (mediaUrl == null || mediaUrl.trim().isEmpty()) return 0;
-        String lower = mediaUrl.toLowerCase(Locale.US);
+        String lower = mediaUrl.toLowerCase();
 
         // Reject non-playable page assets, images, GIFs, thumbnails and HLS/DASH segments.
         if (lower.matches(".*\\.(jpg|jpeg|png|webp|gif|bmp|svg|ico|ts|m4s|m4a|aac|mp3|opus|ogg|js|css|vtt|srt)(?:[?#].*)?$")) return 0;
@@ -946,6 +966,7 @@ public class BrowserActivity extends Activity {
         capturedList.clear();
         lastDiscoveredPoster = "";
         lastDiscoveredTitle = "";
+        lastActiveVideoUrl = "";
         btnCast.setText("📺 0");
         btnCast.setVisibility(View.GONE);
 
