@@ -576,6 +576,24 @@ public class BrowserActivity extends Activity {
             }
 
             @Override
+            public void onPageStarted(WebView view, String loadedUrl, android.graphics.Bitmap favicon) {
+                super.onPageStarted(view, loadedUrl, favicon);
+                if (getCurrentWebView() == view && loadedUrl != null
+                        && loadedUrl.startsWith("http")) {
+                    synchronized (capturedList) {
+                        capturedList.clear();
+                    }
+                    lastDiscoveredPoster = "";
+                    lastDiscoveredTitle = "";
+                    runOnUiThread(() -> {
+                        btnCast.clearAnimation();
+                        btnCast.setText("📺 0");
+                        btnCast.setVisibility(View.GONE);
+                    });
+                }
+            }
+
+            @Override
             public void onPageFinished(final WebView view, String loadedUrl) {
                 super.onPageFinished(view, loadedUrl);
                 if (getCurrentWebView() == view) {
@@ -841,14 +859,14 @@ public class BrowserActivity extends Activity {
     private int classifyCapturedMedia(String mediaUrl) {
         if (mediaUrl == null) return 0;
         String lower = mediaUrl.toLowerCase();
-        if (lower.matches(".*\\\\.(jpg|jpeg|png|webp|gif|bmp|svg|ts|m4s|m4a|aac|mp3|js|css)(?:[?#].*)?$")) return 0;
+        if (lower.matches(".*\\.(jpg|jpeg|png|webp|gif|bmp|svg|ts|m4s|m4a|aac|mp3|js|css)(?:[?#].*)?$")) return 0;
 
         boolean audio = lower.contains("mime=audio") || lower.contains("type=audio")
                 || lower.contains("contenttype=audio") || lower.contains("dash_ln_heaac")
-                || lower.matches(".*\\\\.(aac|m4a|mp3|opus|ogg)(?:[?#].*)?$");
+                || lower.matches(".*\\.(aac|m4a|mp3|opus|ogg)(?:[?#].*)?$");
         if (audio) return 2;
 
-        boolean video = lower.matches(".*\\\\.(mp4|m4v|m3u8|mpd|webm|flv|mov)(?:[?#].*)?$")
+        boolean video = lower.matches(".*\\.(mp4|m4v|m3u8|mpd|webm|flv|mov)(?:[?#].*)?$")
                 || lower.contains("mime=video") || lower.contains("type=video")
                 || lower.contains("contenttype=video") || lower.contains("videoplayback")
                 || lower.contains("video/tos") || lower.contains("pull-");
