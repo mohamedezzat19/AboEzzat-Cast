@@ -1462,38 +1462,16 @@ public class BrowserActivity extends Activity {
         }
 
         if (audioTrack.isEmpty()) {
+            synchronized (capturedAudioTracks) {
+                if (!capturedAudioTracks.isEmpty()) audioTrack = capturedAudioTracks.get(0).url;
+            }
+        }
+
+        if (audioTrack.isEmpty()) {
             castToTv(videoTrack);
-            return;
+        } else {
+            castVideoAndAudioToTv(videoTrack, audioTrack);
         }
-
-        if (tvIp.isEmpty()) {
-            Toast.makeText(this, "يرجى تعيين IP الشاشة أولاً", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        Toast.makeText(this, "جاري إرسال البث المدمج للشاشة...", Toast.LENGTH_SHORT).show();
-
-        try {
-            String endpoint = tvIp;
-            if (!endpoint.startsWith("http://") && !endpoint.startsWith("https://")) endpoint = "http://" + endpoint;
-            if (!endpoint.contains(":8081")) endpoint += ":8081";
-
-            String fullUrl = endpoint + "/?video=" + URLEncoder.encode(videoTrack, "UTF-8") 
-                                      + "&audio=" + URLEncoder.encode(audioTrack, "UTF-8");
-
-            Request req = new Request.Builder().url(fullUrl).build();
-            client.newCall(req).enqueue(new Callback() {
-                @Override
-                public void onFailure(Call call, IOException e) {
-                    runOnUiThread(() -> Toast.makeText(BrowserActivity.this, "تعذر الإرسال للشاشة", Toast.LENGTH_SHORT).show());
-                }
-
-                @Override
-                public void onResponse(Call call, Response response) {
-                    runOnUiThread(() -> Toast.makeText(BrowserActivity.this, "تم بدء البث المدمج في الشاشة بنجاح ✓", Toast.LENGTH_SHORT).show());
-                }
-            });
-        } catch (Exception ignored) {}
     }
 
     private void showMediaOptionsDialog(final CapturedMedia media) {
