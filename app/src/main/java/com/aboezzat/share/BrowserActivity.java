@@ -746,7 +746,7 @@ public class BrowserActivity extends Activity {
                 "if(window.__aboActiveCaptureInstalled)return;window.__aboActiveCaptureInstalled=true;" +
                 "var armed=false,activeKey='';" +
                 "var style=document.getElementById('abo-ezzat-adblock');if(!style){style=document.createElement('style');style.id='abo-ezzat-adblock';" +
-                "style.innerHTML='.ytp-ad-overlay-container,.ytp-ad-message-container,ytd-promoted-sparkles-web-renderer,ytd-banner-promo-renderer,ytd-ad-slot-renderer,.ad-container,.ad-div,ytd-in-feed-ad-layout-renderer,ytm-promoted-sparkles-web-renderer,.ytp-ad-action-interstitial,[id^=\\\"google_ads_\\\"],iframe[src*=\\\"doubleclick\\\"]{display:none!important;width:0!important;height:0!important}';document.head.appendChild(style);}" +
+                "style.innerHTML='.ytp-ad-overlay-container,.ytp-ad-message-container,ytd-promoted-sparkles-web-renderer,ytd-banner-promo-renderer,ytd-ad-slot-renderer,.ad-container,.ad-div,ytd-in-feed-ad-layout-renderer,ytm-promoted-sparkles-web-renderer,.ytp-ad-action-interstitial,[id^=\\\"google_ads_\\\"],iframe[src*=\\\"doubleclick\\\"]{display:none!important;width:0!important;height:0!important}';if(document.head)document.head.appendChild(style);}" +
                 "if(!window.AboEzzatKillerLoop){window.AboEzzatKillerLoop=setInterval(function(){try{var b=document.querySelector('.ytp-ad-skip-button,.ytp-ad-skip-button-modern,.ytp-skip-ad-button,.videoAdUiSkipButton');if(b)b.click();}catch(e){}},300);}" +
                 "function titleFor(v){try{var a=v.closest('article');if(a){var t=(a.innerText||'').trim();if(t)return t.substring(0,90);}" +
                 "}catch(e){}return document.title||'فيديو';}" +
