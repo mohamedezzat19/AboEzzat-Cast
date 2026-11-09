@@ -536,42 +536,6 @@ public class BrowserActivity extends Activity {
                     }
                 }
 
-                boolean isJunk = lowerUrl.contains(".ts") || lowerUrl.contains("seg-") ||
-                                 lowerUrl.contains(".js") || lowerUrl.contains(".css") ||
-                                 lowerUrl.contains("preview") || lowerUrl.contains("rsrc.php") ||
-                                 lowerUrl.contains("google_ads") || lowerUrl.contains("ad-interrupting");
-
-                if (!isJunk) {
-                    if (lowerUrl.contains(".mp4") || lowerUrl.contains(".flv") || 
-                        lowerUrl.contains("pull-") || lowerUrl.contains(".m3u8") || 
-                        lowerUrl.contains("mime=video") || lowerUrl.contains("mime=audio") || 
-                        lowerUrl.contains("fbcdn.net")) {
-                        
-                        String cleanMedia = reqUrl;
-                        if (cleanMedia.contains("&bytestart=")) {
-                            cleanMedia = cleanMedia.replaceAll("&bytestart=\\d+", "").replaceAll("&byteend=\\d+", "");
-                        }
-
-                        int type = classifyCapturedMedia(cleanMedia);
-                        if (type == 0) return super.shouldInterceptRequest(view, request);
-                        String format = type == 2 ? "🎵 مسار صوت مؤكد"
-                                : lowerUrl.contains("pull-") ? "📡 بث حي"
-                                : lowerUrl.contains(".m3u8") ? "📡 بث مباشر - m3u8"
-                                : lowerUrl.contains(".mpd") ? "🎬 فيديو DASH"
-                                : "🎬 مسار فيديو مؤكد";
-
-                        String cleanName = !lastDiscoveredTitle.isEmpty() ? lastDiscoveredTitle : "مقطع وسائط";
-                        try {
-                            String pageTitle = view.getTitle();
-                            if (pageTitle != null && !pageTitle.isEmpty() && !pageTitle.contains("http") && !pageTitle.contains("Instagram")) {
-                                cleanName = pageTitle;
-                            }
-                        } catch (Exception ignored) {}
-
-                        addCapturedMedia(cleanMedia, cleanName, format, lastDiscoveredPoster, type);
-                    }
-                }
-
                 return super.shouldInterceptRequest(view, request);
             }
 
@@ -795,7 +759,8 @@ public class BrowserActivity extends Activity {
                 "    var origPlay = HTMLMediaElement.prototype.play;" +
                 "    HTMLMediaElement.prototype.play = function(){" +
                 "      var src = this.currentSrc || this.src;" +
-                "      if(src && src.indexOf('http') === 0 && !this.classList.contains('ad-interrupting')){" +
+                "      var adPlaying = document.querySelector('.ad-showing, .ad-interrupting, .ytp-ad-player, [data-ad-playing=\"true\"]');" +
+                "      if(src && src.indexOf('http') === 0 && !adPlaying && !this.classList.contains('ad-interrupting') && (!this.duration || this.duration > 3)){" +
                 "        window.AboEzzatBridge.onVideoPlayingWithPoster(src, '', '');" +
                 "      }" +
                 "      return origPlay.apply(this, arguments);" +
@@ -834,7 +799,7 @@ public class BrowserActivity extends Activity {
 
                 int type = classifyCapturedMedia(cleanMedia);
                 // Never expose unknown resources, images, GIFs or segment files.
-                if (type == 0) return;
+                if (type != 1) return;
 
                 String lower = cleanMedia.toLowerCase();
                 String format = type == 2 ? "🎵 مسار صوت مؤكد"
@@ -857,17 +822,21 @@ public class BrowserActivity extends Activity {
     }
 
     private int classifyCapturedMedia(String mediaUrl) {
-        if (mediaUrl == null) return 0;
-        String lower = mediaUrl.toLowerCase();
-        if (lower.matches(".*\\.(jpg|jpeg|png|webp|gif|bmp|svg|ts|m4s|js|css)(?:[?#].*)?$")) return 0;
+        if (mediaUrl == null || mediaUrl.trim().isEmpty()) return 0;
+        String lower = mediaUrl.toLowerCase(Locale.US);
 
-        boolean audio = lower.contains("mime=audio") || lower.contains("type=audio")
-                || lower.contains("contenttype=audio") || lower.contains("dash_ln_heaac")
-                || lower.matches(".*\\.(aac|m4a|mp3|opus|ogg)(?:[?#].*)?$");
-        if (audio) return 2;
+        // Reject non-playable page assets, images, GIFs, thumbnails and HLS/DASH segments.
+        if (lower.matches(".*\\.(jpg|jpeg|png|webp|gif|bmp|svg|ico|ts|m4s|m4a|aac|mp3|opus|ogg|js|css|vtt|srt)(?:[?#].*)?$")) return 0;
+        if (lower.contains("doubleclick") || lower.contains("googlesyndication")
+                || lower.contains("googleadservices") || lower.contains("adservice")
+                || lower.contains("analytics") || lower.contains("tracking")
+                || lower.contains("/ads/") || lower.contains("ad_video")) return 0;
 
-        // TikTok LIVE pull URLs are not guaranteed to have a file extension
-        // or an explicit video MIME marker. Keep recognizing the stream endpoint.
+        // Audio-only tracks are deliberately hidden from the capture list.
+        if (lower.contains("mime=audio") || lower.contains("type=audio")
+                || lower.contains("contenttype=audio") || lower.contains("dash_ln_heaac")) return 0;
+
+        // TikTok LIVE endpoints can be extension-less; retain the known pull-* pattern.
         boolean tiktokLiveStream = lower.contains("pull-")
                 || (lower.contains("live") && (lower.contains("video") || lower.contains("stream")));
         boolean video = lower.matches(".*\\.(mp4|m4v|m3u8|mpd|webm|flv|mov)(?:[?#].*)?$")
@@ -1149,21 +1118,7 @@ public class BrowserActivity extends Activity {
                 "chosen.forEach(function(v){send(v.currentSrc||v.src,'video');" +
                 "var ss=v.querySelectorAll('source');for(var k=0;k<ss.length;k++)send(ss[k].src,'video');" +
                 "});" +
-                "var entries=performance.getEntriesByType('resource'),now=performance.now(),candidates=[];" +
-                "for(var i=0;i<entries.length;i++){var e=entries[i],u=e.name||'',l=u.toLowerCase();" +
-                "if(!u||u.indexOf('http')!==0)continue;" +
-                "var age=now-e.startTime;if(age>90000)continue;" +
-                "var media=(/\\.(m3u8|mpd|mp4|m4v|webm|flv)(?:[?#]|$)/i.test(l)||" +
-                "/(?:mime=video|contenttype=video|type=video|pull-|video\\/tos|tiktokcdn|fbcdn|videoplayback|manifest)/i.test(l));" +
-                "if(!media||/\\.(ts|m4s|aac|jpg|jpeg|png|webp|gif|js|css)(?:[?#]|$)/i.test(l))continue;" +
-                "var score=0;if(/\\.m3u8(?:[?#]|$)/i.test(l))score+=100;" +
-                "if(/\\.mpd(?:[?#]|$)/i.test(l))score+=90;if(/\\.mp4(?:[?#]|$)/i.test(l))score+=80;" +
-                "if(/mime=video|contenttype=video|type=video/i.test(l))score+=60;" +
-                "if(/pull-|video\\/tos|tiktokcdn|fbcdn|videoplayback/i.test(l))score+=30;" +
-                "if(e.initiatorType==='video'||e.initiatorType==='media')score+=20;" +
-                "candidates.push({u:u,s:score,t:e.startTime});}" +
-                "candidates.sort(function(a,b){return b.s-a.s||b.t-a.t;});" +
-                "for(var j=0;j<candidates.length&&j<25;j++)send(candidates[j].u,'resource');" +
+                "var entries=performance.getEntriesByType('resource');" +
                 // Restore the legacy TikTok LIVE resource sweep used by the manual
                 // capture button; some LIVE endpoints have no standard extension.
                 "var pageUrl=location.href.toLowerCase();" +
@@ -1275,7 +1230,7 @@ public class BrowserActivity extends Activity {
 
                 row.setOnClickListener(v -> {
                     dialog.dismiss();
-                    showMediaOptionsDialog(item);
+                    castToTv(item.url);
                 });
 
                 return row;
