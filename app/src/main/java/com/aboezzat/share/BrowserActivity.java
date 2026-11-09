@@ -1164,6 +1164,14 @@ public class BrowserActivity extends Activity {
                 "candidates.push({u:u,s:score,t:e.startTime});}" +
                 "candidates.sort(function(a,b){return b.s-a.s||b.t-a.t;});" +
                 "for(var j=0;j<candidates.length&&j<25;j++)send(candidates[j].u,'resource');" +
+                // Restore the legacy TikTok LIVE resource sweep used by the manual
+                // capture button; some LIVE endpoints have no standard extension.
+                "var pageUrl=location.href.toLowerCase();" +
+                "if(pageUrl.indexOf('tiktok.com')!==-1&&pageUrl.indexOf('live')!==-1){" +
+                "for(var k=0;k<entries.length;k++){var liveUrl=entries[k].name||'',liveLower=liveUrl.toLowerCase();" +
+                "if(liveLower.indexOf('.m3u8')!==-1||liveLower.indexOf('pull-')!==-1||" +
+                "(liveLower.indexOf('live')!==-1&&(liveLower.indexOf('video')!==-1||liveLower.indexOf('stream')!==-1)))" +
+                "send(liveUrl,'tiktok-live');}}" +
                 "}catch(e){}})()";
         current.evaluateJavascript(js, null);
     }
