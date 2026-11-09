@@ -332,9 +332,8 @@ public class MainActivity extends Activity {
                     .setItems(new String[]{"التحقق من التحديثات", "إعداد عنوان IP الشاشة"}, (dialog, which) -> {
                         if (which == 0) {
                             new AppUpdater(MainActivity.this).checkForUpdate(true);
-                        } else if (etTvIp != null) {
-                            etTvIp.requestFocus();
-                            Toast.makeText(this, "عدل عنوان IP الشاشة واضغط حفظ", Toast.LENGTH_SHORT).show();
+                        } else {
+                            showManualIpDialog();
                         }
                     })
                     .setNegativeButton("إغلاق", null)
