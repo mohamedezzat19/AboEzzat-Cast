@@ -550,6 +550,7 @@ public class BrowserActivity extends Activity {
                     synchronized (capturedList) {
                         capturedList.clear();
                     }
+                    synchronized (capturedAudioTracks) { capturedAudioTracks.clear(); }
                     lastDiscoveredPoster = "";
                     lastDiscoveredTitle = "";
                     lastActiveVideoUrl = "";
@@ -1375,6 +1376,7 @@ public class BrowserActivity extends Activity {
         btnClear.setBackgroundColor(Color.parseColor("#2A2A2A"));
         btnClear.setOnClickListener(v -> {
             capturedList.clear();
+            capturedAudioTracks.clear();
             btnCast.setText("📺 0");
             btnCast.setVisibility(View.GONE);
             dialog.dismiss();
