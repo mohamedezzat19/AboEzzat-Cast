@@ -859,10 +859,19 @@ public class BrowserActivity extends Activity {
         // TikTok LIVE endpoints can be extension-less; retain the known pull-* pattern.
         boolean tiktokLiveStream = lower.contains("pull-")
                 || (lower.contains("live") && (lower.contains("video") || lower.contains("stream")));
+        // Known social CDNs often serve signed, extension-less video URLs.
+        boolean knownSocialVideo = lower.contains("video.twimg.com")
+                || ((lower.contains("fbcdn.net") || lower.contains("fbsbx.com"))
+                    && (lower.contains("/v/t") || lower.contains("/o1/v/t") || lower.contains("/video/")))
+                || (lower.contains("cdninstagram.com")
+                    && (lower.contains("/v/t") || lower.contains("/video/")))
+                || ((lower.contains("tiktokcdn") || lower.contains("tiktokv")
+                    || lower.contains("byteoversea") || lower.contains("ibytedtos"))
+                    && (lower.contains("/video/") || lower.contains("/obj/") || lower.contains("/tos/")));
         boolean video = lower.matches(".*\\.(mp4|m4v|m3u8|mpd|webm|flv|mov)(?:[?#].*)?$")
                 || lower.contains("mime=video") || lower.contains("type=video")
                 || lower.contains("contenttype=video") || lower.contains("videoplayback")
-                || lower.contains("video/tos") || tiktokLiveStream;
+                || lower.contains("video/tos") || tiktokLiveStream || knownSocialVideo;
         return video ? 1 : 0;
     }
 
