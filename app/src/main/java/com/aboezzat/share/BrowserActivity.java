@@ -313,6 +313,26 @@ public class BrowserActivity extends Activity {
         addNewTab(startUrl);
     }
 
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+
+        if (intent == null) return;
+        String targetUrl = intent.getStringExtra("url");
+        if ((targetUrl == null || targetUrl.trim().isEmpty()) && intent.getData() != null) {
+            targetUrl = intent.getData().toString();
+        }
+
+        // Reuse the current browser session/tab when a saved Library item is opened.
+        // FLAG_ACTIVITY_REORDER_TO_FRONT brings this activity forward, so onCreate()
+        // will not run again; handle the incoming URL here instead.
+        if (targetUrl != null && !targetUrl.trim().isEmpty()) {
+            final String urlToOpen = targetUrl.trim();
+            loadTargetUrl(urlToOpen);
+        }
+    }
+
     private void showBrowserMoreMenu() {
         TextView anchor = btnTabs;
         if (anchor == null) {
