@@ -526,7 +526,6 @@ public class BrowserActivity extends Activity {
             public void doUpdateVisitedHistory(WebView view, String loadedUrl, boolean isReload) {
                 super.doUpdateVisitedHistory(view, loadedUrl, isReload);
                 injectAdKiller(view);
-                navigationStartedAt.put(view, System.currentTimeMillis());
                 recordVisitedUrl(view, loadedUrl);
             }
 
