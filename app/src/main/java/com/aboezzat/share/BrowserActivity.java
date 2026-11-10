@@ -792,7 +792,7 @@ public class BrowserActivity extends Activity {
     private void injectAdKiller(WebView view) {
         String js = "javascript:(function(){try{" +
                 "if(window.__aboActiveCaptureInstalled)return;window.__aboActiveCaptureInstalled=true;" +
-                "var armed=false,activeKey='';" +
+                "var armed=false,activeKey='',activeSince=0,seenResources={};" +
                 // Keep extended preload history only for Threads; preserve Instagram behavior.
                 "var isThreadsHost=/(?:threads\\.net|threads\\.com)$/i.test(location.hostname||'');" +
                 "var isTikTokLivePage=/tiktok\\.com$/i.test(location.hostname||'')&&/\\/live(?:[/?#]|$)/i.test(location.pathname||'');" +
@@ -818,12 +818,15 @@ public class BrowserActivity extends Activity {
                 "var h=Math.max(0,Math.min(innerHeight,r.bottom)-Math.max(0,r.top));return w*h;}catch(e){return 0;}}" +
                 "function visible(v){return area(v)>Math.max(12000,(innerWidth*innerHeight)*0.025);}" +
                 "function bridgeStart(v,key){var t=titleFor(v),p=posterFor(v);" +
-                "if(key!==activeKey){activeKey=key;window.AboEzzatBridge.onActiveVideoChanged(key,t,p);}" +
+                "if(key!==activeKey){activeKey=key;activeSince=performance.now()-4000;seenResources={};window.AboEzzatBridge.onActiveVideoChanged(key,t,p);}" +
                 "var src=v.currentSrc||v.src||'';if(/^https?:/i.test(src))window.AboEzzatBridge.onActiveVideoTrack(src,t,p);" +
                 "}" +
                 "function scanResources(v){try{var entries=performance.getEntriesByType('resource'),now=performance.now();" +
                 "var videoTracks=[],bestAudio=null;" +
                 "for(var i=0;i<entries.length;i++){var e=entries[i],u=e.name||'',l=u.toLowerCase();if(!/^https?:/i.test(u))continue;" +
+                // For Threads, only consider resources requested during the currently playing visible post.
+                "if(isThreadsHost&&(e.startTime<activeSince||e.startTime>performance.now()+100))continue;" +
+                "if(isThreadsHost&&seenResources[u])continue;" +
                 // Threads may preload DASH audio early; Instagram and other sites keep the original 10s window.
                 "if(!(isThreadsHost||isTikTokLivePage)&&now-e.startTime>10000)continue;" +
                 "if(/\\.(jpg|jpeg|png|webp|gif|bmp|svg|ts|m4s|js|css)(?:[?#]|$)/i.test(l))continue;" +
@@ -833,7 +836,7 @@ public class BrowserActivity extends Activity {
                 "if(!audio&&!video&&!mp4Candidate)continue;" +
                 "var score=(e.initiatorType==='video'||e.initiatorType==='media'?40:0)+(now-e.startTime<8000?20:0)+" +
                 "(/\\.(m3u8|mpd)(?:[?#]|$)/i.test(l)?25:0);" +
-                "var item={url:u,score:score,time:e.startTime};" +
+                "var item={url:u,score:score,time:e.startTime};if(isThreadsHost)seenResources[u]=true;" +
                 "if(audio){if(!bestAudio||item.score>bestAudio.score||(item.score===bestAudio.score&&item.time>bestAudio.time))bestAudio=item;}" +
                 "else if(video&&!videoTracks.some(function(x){return x.url===u;})){videoTracks.push(item);}" +
                 "else if(mp4Candidate)window.AboEzzatBridge.onCapturedCandidateTrack(u,titleFor(v),posterFor(v));" +
@@ -842,7 +845,10 @@ public class BrowserActivity extends Activity {
                 "for(var j=0;j<Math.min(videoTracks.length,2);j++)window.AboEzzatBridge.onCapturedVideoTrack(videoTracks[j].url,titleFor(v),posterFor(v));" +
                 "if(bestAudio)window.AboEzzatBridge.onCapturedAudioTrack(bestAudio.url,titleFor(v),posterFor(v));" +
                 "}catch(e){}}" +
-                "function pick(){try{if(!armed)return;var vids=[].slice.call(document.querySelectorAll('video'));" +
+                "function pick(){try{var vids=[].slice.call(document.querySelectorAll('video'));" +
+                "if(isThreadsHost&&!armed){var candidates=vids.filter(function(v){return !v.paused&&!v.ended&&v.readyState>=2&&visible(v);});" +
+                "if(candidates.length){armed=true;activeSince=performance.now()-4000;seenResources={};}}" +
+                "if(!armed)return;" +
                 "var active=vids.filter(function(v){return !v.paused&&!v.ended&&v.readyState>=2&&visible(v);});" +
                 "active.sort(function(a,b){return area(b)-area(a);});" +
                 "if(!active.length){if(activeKey){var old=activeKey;activeKey='';window.AboEzzatBridge.onActivePlaybackStopped(old);}return;}" +
@@ -855,9 +861,10 @@ public class BrowserActivity extends Activity {
                 "if(v){armed=true;setTimeout(pick,80);setTimeout(pick,500);}}catch(e){}}" +
                 "window.__aboArmActiveCapture=function(){armed=true;pick();};" +
                 "document.addEventListener('click',armFromTap,true);document.addEventListener('touchend',armFromTap,true);" +
-                "document.addEventListener('playing',function(e){if(armed)setTimeout(pick,80);},true);" +
+                "document.addEventListener('playing',function(e){if(isThreadsHost&&e.target&&e.target.tagName==='VIDEO'&&visible(e.target)){armed=true;activeSince=performance.now()-4000;seenResources={};}" +
+                "if(armed)setTimeout(pick,80);},true);" +
                 "document.addEventListener('pause',function(){setTimeout(pick,250);},true);" +
-                "window.addEventListener('scroll',function(){if(armed)setTimeout(pick,250);},true);" +
+                "window.addEventListener('scroll',function(){if(isThreadsHost||armed)setTimeout(pick,250);},true);" +
                 "setInterval(function(){if(armed)pick();},900);" +
                 "}catch(e){}})()";
         view.evaluateJavascript(js, null);
