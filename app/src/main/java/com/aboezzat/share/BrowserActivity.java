@@ -940,8 +940,13 @@ public class BrowserActivity extends Activity {
         if (m.find()) try { height = Integer.parseInt(m.group(1)); } catch (Exception ignored) {}
         m = java.util.regex.Pattern.compile("(?:bitrate|bit_rate|br)[=_-](\\d{4,8})").matcher(lower);
         if (m.find()) try { bitrate = Integer.parseInt(m.group(1)); } catch (Exception ignored) {}
+        m = java.util.regex.Pattern.compile("(\\d{3,4})x(\\d{3,4})").matcher(lower);
+        if (m.find()) try {
+            width = Math.max(width, Integer.parseInt(m.group(1)));
+            height = Math.max(height, Integer.parseInt(m.group(2)));
+        } catch (Exception ignored) {}
         int score = width * height + Math.min(bitrate, 20000000) / 10;
-        if (lower.matches(".*(1080p|2160p|uhd|high[_-]?quality).*")) score += 3000000;
+        if (lower.matches(".*(1080p|2160p|uhd|high[_-]?quality|p1080x1080|p1440x1440).*")) score += 3000000;
         if (lower.matches(".*(720p|hd).*")) score += 1200000;
         if (lower.matches(".*(480p|sd).*")) score += 400000;
         return score;
