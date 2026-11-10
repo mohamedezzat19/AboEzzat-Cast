@@ -142,7 +142,7 @@ public class ShareActivity extends Activity {
             return;
         }
 
-        if (lowerUrl.contains("threads.net")) {
+        if (lowerUrl.contains("threads.net") || lowerUrl.contains("threads.com")) {
             Toast.makeText(this, "جاري قنص ثريد للشاشة مباشرة...", Toast.LENGTH_SHORT).show();
             startPlatformSniffer(url, "threads");
             return;
