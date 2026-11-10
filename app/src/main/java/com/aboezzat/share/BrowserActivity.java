@@ -773,7 +773,7 @@ public class BrowserActivity extends Activity {
                 "function scanResources(v){try{var entries=performance.getEntriesByType('resource'),now=performance.now();" +
                 "var videoTracks=[],bestAudio=null;" +
                 "for(var i=0;i<entries.length;i++){var e=entries[i],u=e.name||'',l=u.toLowerCase();if(!/^https?:/i.test(u))continue;" +
-                "if(now-e.startTime>25000)continue;" +
+                "if(now-e.startTime>10000)continue;" +
                 "if(/\\.(jpg|jpeg|png|webp|gif|bmp|svg|ts|m4s|js|css)(?:[?#]|$)/i.test(l))continue;" +
                 "var audio=/mime(?:_|-)?type=audio|mime=audio|type=audio|content[_-]?type=audio|dash_ln_heaac|audio_dash|\\.(aac|m4a|mp3|opus|ogg)(?:[?#]|$)/i.test(l);" +
                 "var video=/mime(?:_|-)?type=video|mime=video|type=video|content[_-]?type=video|video\\/tos|pull-|videoplayback|\\.(mp4|m4v|m3u8|mpd|webm|flv|mov)(?:[?#]|$)/i.test(l);" +
@@ -785,7 +785,7 @@ public class BrowserActivity extends Activity {
                 "else if(video&&!videoTracks.some(function(x){return x.url===u;})){videoTracks.push(item);}" +
                 "}" +
                 "videoTracks.sort(function(a,b){return b.score-a.score||b.time-a.time;});" +
-                "for(var j=0;j<videoTracks.length;j++)window.AboEzzatBridge.onVideoPlayingWithPoster(videoTracks[j].url,titleFor(v),posterFor(v));" +
+                "for(var j=0;j<Math.min(videoTracks.length,2);j++)window.AboEzzatBridge.onVideoPlayingWithPoster(videoTracks[j].url,titleFor(v),posterFor(v));" +
                 "if(bestAudio)window.AboEzzatBridge.onVideoPlayingWithPoster(bestAudio.url,titleFor(v),posterFor(v));" +
                 "}catch(e){}}" +
                 "function pick(){try{if(!armed)return;var vids=[].slice.call(document.querySelectorAll('video'));" +
@@ -983,7 +983,7 @@ public class BrowserActivity extends Activity {
                 int videoCount = 0;
                 for (CapturedMedia item : capturedList) if (item.mediaType == 1) videoCount++;
                 // Keep a few renditions; discard the lowest quality if more variants arrive.
-                if (videoCount >= 5) {
+                if (videoCount >= 2) {
                     CapturedMedia lowest = null;
                     for (CapturedMedia item : capturedList) {
                         if (item.mediaType == 1 && (lowest == null
@@ -997,18 +997,9 @@ public class BrowserActivity extends Activity {
             String cleanTitle = (title != null && !title.trim().isEmpty()) ? title.trim() : "فيديو قيد التشغيل";
             if (cleanTitle.length() > 70) cleanTitle = cleanTitle.substring(0, 70) + "...";
             CapturedMedia newMedia = new CapturedMedia(url, cleanTitle, format, posterUrl, mediaType);
-            if (mediaType == 2) {
-                newMedia.isSelected = true;
-            } else {
-                CapturedMedia bestVideo = null;
-                for (CapturedMedia item : capturedList) {
-                    if (item.mediaType == 1 && (bestVideo == null
-                            || capturedVideoQualityScore(item.url) > capturedVideoQualityScore(bestVideo.url))) bestVideo = item;
-                }
-                newMedia.isSelected = bestVideo == null
-                        || capturedVideoQualityScore(url) > capturedVideoQualityScore(bestVideo.url);
-                if (newMedia.isSelected && bestVideo != null) bestVideo.isSelected = false;
-            }
+            // Select both video renditions and the separate audio track by default.
+            // The merge action independently chooses the highest-quality video.
+            newMedia.isSelected = true;
             capturedList.add(newMedia);
             added = true;
             if (posterUrl != null && !posterUrl.isEmpty()) loadThumbnailAsync(newMedia);
@@ -1462,6 +1453,8 @@ public class BrowserActivity extends Activity {
     }
 
     private void castSelectedTracksManually() {
+        mergeAndCastToTv();
+        return;
         String videoTrack = "";
         String audioTrack = "";
 
