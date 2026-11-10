@@ -1553,14 +1553,24 @@ public class BrowserActivity extends Activity {
     private void mergeAndCastToTv() {
         String videoTrackUrl = "";
         String audioTrackUrl = "";
+        CapturedMedia bestVideo = null;
+        CapturedMedia bestAudio = null;
 
-        for (CapturedMedia m : capturedList) {
-            if (m.isAudio && audioTrackUrl.isEmpty()) {
-                audioTrackUrl = m.url;
-            } else if (!m.isAudio && videoTrackUrl.isEmpty()) {
-                videoTrackUrl = m.url;
+        synchronized (capturedList) {
+            for (CapturedMedia item : capturedList) {
+                if (item.mediaType == 1 && (bestVideo == null
+                        || (item.isSelected && !bestVideo.isSelected)
+                        || (item.isSelected == bestVideo.isSelected
+                            && capturedVideoQualityScore(item.url) > capturedVideoQualityScore(bestVideo.url)))) {
+                    bestVideo = item;
+                } else if (item.mediaType == 2 && (bestAudio == null || item.isSelected)) {
+                    bestAudio = item;
+                }
             }
         }
+
+        if (bestVideo != null) videoTrackUrl = bestVideo.url;
+        if (bestAudio != null) audioTrackUrl = bestAudio.url;
 
         if (videoTrackUrl.isEmpty()) {
             Toast.makeText(this, "تعذر العثور على مسار الفيديو للدمج", Toast.LENGTH_SHORT).show();
@@ -1577,7 +1587,7 @@ public class BrowserActivity extends Activity {
             return;
         }
 
-        Toast.makeText(this, "جاري إرسال البث المدمج للشاشة...", Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, "جاري دمج أعلى جودة فيديو مع مسار الصوت وإرسالهما...", Toast.LENGTH_SHORT).show();
 
         try {
             String endpoint = tvIp;
@@ -1588,7 +1598,7 @@ public class BrowserActivity extends Activity {
                 endpoint = endpoint + ":8081";
             }
 
-            String fullUrl = endpoint + "/?video=" + URLEncoder.encode(videoTrackUrl, "UTF-8") 
+            String fullUrl = endpoint + "/?video=" + URLEncoder.encode(videoTrackUrl, "UTF-8")
                                       + "&audio=" + URLEncoder.encode(audioTrackUrl, "UTF-8");
 
             Request req = new Request.Builder().url(fullUrl).build();
@@ -1600,7 +1610,11 @@ public class BrowserActivity extends Activity {
 
                 @Override
                 public void onResponse(Call call, Response response) {
-                    runOnUiThread(() -> Toast.makeText(BrowserActivity.this, "تم بدء العرض المدمج في الشاشة بنجاح ✓", Toast.LENGTH_SHORT).show());
+                    boolean accepted = response.isSuccessful();
+                    response.close();
+                    runOnUiThread(() -> Toast.makeText(BrowserActivity.this,
+                            accepted ? "تم إرسال الفيديو عالي الجودة مع الصوت ✓" : "الشاشة رفضت طلب الوسائط",
+                            Toast.LENGTH_SHORT).show());
                 }
             });
         } catch (Exception e) {
