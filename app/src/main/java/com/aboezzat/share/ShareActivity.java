@@ -5,6 +5,8 @@ import android.app.Activity;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
+import android.media.MediaExtractor;
+import android.media.MediaFormat;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
@@ -23,6 +25,8 @@ import android.widget.Toast;
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
@@ -55,6 +59,7 @@ public class ShareActivity extends Activity {
     private String threadsVideoUrl = "";
     private String threadsAudioUrl = "";
     private boolean threadsCaptureTimerScheduled = false;
+    private final Set<String> threadsMp4ProbeRequests = new HashSet<>();
     private final Runnable threadsCaptureTimeout = () -> finishThreadsCapture();
 
     @Override
@@ -245,6 +250,7 @@ public class ShareActivity extends Activity {
             threadsSharedUrl = url;
             threadsVideoUrl = "";
             threadsAudioUrl = "";
+            threadsMp4ProbeRequests.clear();
             threadsCaptureTimerScheduled = false;
             mainHandler.removeCallbacks(threadsCaptureTimeout);
         }
@@ -338,17 +344,11 @@ public class ShareActivity extends Activity {
             // Audio must be classified before video because some CDN URLs carry
             // overlapping path hints. Never send an audio-only rendition as video.
             if (isThreadsAudioResource(lower)) {
-                threadsAudioUrl = reqUrl;
+                acceptThreadsTrack(reqUrl, 2);
             } else if (isThreadsVideoResource(lower)) {
-                threadsVideoUrl = reqUrl;
-            }
-
-            if (!threadsVideoUrl.isEmpty() && !threadsAudioUrl.isEmpty()) {
-                finishThreadsCapture();
-            } else if ((!threadsVideoUrl.isEmpty() || !threadsAudioUrl.isEmpty())
-                    && !threadsCaptureTimerScheduled) {
-                threadsCaptureTimerScheduled = true;
-                mainHandler.postDelayed(threadsCaptureTimeout, 2800L);
+                acceptThreadsTrack(reqUrl, 1);
+            } else if (lower.matches(".*\\.mp4(?:[?#].*)?$")) {
+                probeThreadsMp4(reqUrl);
             }
             return;
         }
@@ -375,6 +375,38 @@ public class ShareActivity extends Activity {
         }
     }
 
+    private void probeThreadsMp4(final String mediaUrl) {
+        synchronized (this) {
+            if (isCaptured || !threadsMp4ProbeRequests.add(mediaUrl)) return;
+        }
+        android.os.AsyncTask.execute(() -> {
+            int type = Mp4TrackInspector.inspect(mediaUrl);
+            if (type != 0) {
+                synchronized (ShareActivity.this) {
+                    if (isCaptured) return;
+                    acceptThreadsTrack(mediaUrl, type);
+                }
+            }
+        });
+    }
+
+    private synchronized void acceptThreadsTrack(String mediaUrl, int type) {
+        if (isCaptured || mediaUrl == null || mediaUrl.isEmpty()) return;
+        if (type == 2) {
+            threadsAudioUrl = mediaUrl;
+        } else if (type == 1) {
+            threadsVideoUrl = mediaUrl;
+        }
+        if (!threadsVideoUrl.isEmpty() && !threadsAudioUrl.isEmpty()) {
+            finishThreadsCapture();
+        } else if ((!threadsVideoUrl.isEmpty() || !threadsAudioUrl.isEmpty())
+                && !threadsCaptureTimerScheduled) {
+            threadsCaptureTimerScheduled = true;
+            // Allow remote MP4 track probing to finish before falling back.
+            mainHandler.postDelayed(threadsCaptureTimeout, 7000L);
+        }
+    }
+
     private boolean isThreadsAudioResource(String lower) {
         return lower.contains("mime_type=audio") || lower.contains("mime-type=audio")
                 || lower.contains("mime=audio") || lower.contains("type=audio")
@@ -384,11 +416,15 @@ public class ShareActivity extends Activity {
     }
 
     private boolean isThreadsVideoResource(String lower) {
-        return lower.contains(".mp4") || lower.contains("video_playback")
+        boolean explicitVideo = lower.contains("video_playback")
                 || lower.contains("mime_type=video") || lower.contains("mime-type=video")
                 || lower.contains("mime=video") || lower.contains("type=video")
-                || lower.contains("content_type=video") || lower.contains("content-type=video")
-                || lower.contains("/video/") || (lower.contains("cdninstagram.com") && lower.contains("/v/"));
+                || lower.contains("content_type=video") || lower.contains("content-type=video");
+        // An .mp4 suffix alone (or a generic CDN path) does not prove this is a
+        // video track; audio-only DASH renditions can also be packaged as MP4.
+        if (lower.matches(".*\\.mp4(?:[?#].*)?$")) return explicitVideo;
+        return explicitVideo || lower.contains("/video/")
+                || (lower.contains("cdninstagram.com") && lower.contains("/v/"));
     }
 
     private synchronized void finishThreadsCapture() {

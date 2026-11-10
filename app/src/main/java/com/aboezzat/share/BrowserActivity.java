@@ -12,6 +12,7 @@ import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.media.MediaExtractor;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
 import android.net.Uri;
@@ -127,6 +128,7 @@ public class BrowserActivity extends Activity {
     }
 
     private final List<CapturedMedia> capturedList = Collections.synchronizedList(new ArrayList<CapturedMedia>());
+    private final Set<String> mp4ProbeRequests = Collections.synchronizedSet(new HashSet<String>());
     private final OkHttpClient client = new OkHttpClient();
     private String tvIp = "";
     private String lastDiscoveredPoster = "";
@@ -579,6 +581,8 @@ public class BrowserActivity extends Activity {
                             String title = !lastDiscoveredTitle.isEmpty()
                                     ? lastDiscoveredTitle : "فيديو قيد التشغيل";
                             addCapturedMedia(cleanMedia, title, format, lastDiscoveredPoster, type);
+                        } else if (lowerUrl.matches(".*\\.mp4(?:[?#].*)?$")) {
+                            probeAndAddMp4(reqUrl, lastDiscoveredTitle, lastDiscoveredPoster);
                         }
                     }
                 }
@@ -776,13 +780,15 @@ public class BrowserActivity extends Activity {
                 "if(now-e.startTime>10000)continue;" +
                 "if(/\\.(jpg|jpeg|png|webp|gif|bmp|svg|ts|m4s|js|css)(?:[?#]|$)/i.test(l))continue;" +
                 "var audio=/mime(?:_|-)?type=audio|mime=audio|type=audio|content[_-]?type=audio|dash_ln_heaac|audio_dash|\\.(aac|m4a|mp3|opus|ogg)(?:[?#]|$)/i.test(l);" +
-                "var video=/mime(?:_|-)?type=video|mime=video|type=video|content[_-]?type=video|video\\/tos|pull-|videoplayback|\\.(mp4|m4v|m3u8|mpd|webm|flv|mov)(?:[?#]|$)/i.test(l);" +
-                "if(!audio&&!video)continue;" +
+                "var mp4Candidate=/\\.mp4(?:[?#]|$)/i.test(l);" +
+                "var video=/mime(?:_|-)?type=video|mime=video|type=video|content[_-]?type=video|video\\/tos|pull-|videoplayback|\\.(m4v|m3u8|mpd|webm|flv|mov)(?:[?#]|$)/i.test(l);" +
+                "if(!audio&&!video&&!mp4Candidate)continue;" +
                 "var score=(e.initiatorType==='video'||e.initiatorType==='media'?40:0)+(now-e.startTime<8000?20:0)+" +
                 "(/\\.(m3u8|mpd)(?:[?#]|$)/i.test(l)?25:0);" +
                 "var item={url:u,score:score,time:e.startTime};" +
                 "if(audio){if(!bestAudio||item.score>bestAudio.score||(item.score===bestAudio.score&&item.time>bestAudio.time))bestAudio=item;}" +
                 "else if(video&&!videoTracks.some(function(x){return x.url===u;})){videoTracks.push(item);}" +
+                "else if(mp4Candidate)window.AboEzzatBridge.onCapturedCandidateTrack(u,titleFor(v),posterFor(v));" +
                 "}" +
                 "videoTracks.sort(function(a,b){return b.score-a.score||b.time-a.time;});" +
                 "for(var j=0;j<Math.min(videoTracks.length,2);j++)window.AboEzzatBridge.onCapturedVideoTrack(videoTracks[j].url,titleFor(v),posterFor(v));" +
@@ -860,6 +866,12 @@ public class BrowserActivity extends Activity {
         }
 
         @JavascriptInterface
+        public void onCapturedCandidateTrack(String mediaUrl, String title, String posterUrl) {
+            if (activePlaybackKey.isEmpty() || mediaUrl == null || !mediaUrl.startsWith("http")) return;
+            probeAndAddMp4(mediaUrl, title, posterUrl);
+        }
+
+        @JavascriptInterface
         public void onCapturedAudioTrack(String mediaUrl, String title, String posterUrl) {
             if (activePlaybackKey.isEmpty() || mediaUrl == null || !mediaUrl.startsWith("http")) return;
             String clean = mediaUrl.replaceAll("&bytestart=\\d+", "")
@@ -929,7 +941,7 @@ public class BrowserActivity extends Activity {
         // or an explicit video MIME marker. Keep recognizing the stream endpoint.
         boolean tiktokLiveStream = lower.contains("pull-")
                 || (lower.contains("live") && (lower.contains("video") || lower.contains("stream")));
-        boolean video = lower.matches(".*\\.(mp4|m4v|m3u8|mpd|webm|flv|mov)(?:[?#].*)?$")
+        boolean video = lower.matches(".*\\.(m4v|m3u8|mpd|webm|flv|mov)(?:[?#].*)?$")
                 || lower.contains("mime_type=video") || lower.contains("mime-type=video")
                 || lower.contains("mime=video") || lower.contains("type=video")
                 || lower.contains("contenttype=video") || lower.contains("content_type=video")
@@ -1078,6 +1090,18 @@ public class BrowserActivity extends Activity {
                 hasSelectedAudio = true;
             }
         }
+    }
+
+    private void probeAndAddMp4(final String mediaUrl, final String title, final String posterUrl) {
+        if (mediaUrl == null || !mp4ProbeRequests.add(mediaUrl)) return;
+        AsyncTask.execute(() -> {
+            int type = Mp4TrackInspector.inspect(mediaUrl);
+            if (type == 0 || activePlaybackKey.isEmpty()) return;
+            String clean = mediaUrl.replaceAll("&bytestart=\\d+", "")
+                    .replaceAll("&byteend=\\d+", "");
+            String label = type == 2 ? "🎵 مسار صوت (تم فحص MP4)" : "🎬 مسار فيديو (تم فحص MP4)";
+            addCapturedMedia(clean, title, label, posterUrl, type);
+        });
     }
 
     private void loadThumbnailAsync(final CapturedMedia media) {
