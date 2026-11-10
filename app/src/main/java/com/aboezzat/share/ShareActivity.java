@@ -416,11 +416,15 @@ public class ShareActivity extends Activity {
     }
 
     private boolean isThreadsVideoResource(String lower) {
-        return lower.contains("video_playback")
+        boolean explicitVideo = lower.contains("video_playback")
                 || lower.contains("mime_type=video") || lower.contains("mime-type=video")
                 || lower.contains("mime=video") || lower.contains("type=video")
-                || lower.contains("content_type=video") || lower.contains("content-type=video")
-                || lower.contains("/video/") || (lower.contains("cdninstagram.com") && lower.contains("/v/"));
+                || lower.contains("content_type=video") || lower.contains("content-type=video");
+        // An .mp4 suffix alone (or a generic CDN path) does not prove this is a
+        // video track; audio-only DASH renditions can also be packaged as MP4.
+        if (lower.matches(".*\\.mp4(?:[?#].*)?$")) return explicitVideo;
+        return explicitVideo || lower.contains("/video/")
+                || (lower.contains("cdninstagram.com") && lower.contains("/v/"));
     }
 
     private synchronized void finishThreadsCapture() {
