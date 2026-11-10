@@ -753,6 +753,7 @@ public class BrowserActivity extends Activity {
         String js = "javascript:(function(){try{" +
                 "if(window.__aboActiveCaptureInstalled)return;window.__aboActiveCaptureInstalled=true;" +
                 "var armed=false,activeKey='';" +
+                "try{if(performance.setResourceTimingBufferSize)performance.setResourceTimingBufferSize(1500);}catch(e){}" +
                 "var style=document.getElementById('abo-ezzat-adblock');if(!style){style=document.createElement('style');style.id='abo-ezzat-adblock';" +
                 "style.innerHTML='.ytp-ad-overlay-container,.ytp-ad-message-container,ytd-promoted-sparkles-web-renderer,ytd-banner-promo-renderer,ytd-ad-slot-renderer,.ad-container,.ad-div,ytd-in-feed-ad-layout-renderer,ytm-promoted-sparkles-web-renderer,.ytp-ad-action-interstitial,[id^=\\\"google_ads_\\\"],iframe[src*=\\\"doubleclick\\\"]{display:none!important;width:0!important;height:0!important}';if(document.head)document.head.appendChild(style);}" +
                 "if(!window.AboEzzatKillerLoop){window.AboEzzatKillerLoop=setInterval(function(){try{" +
@@ -780,7 +781,9 @@ public class BrowserActivity extends Activity {
                 "function scanResources(v){try{var entries=performance.getEntriesByType('resource'),now=performance.now();" +
                 "var videoTracks=[],bestAudio=null;" +
                 "for(var i=0;i<entries.length;i++){var e=entries[i],u=e.name||'',l=u.toLowerCase();if(!/^https?:/i.test(u))continue;" +
-                "if(now-e.startTime>10000)continue;" +
+                // Keep resource entries loaded before the user taps Play.
+                // Instagram/Threads can preload the DASH audio track much earlier.
+                
                 "if(/\\.(jpg|jpeg|png|webp|gif|bmp|svg|ts|m4s|js|css)(?:[?#]|$)/i.test(l))continue;" +
                 "var audio=/mime(?:_|-)?type=audio|mime=audio|type=audio|content[_-]?type=audio|dash_ln_heaac|audio_dash|\\.(aac|m4a|mp3|opus|ogg)(?:[?#]|$)/i.test(l);" +
                 "var mp4Candidate=/\\.mp4(?:[?#]|$)/i.test(l);" +
@@ -856,7 +859,16 @@ public class BrowserActivity extends Activity {
             String clean = mediaUrl.replaceAll("&bytestart=\\d+", "")
                     .replaceAll("&byteend=\\d+", "");
             String cleanTitle = title == null || title.trim().isEmpty() ? "فيديو قيد التشغيل" : title.trim();
-            addCapturedMedia(clean, cleanTitle, "🎬 مسار الفيديو النشط", posterUrl, 1);
+            // A URL used by an HTML <video> element is not proof that the
+            // URL contains video. Social DASH players can expose audio-only MP4.
+            int detectedType = classifyCapturedMedia(clean);
+            if (detectedType == 2) {
+                addCapturedMedia(clean, cleanTitle, "🎵 مسار صوت (تم التحقق من الرابط)", posterUrl, 2);
+            } else if (detectedType == 1) {
+                addCapturedMedia(clean, cleanTitle, "🎬 مسار الفيديو النشط", posterUrl, 1);
+            } else if (clean.toLowerCase().matches(".*\\\\.mp4(?:[?#].*)?$")) {
+                probeAndAddMp4(clean, cleanTitle, posterUrl);
+            }
         }
 
         @JavascriptInterface
