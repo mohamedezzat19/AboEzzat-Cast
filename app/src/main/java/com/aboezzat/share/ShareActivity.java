@@ -37,6 +37,8 @@ import okhttp3.Callback;
 import okhttp3.EventListener;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.MediaType;
 import okhttp3.Response;
 import org.json.JSONObject;
 
@@ -491,16 +493,18 @@ public class ShareActivity extends Activity {
             }
 
             final String receiverEndpoint = tvIp;
-            String fullUrl;
-            if (audioUrl != null && !audioUrl.trim().isEmpty()) {
-                fullUrl = receiverEndpoint + "/?video=" + URLEncoder.encode(mediaUrl, "UTF-8")
-                        + "&audio=" + URLEncoder.encode(audioUrl, "UTF-8");
+            Request request;
+            if (!isQueue) {
+                JSONObject payload = new JSONObject();
+                if (mediaUrl != null && !mediaUrl.trim().isEmpty()) payload.put("url", mediaUrl);
+                if (audioUrl != null && !audioUrl.trim().isEmpty()) payload.put("audio", audioUrl);
+                RequestBody body = RequestBody.create(
+                        MediaType.parse("application/json; charset=utf-8"), payload.toString());
+                request = new Request.Builder().url(receiverEndpoint + "/play").post(body).build();
             } else {
-                String paramName = isQueue ? "queue" : "url";
-                fullUrl = receiverEndpoint + "/?" + paramName + "="
-                        + URLEncoder.encode(mediaUrl, "UTF-8");
+                String fullUrl = receiverEndpoint + "/?queue=" + URLEncoder.encode(mediaUrl, "UTF-8");
+                request = new Request.Builder().url(fullUrl).get().build();
             }
-            Request request = new Request.Builder().url(fullUrl).get().build();
             AtomicBoolean requestHeadersSent = new AtomicBoolean(false);
             OkHttpClient trackedClient = client.newBuilder()
                     .eventListener(new EventListener() {

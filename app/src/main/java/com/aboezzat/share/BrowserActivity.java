@@ -73,7 +73,10 @@ import okhttp3.Call;
 import okhttp3.Callback;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.MediaType;
 import okhttp3.Response;
+import org.json.JSONObject;
 
 public class BrowserActivity extends Activity {
 
@@ -1544,6 +1547,15 @@ public class BrowserActivity extends Activity {
                 .show();
     }
 
+    private Request buildReceiverPlayRequest(String endpoint, String videoUrl, String audioUrl) throws Exception {
+        JSONObject payload = new JSONObject();
+        if (videoUrl != null && !videoUrl.trim().isEmpty()) payload.put("url", videoUrl);
+        if (audioUrl != null && !audioUrl.trim().isEmpty()) payload.put("audio", audioUrl);
+        RequestBody body = RequestBody.create(
+                MediaType.parse("application/json; charset=utf-8"), payload.toString());
+        return new Request.Builder().url(endpoint + "/play").post(body).build();
+    }
+
     private void mergeAndCastToTv() {
         String videoTrackUrl = "";
         String audioTrackUrl = "";
@@ -1592,10 +1604,7 @@ public class BrowserActivity extends Activity {
                 endpoint = endpoint + ":8081";
             }
 
-            String fullUrl = endpoint + "/?video=" + URLEncoder.encode(videoTrackUrl, "UTF-8")
-                                      + "&audio=" + URLEncoder.encode(audioTrackUrl, "UTF-8");
-
-            Request req = new Request.Builder().url(fullUrl).build();
+            Request req = buildReceiverPlayRequest(endpoint, videoTrackUrl, audioTrackUrl);
             client.newCall(req).enqueue(new Callback() {
                 @Override
                 public void onFailure(Call call, IOException e) {
@@ -1630,8 +1639,7 @@ public class BrowserActivity extends Activity {
                 endpoint = endpoint + ":8081";
             }
 
-            String fullUrl = endpoint + "/?url=" + URLEncoder.encode(mediaUrl, "UTF-8");
-            Request req = new Request.Builder().url(fullUrl).get().build();
+            Request req = buildReceiverPlayRequest(endpoint, mediaUrl, null);
             final String receiverEndpoint = endpoint;
             AtomicBoolean requestHeadersSent = new AtomicBoolean(false);
             OkHttpClient trackedClient = client.newBuilder()
