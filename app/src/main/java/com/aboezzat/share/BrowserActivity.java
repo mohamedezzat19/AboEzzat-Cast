@@ -770,7 +770,7 @@ public class BrowserActivity extends Activity {
                 "var src=v.currentSrc||v.src||'';if(/^https?:/i.test(src))window.AboEzzatBridge.onVideoPlayingWithPoster(src,t,p);" +
                 "}" +
                 "function scanResources(v){try{var entries=performance.getEntriesByType('resource'),now=performance.now();" +
-                "var bestVideo=null,bestAudio=null;" +
+                "var videoTracks=[],bestAudio=null;" +
                 "for(var i=0;i<entries.length;i++){var e=entries[i],u=e.name||'',l=u.toLowerCase();if(!/^https?:/i.test(u))continue;" +
                 "if(now-e.startTime>25000)continue;" +
                 "if(/\\.(jpg|jpeg|png|webp|gif|bmp|svg|ts|m4s|js|css)(?:[?#]|$)/i.test(l))continue;" +
@@ -778,12 +778,13 @@ public class BrowserActivity extends Activity {
                 "var video=/mime(?:_|-)?type=video|mime=video|type=video|content[_-]?type=video|video\\/tos|pull-|videoplayback|\\.(mp4|m4v|m3u8|mpd|webm|flv|mov)(?:[?#]|$)/i.test(l);" +
                 "if(!audio&&!video)continue;" +
                 "var score=(e.initiatorType==='video'||e.initiatorType==='media'?40:0)+(now-e.startTime<8000?20:0)+" +
-                "(/\\.(m3u8|mpd)(?:[?#]|$)/i.test(l)?25:0)+(audio?10:0);" +
+                "(/\\.(m3u8|mpd)(?:[?#]|$)/i.test(l)?25:0);" +
                 "var item={url:u,score:score,time:e.startTime};" +
                 "if(audio){if(!bestAudio||item.score>bestAudio.score||(item.score===bestAudio.score&&item.time>bestAudio.time))bestAudio=item;}" +
-                "else if(video){if(!bestVideo||item.score>bestVideo.score||(item.score===bestVideo.score&&item.time>bestVideo.time))bestVideo=item;}" +
+                "else if(video&&!videoTracks.some(function(x){return x.url===u;})){videoTracks.push(item);}" +
                 "}" +
-                "if(bestVideo)window.AboEzzatBridge.onVideoPlayingWithPoster(bestVideo.url,titleFor(v),posterFor(v));" +
+                "videoTracks.sort(function(a,b){return b.score-a.score||b.time-a.time;});" +
+                "for(var j=0;j<videoTracks.length;j++)window.AboEzzatBridge.onVideoPlayingWithPoster(videoTracks[j].url,titleFor(v),posterFor(v));" +
                 "if(bestAudio)window.AboEzzatBridge.onVideoPlayingWithPoster(bestAudio.url,titleFor(v),posterFor(v));" +
                 "}catch(e){}}" +
                 "function pick(){try{if(!armed)return;var vids=[].slice.call(document.querySelectorAll('video'));" +
@@ -928,6 +929,24 @@ public class BrowserActivity extends Activity {
         return 10;
     }
 
+    // Estimate rendition quality from explicit resolution/bitrate hints in CDN URLs.
+    private int capturedVideoQualityScore(String url) {
+        if (url == null) return 0;
+        String lower = url.toLowerCase(Locale.ROOT);
+        int width = 0, height = 0, bitrate = 0;
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(?:width|w)[=_-](\\d{3,4})").matcher(lower);
+        if (m.find()) try { width = Integer.parseInt(m.group(1)); } catch (Exception ignored) {}
+        m = java.util.regex.Pattern.compile("(?:height|h)[=_-](\\d{3,4})").matcher(lower);
+        if (m.find()) try { height = Integer.parseInt(m.group(1)); } catch (Exception ignored) {}
+        m = java.util.regex.Pattern.compile("(?:bitrate|bit_rate|br)[=_-](\\d{4,8})").matcher(lower);
+        if (m.find()) try { bitrate = Integer.parseInt(m.group(1)); } catch (Exception ignored) {}
+        int score = width * height + Math.min(bitrate, 20000000) / 10;
+        if (lower.matches(".*(1080p|2160p|uhd|high[_-]?quality).*")) score += 3000000;
+        if (lower.matches(".*(720p|hd).*")) score += 1200000;
+        if (lower.matches(".*(480p|sd).*")) score += 400000;
+        return score;
+    }
+
     private synchronized void addCapturedMedia(String url, String title, String format, String posterUrl, int mediaType) {
         if ((mediaType != 1 && mediaType != 2) || activePlaybackKey.isEmpty()) return;
         boolean added = false;
@@ -940,27 +959,50 @@ public class BrowserActivity extends Activity {
                     }
                     return;
                 }
-                // Keep one track of each kind, but allow a later, explicitly typed
-                // Instagram/Threads DASH URL to replace an early generic player URL.
-                if (item.mediaType == mediaType) {
-                    if (capturedUrlConfidence(url, mediaType) > capturedUrlConfidence(item.url, mediaType)) {
-                        item.url = url;
-                        item.format = format;
-                        if (title != null && !title.trim().isEmpty()) item.title = title.trim();
-                        if (posterUrl != null && !posterUrl.isEmpty()) {
-                            item.posterUrl = posterUrl;
-                            item.posterBitmap = null;
-                            loadThumbnailAsync(item);
+            }
+
+            // Audio is a separate DASH rendition: retain one explicitly typed audio track.
+            if (mediaType == 2) {
+                for (CapturedMedia item : capturedList) {
+                    if (item.mediaType == 2) {
+                        if (capturedUrlConfidence(url, 2) > capturedUrlConfidence(item.url, 2)) {
+                            item.url = url;
+                            item.format = format;
+                            item.isSelected = true;
                         }
+                        return;
                     }
-                    return;
+                }
+            } else {
+                int videoCount = 0;
+                for (CapturedMedia item : capturedList) if (item.mediaType == 1) videoCount++;
+                // Keep a few renditions; discard the lowest quality if more variants arrive.
+                if (videoCount >= 5) {
+                    CapturedMedia lowest = null;
+                    for (CapturedMedia item : capturedList) {
+                        if (item.mediaType == 1 && (lowest == null
+                                || capturedVideoQualityScore(item.url) < capturedVideoQualityScore(lowest.url))) lowest = item;
+                    }
+                    if (lowest != null && capturedVideoQualityScore(url) <= capturedVideoQualityScore(lowest.url)) return;
+                    if (lowest != null) capturedList.remove(lowest);
                 }
             }
 
             String cleanTitle = (title != null && !title.trim().isEmpty()) ? title.trim() : "فيديو قيد التشغيل";
             if (cleanTitle.length() > 70) cleanTitle = cleanTitle.substring(0, 70) + "...";
             CapturedMedia newMedia = new CapturedMedia(url, cleanTitle, format, posterUrl, mediaType);
-            newMedia.isSelected = true;
+            if (mediaType == 2) {
+                newMedia.isSelected = true;
+            } else {
+                CapturedMedia bestVideo = null;
+                for (CapturedMedia item : capturedList) {
+                    if (item.mediaType == 1 && (bestVideo == null
+                            || capturedVideoQualityScore(item.url) > capturedVideoQualityScore(bestVideo.url))) bestVideo = item;
+                }
+                newMedia.isSelected = bestVideo == null
+                        || capturedVideoQualityScore(url) > capturedVideoQualityScore(bestVideo.url);
+                if (newMedia.isSelected && bestVideo != null) bestVideo.isSelected = false;
+            }
             capturedList.add(newMedia);
             added = true;
             if (posterUrl != null && !posterUrl.isEmpty()) loadThumbnailAsync(newMedia);
