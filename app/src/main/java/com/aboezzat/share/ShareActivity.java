@@ -49,6 +49,13 @@ public class ShareActivity extends Activity {
     private WebView webView;
     private boolean isCaptured = false;
     private String targetTvIp = "";
+    // Threads can expose video and audio as separate DASH resources. Collect both
+    // before sending so the Receiver receives a synchronized A/V pair.
+    private String threadsSharedUrl = "";
+    private String threadsVideoUrl = "";
+    private String threadsAudioUrl = "";
+    private boolean threadsCaptureTimerScheduled = false;
+    private final Runnable threadsCaptureTimeout = () -> finishThreadsCapture();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -234,6 +241,13 @@ public class ShareActivity extends Activity {
     private void startPlatformSniffer(String url, final String platformType,
                                       long timeoutMs, boolean openBrowserOnTimeout) {
         isCaptured = false;
+        if ("threads".equals(platformType)) {
+            threadsSharedUrl = url;
+            threadsVideoUrl = "";
+            threadsAudioUrl = "";
+            threadsCaptureTimerScheduled = false;
+            mainHandler.removeCallbacks(threadsCaptureTimeout);
+        }
         webView = new WebView(this);
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
@@ -287,6 +301,8 @@ public class ShareActivity extends Activity {
                 destroyWebView();
                 if (openBrowserOnTimeout) {
                     openTikTokLiveInBrowser(url);
+                } else if ("threads".equals(platformType)) {
+                    openThreadsInBrowser(url);
                 } else {
                     Toast.makeText(ShareActivity.this, "تعذر القنص المباشر، جرب فتحه بالمتصفح", Toast.LENGTH_SHORT).show();
                     finish();
@@ -318,26 +334,36 @@ public class ShareActivity extends Activity {
             return;
         }
 
-        boolean matched = false;
-
         if ("threads".equals(platformType)) {
-            if (lower.contains(".mp4") || lower.contains("video_playback") || (lower.contains("cdninstagram.com") && lower.contains("/v/"))) {
-                matched = true;
+            // Audio must be classified before video because some CDN URLs carry
+            // overlapping path hints. Never send an audio-only rendition as video.
+            if (isThreadsAudioResource(lower)) {
+                threadsAudioUrl = reqUrl;
+            } else if (isThreadsVideoResource(lower)) {
+                threadsVideoUrl = reqUrl;
             }
-        } else if ("tiktok_live".equals(platformType)) {
+
+            if (!threadsVideoUrl.isEmpty() && !threadsAudioUrl.isEmpty()) {
+                finishThreadsCapture();
+            } else if ((!threadsVideoUrl.isEmpty() || !threadsAudioUrl.isEmpty())
+                    && !threadsCaptureTimerScheduled) {
+                threadsCaptureTimerScheduled = true;
+                mainHandler.postDelayed(threadsCaptureTimeout, 2800L);
+            }
+            return;
+        }
+
+        boolean matched = false;
+        if ("tiktok_live".equals(platformType)) {
             // LIVE capture is intentionally limited to stream-like TikTok resources.
             // Do not accept ordinary .mp4 video links in this branch.
-            if (lower.contains("pull-") ||
-                    (lower.contains("tiktok") && (lower.contains(".m3u8") || lower.contains(".flv")))) {
-                matched = true;
-            }
+            matched = lower.contains("pull-")
+                    || (lower.contains("tiktok") && (lower.contains(".m3u8") || lower.contains(".flv")));
         } else {
-            if ((lower.contains("pull-") && lower.contains("tiktokcdn.com")) ||
-                (lower.contains("tiktokcdn.com") && (lower.contains(".flv") || lower.contains(".m3u8"))) ||
-                lower.contains(".mp4") || lower.contains(".m3u8") ||
-                lower.contains("video_playback") || lower.contains("&mime=video")) {
-                matched = true;
-            }
+            matched = (lower.contains("pull-") && lower.contains("tiktokcdn.com"))
+                    || (lower.contains("tiktokcdn.com") && (lower.contains(".flv") || lower.contains(".m3u8")))
+                    || lower.contains(".mp4") || lower.contains(".m3u8")
+                    || lower.contains("video_playback") || lower.contains("&mime=video");
         }
 
         if (matched) {
@@ -349,6 +375,64 @@ public class ShareActivity extends Activity {
         }
     }
 
+    private boolean isThreadsAudioResource(String lower) {
+        return lower.contains("mime_type=audio") || lower.contains("mime-type=audio")
+                || lower.contains("mime=audio") || lower.contains("type=audio")
+                || lower.contains("content_type=audio") || lower.contains("content-type=audio")
+                || lower.contains("audio_dash") || lower.contains("dash_ln_heaac")
+                || lower.matches(".*\\.(aac|m4a|mp3|opus|ogg)(?:[?#].*)?$");
+    }
+
+    private boolean isThreadsVideoResource(String lower) {
+        return lower.contains(".mp4") || lower.contains("video_playback")
+                || lower.contains("mime_type=video") || lower.contains("mime-type=video")
+                || lower.contains("mime=video") || lower.contains("type=video")
+                || lower.contains("content_type=video") || lower.contains("content-type=video")
+                || lower.contains("/video/") || (lower.contains("cdninstagram.com") && lower.contains("/v/"));
+    }
+
+    private synchronized void finishThreadsCapture() {
+        if (isCaptured) return;
+        mainHandler.removeCallbacks(threadsCaptureTimeout);
+        threadsCaptureTimerScheduled = false;
+
+        if (!threadsVideoUrl.isEmpty()) {
+            isCaptured = true;
+            final String video = threadsVideoUrl;
+            final String audio = threadsAudioUrl;
+            mainHandler.post(() -> {
+                if (!audio.isEmpty()) {
+                    sendToTv(targetTvIp, video, audio, false);
+                } else {
+                    // A progressive MP4 already contains both audio and video.
+                    sendToTv(targetTvIp, video, false);
+                }
+                destroyWebView();
+            });
+        } else {
+            // Audio alone is not a playable video. Fall back to the in-app browser
+            // rather than sending a black/audio-only playback request to Receiver.
+            isCaptured = true;
+            final String fallback = threadsSharedUrl;
+            mainHandler.post(() -> {
+                destroyWebView();
+                openThreadsInBrowser(fallback);
+            });
+        }
+    }
+
+    private void openThreadsInBrowser(String url) {
+        try {
+            Intent browserIntent = new Intent(this, BrowserActivity.class);
+            browserIntent.setAction(Intent.ACTION_VIEW);
+            browserIntent.setData(Uri.parse(url));
+            startActivity(browserIntent);
+        } catch (Exception e) {
+            Toast.makeText(this, "تعذر فتح Threads في المتصفح", Toast.LENGTH_SHORT).show();
+        }
+        finish();
+    }
+
     private void destroyWebView() {
         if (webView != null) {
             webView.stopLoading();
@@ -358,6 +442,10 @@ public class ShareActivity extends Activity {
     }
 
     private void sendToTv(String tvIp, String mediaUrl, boolean isQueue) {
+        sendToTv(tvIp, mediaUrl, null, isQueue);
+    }
+
+    private void sendToTv(String tvIp, String mediaUrl, String audioUrl, boolean isQueue) {
         try {
             if (!tvIp.startsWith("http://") && !tvIp.startsWith("https://")) {
                 tvIp = "http://" + tvIp;
@@ -367,9 +455,15 @@ public class ShareActivity extends Activity {
             }
 
             final String receiverEndpoint = tvIp;
-            String paramName = isQueue ? "queue" : "url";
-            String fullUrl = receiverEndpoint + "/?" + paramName + "="
-                    + URLEncoder.encode(mediaUrl, "UTF-8");
+            String fullUrl;
+            if (audioUrl != null && !audioUrl.trim().isEmpty()) {
+                fullUrl = receiverEndpoint + "/?video=" + URLEncoder.encode(mediaUrl, "UTF-8")
+                        + "&audio=" + URLEncoder.encode(audioUrl, "UTF-8");
+            } else {
+                String paramName = isQueue ? "queue" : "url";
+                fullUrl = receiverEndpoint + "/?" + paramName + "="
+                        + URLEncoder.encode(mediaUrl, "UTF-8");
+            }
             Request request = new Request.Builder().url(fullUrl).get().build();
             AtomicBoolean requestHeadersSent = new AtomicBoolean(false);
             OkHttpClient trackedClient = client.newBuilder()
