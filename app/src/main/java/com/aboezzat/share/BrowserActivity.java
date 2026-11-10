@@ -2025,6 +2025,10 @@ public class BrowserActivity extends Activity {
 
     private void recordVisitedUrl(WebView sourceView, String url) {
         if (url == null || !(url.startsWith("http://") || url.startsWith("https://"))) return;
+        // WebView can deliver delayed history callbacks after a clear or redirect.
+        // Only record the page that is still the WebView's active URL.
+        String activeUrl = sourceView == null ? null : sourceView.getUrl();
+        if (activeUrl == null || !url.equals(activeUrl)) return;
         SharedPreferences historyPrefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
         long clearedAt = historyPrefs.getLong("history_cleared_at", 0L);
         long navigationAt = navigationStartedAt.containsKey(sourceView)
