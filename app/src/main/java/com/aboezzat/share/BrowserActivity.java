@@ -173,12 +173,17 @@ public class BrowserActivity extends Activity {
         }
     }
 
+    // Network-level ad hosts only. Avoid blocking general tag managers or
+    // analytics libraries that some sites also use to initialize their players.
     private final List<String> adDomains = Arrays.asList(
-            "doubleclick.net", "googleads", "pagead2", "adservice.google",
-            "googletagmanager", "adcolony", "criteo", "adnxs", "outbrain",
-            "taboola", "popads", "popcash", "propellerads", "adsterra",
-            "exoclick", "smartadserver", "scorecardresearch",
-            "zedo", "adroll", "pubmatic", "rubiconproject"
+            "doubleclick.net", "googlesyndication.com", "googleadservices.com",
+            "adservice.google.com", "pagead2.googlesyndication.com",
+            "adcolony.com", "criteo.com", "adnxs.com", "outbrain.com",
+            "taboola.com", "popads.net", "popcash.net", "propellerads.com",
+            "adsterra.com", "exoclick.com", "smartadserver.com",
+            "zedo.com", "adroll.com", "pubmatic.com", "rubiconproject.com",
+            "trafficjunky.net", "juicyads.com", "hilltopads.net",
+            "onclickads.net", "ero-advertising.com"
     );
 
     @Override
@@ -512,7 +517,7 @@ public class BrowserActivity extends Activity {
 
         // Support OAuth/login popup windows used by social websites.
         settings.setJavaScriptCanOpenWindowsAutomatically(true);
-        settings.setSupportMultipleWindows(true);
+        settings.setSupportMultipleWindows(false);
 
         settings.setUseWideViewPort(true);
         settings.setLoadWithOverviewMode(true);
@@ -544,22 +549,15 @@ public class BrowserActivity extends Activity {
                         progressBar.setVisibility(View.GONE);
                     }
                 }
+                injectPopupAndOverlayBlocker(view);
                 injectAdKiller(view);
             }
 
             @Override
             public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture, android.os.Message resultMsg) {
-                // Block pop-up windows by default. A short consent bar lets the user
-                // explicitly open the requested destination without interrupting LIVE.
-                String popupTarget = "";
-                try {
-                    WebView.HitTestResult hit = view.getHitTestResult();
-                    if (hit != null && hit.getExtra() != null) popupTarget = hit.getExtra();
-                } catch (Exception ignored) {}
-                if (popupTarget == null || popupTarget.trim().isEmpty()) {
-                    popupTarget = view.getUrl() == null ? "" : view.getUrl();
-                }
-                showRedirectConsent(popupTarget, true);
+                // Never open a second WebView/window: ad popunders are silently
+                // discarded. Real player/server links are handled by the page's
+                // same-tab navigation path (multiple windows are disabled below).
                 return false;
             }
         });
@@ -577,8 +575,8 @@ public class BrowserActivity extends Activity {
                 String targetUrl = request.getUrl().toString();
                 String lower = targetUrl.toLowerCase();
 
-                // Preserve the current ad destination blocking.
-                if (lower.contains("popads") || lower.contains("bet365")) return true;
+                // Stop known ad/redirect destinations before they replace the page.
+                if (isBlockedAdUrl(targetUrl)) return true;
 
                 // Play Store / app schemes and other non-web links require consent.
                 if (isPlayStoreRedirect(targetUrl)
@@ -594,10 +592,8 @@ public class BrowserActivity extends Activity {
                 String reqUrl = request.getUrl().toString();
                 String lowerUrl = reqUrl.toLowerCase();
 
-                for (String ad : adDomains) {
-                    if (lowerUrl.contains(ad)) {
-                        return new WebResourceResponse("text/plain", "UTF-8", new ByteArrayInputStream("".getBytes()));
-                    }
+                if (isBlockedAdUrl(reqUrl)) {
+                    return new WebResourceResponse("text/plain", "UTF-8", new ByteArrayInputStream(new byte[0]));
                 }
 
                 // Ignore every page/list/thumbnail request until a specific visible
@@ -638,7 +634,7 @@ public class BrowserActivity extends Activity {
                     view.getSettings().setSupportMultipleWindows(false);
                     view.getSettings().setUserAgentString(getQFilmCompatibleUserAgent());
                 } else if (loadedUrl != null && loadedUrl.startsWith("http")) {
-                    view.getSettings().setSupportMultipleWindows(true);
+                    view.getSettings().setSupportMultipleWindows(false);
                     view.getSettings().setUserAgentString("Mozilla/5.0 (Linux; Android 14; Mobile; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.6478.122 Mobile Safari/537.36");
                 }
                 if (getCurrentWebView() == view && loadedUrl != null
@@ -658,6 +654,7 @@ public class BrowserActivity extends Activity {
                     etUrl.setText(loadedUrl.equals("about:home") ? "" : loadedUrl);
                     tabTitles.set(currentTabIndex, view.getTitle() != null ? view.getTitle() : "علامة تبويب");
                 }
+                injectPopupAndOverlayBlocker(view);
                 injectAdKiller(view);
                 injectTikTokLiveSniffer(view);
                 if (isGenericAutoSniffActive() && shouldAutoCaptureGenericPage(loadedUrl)) {
@@ -1235,6 +1232,50 @@ public class BrowserActivity extends Activity {
             etUrl.setText((u == null || u.equals("about:home")) ? "" : u);
         }
         btnTabs.setText("[ " + tabList.size() + " ]");
+    }
+
+    private boolean isBlockedAdUrl(String value) {
+        if (value == null || value.trim().isEmpty()) return false;
+        try {
+            Uri uri = Uri.parse(value);
+            String host = uri.getHost();
+            if (host == null) return false;
+            host = host.toLowerCase(Locale.ROOT);
+            if (host.startsWith("www.")) host = host.substring(4);
+            for (String domain : adDomains) {
+                if (host.equals(domain) || host.endsWith("." + domain)) return true;
+            }
+            return false;
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    @SuppressLint("JavascriptInterface")
+    private void injectPopupAndOverlayBlocker(WebView view) {
+        if (view == null) return;
+        String js = "(function(){try{" +
+                "if(window.__aboPopupGuardInstalled)return;window.__aboPopupGuardInstalled=true;" +
+                "var adHosts=" + new org.json.JSONArray(adDomains).toString() + ";" +
+                "function isAd(u){try{var h=new URL(u,location.href).hostname.toLowerCase().replace(/^www\\./,'');" +
+                "for(var i=0;i<adHosts.length;i++)if(h===adHosts[i]||h.endsWith('.'+adHosts[i]))return true;" +
+                "return /(^|[.-])(popunder|popads|popcash|onclickads|trafficjunky)([.-]|$)/i.test(h);" +
+                "}catch(e){return false;}}" +
+                "var nativeOpen=window.open;window.open=function(u,n,f){" +
+                "if(!u||isAd(String(u)))return null;" +
+                "try{var dest=new URL(String(u),location.href);if(dest.protocol==='http:'||dest.protocol==='https:'){location.href=dest.href;return window;}}catch(e){}" +
+                "return null;};" +
+                "document.addEventListener('click',function(e){var a=e.target&&e.target.closest?e.target.closest('a[target]'):null;" +
+                "if(!a)return;var target=(a.getAttribute('target')||'').toLowerCase();if(target==='_blank'){" +
+                "var href=a.href||a.getAttribute('href')||'';if(isAd(href)){e.preventDefault();e.stopImmediatePropagation();return;}" +
+                "if(/^https?:/i.test(href)){e.preventDefault();e.stopImmediatePropagation();location.href=href;}}},true);" +
+                "function clean(){try{var nodes=document.querySelectorAll('[class],[id]');for(var i=0;i<nodes.length;i++){" +
+                "var n=nodes[i],s=((n.id||'')+' '+(typeof n.className==='string'?n.className:'')).toLowerCase();" +
+                "if(/(^|[-_ ])(ad|ads|advert|advertisement|banner-ad|popup-ad|popunder)([-_ ]|$)/.test(s)){" +
+                "if(n.tagName==='IFRAME'||n.tagName==='INS'||n.tagName==='DIV'||n.tagName==='ASIDE')n.style.setProperty('display','none','important');}}}catch(e){}}" +
+                "clean();if(!window.__aboAdCleanTimer)window.__aboAdCleanTimer=setInterval(clean,1800);" +
+                "}catch(e){}})();";
+        view.evaluateJavascript(js, null);
     }
 
     private boolean isQFilmUrl(String value) {
