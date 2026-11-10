@@ -194,11 +194,12 @@ public final class AppUpdater {
                     c.disconnect();
                 }
 
+                final long finalDownloaded = downloaded;
                 MAIN.post(() -> {
                     progress.setIndeterminate(false);
                     progress.setProgress(1000);
                     status.setText("اكتمل التنزيل، جارٍ التحقق من ملف التحديث...");
-                    details.setText(formatBytes(downloaded) + "  •  اكتمل 100%");
+                    details.setText(formatBytes(finalDownloaded) + "  •  اكتمل 100%");
                 });
 
                 PackageInfo archive = activity.getPackageManager().getPackageArchiveInfo(
