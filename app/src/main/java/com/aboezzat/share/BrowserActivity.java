@@ -517,7 +517,9 @@ public class BrowserActivity extends Activity {
 
         // Support OAuth/login popup windows used by social websites.
         settings.setJavaScriptCanOpenWindowsAutomatically(true);
-        settings.setSupportMultipleWindows(false);
+        // Preserve the original multi-window behavior for non-QFilm sites.
+        // QFilm is switched to same-tab handling only when that domain loads.
+        settings.setSupportMultipleWindows(true);
 
         settings.setUseWideViewPort(true);
         settings.setLoadWithOverviewMode(true);
@@ -634,7 +636,8 @@ public class BrowserActivity extends Activity {
                     view.getSettings().setSupportMultipleWindows(false);
                     view.getSettings().setUserAgentString(getQFilmCompatibleUserAgent());
                 } else if (loadedUrl != null && loadedUrl.startsWith("http")) {
-                    view.getSettings().setSupportMultipleWindows(false);
+                    // Restore the established browser settings on every other site.
+                    view.getSettings().setSupportMultipleWindows(true);
                     view.getSettings().setUserAgentString("Mozilla/5.0 (Linux; Android 14; Mobile; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.6478.122 Mobile Safari/537.36");
                 }
                 if (getCurrentWebView() == view && loadedUrl != null
