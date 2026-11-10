@@ -496,6 +496,28 @@
                     android:textStyle="bold" />
             </LinearLayout>
 
+            <!-- 2. جهاز الاستقبال: اكتشاف أجهزة التلفزيون على الشبكة -->
+            <LinearLayout
+                android:id="@+id/menu_receiver"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:gravity="center_vertical"
+                android:clickable="true"
+                android:focusable="true">
+                <TextView
+                    android:layout_width="35dp"
+                    android:layout_height="wrap_content"
+                    android:text="📡"
+                    android:textSize="18sp" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="اكتشاف جهاز الاستقبال"
+                    android:textColor="#FFFFFF"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
             <!-- 2. ملفات الهاتف -->
             <LinearLayout
                 android:id="@+id/menu_local_media"
