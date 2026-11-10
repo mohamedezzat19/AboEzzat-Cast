@@ -1605,19 +1605,64 @@ public class BrowserActivity extends Activity {
             }
 
             Request req = buildReceiverPlayRequest(endpoint, videoTrackUrl, audioTrackUrl);
-            client.newCall(req).enqueue(new Callback() {
+            final String receiverEndpoint = endpoint;
+            AtomicBoolean requestHeadersSent = new AtomicBoolean(false);
+            OkHttpClient trackedClient = client.newBuilder()
+                    .eventListener(new okhttp3.EventListener() {
+                        @Override
+                        public void requestHeadersEnd(Call call, Request request) {
+                            requestHeadersSent.set(true);
+                        }
+                    }).build();
+
+            trackedClient.newCall(req).enqueue(new Callback() {
+                private void showResult(String message) {
+                    runOnUiThread(() -> Toast.makeText(
+                            BrowserActivity.this, message, Toast.LENGTH_SHORT).show());
+                }
+
+                private void confirmReceiverAfterAmbiguousFailure() {
+                    Request ping = new Request.Builder()
+                            .url(receiverEndpoint + "/?command=ping")
+                            .get()
+                            .build();
+                    client.newCall(ping).enqueue(new Callback() {
+                        @Override
+                        public void onFailure(Call pingCall, IOException pingError) {
+                            showResult(requestHeadersSent.get()
+                                    ? "تم إرسال طلب الفيديو والصوت، لكن تعذر تأكيد رد الشاشة"
+                                    : "تعذر الإرسال للشاشة، تأكد من الاتصال");
+                        }
+
+                        @Override
+                        public void onResponse(Call pingCall, Response pingResponse) {
+                            boolean receiverAlive = pingResponse.isSuccessful();
+                            pingResponse.close();
+                            if (receiverAlive && requestHeadersSent.get()) {
+                                showResult("تم إرسال الفيديو عالي الجودة مع الصوت ✓");
+                            } else if (receiverAlive) {
+                                showResult("الشاشة متصلة، لكن لم يتأكد إرسال مساري الوسائط");
+                            } else {
+                                showResult("تعذر تأكيد استقبال مساري الفيديو والصوت");
+                            }
+                        }
+                    });
+                }
+
                 @Override
                 public void onFailure(Call call, IOException e) {
-                    runOnUiThread(() -> Toast.makeText(BrowserActivity.this, "تعذر الإرسال للشاشة، تأكد من الاتصال", Toast.LENGTH_SHORT).show());
+                    confirmReceiverAfterAmbiguousFailure();
                 }
 
                 @Override
                 public void onResponse(Call call, Response response) {
                     boolean accepted = response.isSuccessful();
                     response.close();
-                    runOnUiThread(() -> Toast.makeText(BrowserActivity.this,
-                            accepted ? "تم إرسال الفيديو عالي الجودة مع الصوت ✓" : "الشاشة رفضت طلب الوسائط",
-                            Toast.LENGTH_SHORT).show());
+                    if (accepted) {
+                        showResult("تم إرسال الفيديو عالي الجودة مع الصوت ✓");
+                    } else {
+                        confirmReceiverAfterAmbiguousFailure();
+                    }
                 }
             });
         } catch (Exception e) {
