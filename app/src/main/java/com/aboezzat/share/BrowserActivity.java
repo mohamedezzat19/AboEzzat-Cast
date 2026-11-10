@@ -754,7 +754,7 @@ public class BrowserActivity extends Activity {
                 "if(window.__aboActiveCaptureInstalled)return;window.__aboActiveCaptureInstalled=true;" +
                 "var armed=false,activeKey='';" +
                 // Keep extended preload history only for Threads; preserve Instagram behavior.
-                "var isThreadsHost=/threads\\.net$/i.test(location.hostname||'');" +
+                "var isThreadsHost=/(?:threads\\.net|threads\\.com)$/i.test(location.hostname||'');" +
                 "var isTikTokLivePage=/tiktok\\.com$/i.test(location.hostname||'')&&/\\/live(?:[/?#]|$)/i.test(location.pathname||'');" +
                 "if(isThreadsHost||isTikTokLivePage){try{if(performance.setResourceTimingBufferSize)performance.setResourceTimingBufferSize(1500);}catch(e){}}" +
                 "var style=document.getElementById('abo-ezzat-adblock');if(!style){style=document.createElement('style');style.id='abo-ezzat-adblock';" +
@@ -868,7 +868,7 @@ public class BrowserActivity extends Activity {
                 addCapturedMedia(clean, cleanTitle, "🎵 مسار صوت (تم التحقق من الرابط)", posterUrl, 2);
             } else if (detectedType == 1) {
                 addCapturedMedia(clean, cleanTitle, "🎬 مسار الفيديو النشط", posterUrl, 1);
-            } else if (clean.toLowerCase().matches(".*\\\\.mp4(?:[?#].*)?$")) {
+            } else if (clean.toLowerCase().matches(".*\\.mp4(?:[?#].*)?$")) {
                 probeAndAddMp4(clean, cleanTitle, posterUrl);
             }
         }
