@@ -177,17 +177,7 @@ public class MainActivity extends Activity {
             }
         });
 
-        findViewById(R.id.btn_stop).setOnClickListener(v -> {
-            // Stop the local slideshow timer first, then stop playback on Receiver.
-            isSlideshowRunning = false;
-            slideHandler.removeCallbacks(slideRunnable);
-            currentSlideIndex = 0;
-            currentVideoIndex = 0;
-            selectedMediaUri = null;
-            persistMediaQueues();
-            sendRemoteCommand("stop");
-            Toast.makeText(this, "تم إرسال أمر إيقاف الفيديو ⏹", Toast.LENGTH_SHORT).show();
-        });
+        findViewById(R.id.btn_stop).setOnClickListener(v -> stopAndClearPlaybackQueues());
 
         findViewById(R.id.btn_rewind).setOnClickListener(v -> sendRemoteCommand("rw"));
         findViewById(R.id.btn_forward).setOnClickListener(v -> sendRemoteCommand("ff"));
@@ -424,6 +414,43 @@ public class MainActivity extends Activity {
             Toast.makeText(this, "فشل الاستعادة: " + e.getMessage(), Toast.LENGTH_LONG).show();
         }
     }
+    private void stopAndClearPlaybackQueues() {
+        // Stop every local playback mode and discard both persisted playlists.
+        isSlideshowRunning = false;
+        slideHandler.removeCallbacks(slideRunnable);
+        slideshowQueue.clear();
+        videoQueue.clear();
+        currentSlideIndex = 0;
+        currentVideoIndex = 0;
+        selectedMediaUri = null;
+        persistMediaQueues();
+
+        // Stop whatever is currently playing on the receiver, including web video.
+        sendRemoteCommand("stop");
+
+        View scroll = findViewById(R.id.main_content_scroll);
+        if (scroll instanceof android.widget.ScrollView) {
+            ((android.widget.ScrollView) scroll).smoothScrollTo(0, 0);
+        }
+        Toast.makeText(this, "تم إيقاف التشغيل ومسح قوائم الصور والفيديو والعودة للرئيسية ⏹",
+                Toast.LENGTH_SHORT).show();
+    }
+
+    private void clearBrowserHistory(SharedPreferences browserPrefs) {
+        SharedPreferences.Editor edit = browserPrefs.edit();
+        // Remove every history metadata key, not only URLs still present in the set.
+        for (String key : browserPrefs.getAll().keySet()) {
+            if (key.startsWith("history_title_") || key.startsWith("history_time_")
+                    || key.startsWith("visit_count_")) {
+                edit.remove(key);
+            }
+        }
+        edit.remove("browser_history");
+        edit.putLong("history_cleared_at", System.currentTimeMillis());
+        // Commit before returning so a reopen/restart cannot observe stale history.
+        edit.commit();
+    }
+
     private void showBrowserHistory(boolean mostVisited) {
         SharedPreferences browserPrefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
         Set<String> saved = new HashSet<>(browserPrefs.getStringSet("browser_history", new HashSet<String>()));
@@ -459,13 +486,7 @@ public class MainActivity extends Activity {
                 .setTitle(mostVisited ? "الأكثر زيارة" : "سجل التصفح")
                 .setView(listView)
                 .setNeutralButton("مسح السجل كله", (d, w) -> {
-                    SharedPreferences.Editor edit = browserPrefs.edit();
-                    for (String url : urls) {
-                        edit.remove("history_title_" + url).remove("history_time_" + url)
-                                .remove("visit_count_" + url);
-                    }
-                    edit.putLong("history_cleared_at", System.currentTimeMillis());
-                    edit.remove("browser_history").apply();
+                    clearBrowserHistory(browserPrefs);
                     Toast.makeText(this, "تم مسح سجل التصفح بالكامل", Toast.LENGTH_SHORT).show();
                 })
                 .setNegativeButton("إغلاق", null)
@@ -641,11 +662,7 @@ public class MainActivity extends Activity {
                 .setTitle("مسح سجل التصفح بالكامل؟")
                 .setMessage("سيتم حذف جميع الصفحات المحفوظة في السجل.")
                 .setPositiveButton("مسح", (d, w) -> {
-                    SharedPreferences.Editor edit = browserPrefs.edit();
-                    for (String url : historyUrls) edit.remove("history_title_" + url)
-                            .remove("history_time_" + url).remove("visit_count_" + url);
-                    edit.putLong("history_cleared_at", System.currentTimeMillis());
-                    edit.remove("browser_history").apply();
+                    clearBrowserHistory(browserPrefs);
                     Toast.makeText(MainActivity.this, "تم مسح سجل التصفح بالكامل", Toast.LENGTH_SHORT).show();
                     showLibraryDialog();
                 }).setNegativeButton("إلغاء", null).show());
@@ -1126,6 +1143,8 @@ private void showManualIpDialog() {
         if (resultCode == RESULT_OK && data != null) {
             if (requestCode == PICK_MEDIA_REQUEST) {
                 videoQueue.clear();
+                slideshowQueue.clear();
+                isSlideshowRunning = false;
                 ClipData clipData = data.getClipData();
 
                 if (clipData != null) {
@@ -1151,6 +1170,8 @@ private void showManualIpDialog() {
                 }
             } else if (requestCode == PICK_SLIDESHOW_REQUEST) {
                 slideshowQueue.clear();
+                videoQueue.clear();
+                currentVideoIndex = 0;
                 ClipData clipData = data.getClipData();
 
                 if (clipData != null) {
