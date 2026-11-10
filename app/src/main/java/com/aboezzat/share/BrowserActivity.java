@@ -774,14 +774,14 @@ public class BrowserActivity extends Activity {
                 "for(var i=0;i<entries.length;i++){var e=entries[i],u=e.name||'',l=u.toLowerCase();if(!/^https?:/i.test(u))continue;" +
                 "if(now-e.startTime>25000)continue;" +
                 "if(/\\.(jpg|jpeg|png|webp|gif|bmp|svg|ts|m4s|js|css)(?:[?#]|$)/i.test(l))continue;" +
-                "var audio=/mime=audio|type=audio|contenttype=audio|dash_ln_heaac|\\.(aac|m4a|mp3|opus|ogg)(?:[?#]|$)/i.test(l);" +
-                "var video=/mime=video|type=video|contenttype=video|video\\/tos|pull-|videoplayback|\\.(mp4|m4v|m3u8|mpd|webm|flv|mov)(?:[?#]|$)/i.test(l);" +
+                "var audio=/mime(?:_|-)?type=audio|mime=audio|type=audio|content[_-]?type=audio|dash_ln_heaac|audio_dash|\\.(aac|m4a|mp3|opus|ogg)(?:[?#]|$)/i.test(l);" +
+                "var video=/mime(?:_|-)?type=video|mime=video|type=video|content[_-]?type=video|video\\/tos|pull-|videoplayback|\\.(mp4|m4v|m3u8|mpd|webm|flv|mov)(?:[?#]|$)/i.test(l);" +
                 "if(!audio&&!video)continue;" +
                 "var score=(e.initiatorType==='video'||e.initiatorType==='media'?40:0)+(now-e.startTime<8000?20:0)+" +
                 "(/\\.(m3u8|mpd)(?:[?#]|$)/i.test(l)?25:0)+(audio?10:0);" +
                 "var item={url:u,score:score,time:e.startTime};" +
-                "if(audio){if(!bestAudio||item.score>bestAudio.score||item.time>bestAudio.time)bestAudio=item;}" +
-                "else if(video){if(!bestVideo||item.score>bestVideo.score||item.time>bestVideo.time)bestVideo=item;}" +
+                "if(audio){if(!bestAudio||item.score>bestAudio.score||(item.score===bestAudio.score&&item.time>bestAudio.time))bestAudio=item;}" +
+                "else if(video){if(!bestVideo||item.score>bestVideo.score||(item.score===bestVideo.score&&item.time>bestVideo.time))bestVideo=item;}" +
                 "}" +
                 "if(bestVideo)window.AboEzzatBridge.onVideoPlayingWithPoster(bestVideo.url,titleFor(v),posterFor(v));" +
                 "if(bestAudio)window.AboEzzatBridge.onVideoPlayingWithPoster(bestAudio.url,titleFor(v),posterFor(v));" +
@@ -887,8 +887,12 @@ public class BrowserActivity extends Activity {
         String lower = mediaUrl.toLowerCase();
         if (lower.matches(".*\\.(jpg|jpeg|png|webp|gif|bmp|svg|ts|m4s|js|css)(?:[?#].*)?$")) return 0;
 
-        boolean audio = lower.contains("mime=audio") || lower.contains("type=audio")
-                || lower.contains("contenttype=audio") || lower.contains("dash_ln_heaac")
+        // Instagram/Threads frequently expose DASH tracks as extension-less CDN
+        // URLs whose media type is carried in mime_type rather than mime.
+        boolean audio = lower.contains("mime_type=audio") || lower.contains("mime-type=audio")
+                || lower.contains("mime=audio") || lower.contains("type=audio")
+                || lower.contains("contenttype=audio") || lower.contains("content_type=audio")
+                || lower.contains("dash_ln_heaac") || lower.contains("audio_dash")
                 || lower.matches(".*\\.(aac|m4a|mp3|opus|ogg)(?:[?#].*)?$");
         if (audio) return 2;
 
@@ -897,14 +901,36 @@ public class BrowserActivity extends Activity {
         boolean tiktokLiveStream = lower.contains("pull-")
                 || (lower.contains("live") && (lower.contains("video") || lower.contains("stream")));
         boolean video = lower.matches(".*\\.(mp4|m4v|m3u8|mpd|webm|flv|mov)(?:[?#].*)?$")
+                || lower.contains("mime_type=video") || lower.contains("mime-type=video")
                 || lower.contains("mime=video") || lower.contains("type=video")
-                || lower.contains("contenttype=video") || lower.contains("videoplayback")
-                || lower.contains("video/tos") || lower.contains("/video/tos/") || tiktokLiveStream;
+                || lower.contains("contenttype=video") || lower.contains("content_type=video")
+                || lower.contains("videoplayback") || lower.contains("video/tos")
+                || lower.contains("/video/tos/") || tiktokLiveStream;
         return video ? 1 : 0;
+    }
+
+    private int capturedUrlConfidence(String url, int mediaType) {
+        if (url == null) return 0;
+        String lower = url.toLowerCase();
+        if (mediaType == 2) {
+            if (lower.contains("mime_type=audio") || lower.contains("mime-type=audio")
+                    || lower.contains("mime=audio") || lower.contains("content_type=audio")) return 100;
+            if (lower.contains("dash_ln_heaac") || lower.contains("audio_dash")
+                    || lower.matches(".*\\.(aac|m4a|mp3|opus|ogg)(?:[?#].*)?$")) return 85;
+        } else if (mediaType == 1) {
+            if (lower.contains("mime_type=video") || lower.contains("mime-type=video")
+                    || lower.contains("mime=video") || lower.contains("content_type=video")) return 100;
+            if (lower.contains("video/tos") || lower.contains("/video/tos/")
+                    || lower.contains("videoplayback")) return 90;
+            if (lower.matches(".*\\.(mp4|m4v|m3u8|mpd|webm|flv|mov)(?:[?#].*)?$")
+                    || lower.contains("pull-")) return 85;
+        }
+        return 10;
     }
 
     private synchronized void addCapturedMedia(String url, String title, String format, String posterUrl, int mediaType) {
         if ((mediaType != 1 && mediaType != 2) || activePlaybackKey.isEmpty()) return;
+        boolean added = false;
         synchronized (capturedList) {
             for (CapturedMedia item : capturedList) {
                 if (item.url.equalsIgnoreCase(url)) {
@@ -914,9 +940,21 @@ public class BrowserActivity extends Activity {
                     }
                     return;
                 }
-                // A single active player can contribute at most one video and
-                // one separate audio track. Never accumulate feed/list resources.
-                if (item.mediaType == mediaType) return;
+                // Keep one track of each kind, but allow a later, explicitly typed
+                // Instagram/Threads DASH URL to replace an early generic player URL.
+                if (item.mediaType == mediaType) {
+                    if (capturedUrlConfidence(url, mediaType) > capturedUrlConfidence(item.url, mediaType)) {
+                        item.url = url;
+                        item.format = format;
+                        if (title != null && !title.trim().isEmpty()) item.title = title.trim();
+                        if (posterUrl != null && !posterUrl.isEmpty()) {
+                            item.posterUrl = posterUrl;
+                            item.posterBitmap = null;
+                            loadThumbnailAsync(item);
+                        }
+                    }
+                    return;
+                }
             }
 
             String cleanTitle = (title != null && !title.trim().isEmpty()) ? title.trim() : "فيديو قيد التشغيل";
@@ -924,18 +962,21 @@ public class BrowserActivity extends Activity {
             CapturedMedia newMedia = new CapturedMedia(url, cleanTitle, format, posterUrl, mediaType);
             newMedia.isSelected = true;
             capturedList.add(newMedia);
+            added = true;
             if (posterUrl != null && !posterUrl.isEmpty()) loadThumbnailAsync(newMedia);
         }
 
-        runOnUiThread(() -> {
-            btnCast.setVisibility(View.VISIBLE);
-            btnCast.setText("📺 " + capturedList.size());
-            Animation blink = new AlphaAnimation(0.3f, 1.0f);
-            blink.setDuration(350);
-            blink.setRepeatMode(Animation.REVERSE);
-            blink.setRepeatCount(2);
-            btnCast.startAnimation(blink);
-        });
+        if (added) {
+            runOnUiThread(() -> {
+                btnCast.setVisibility(View.VISIBLE);
+                btnCast.setText("📺 " + capturedList.size());
+                Animation blink = new AlphaAnimation(0.3f, 1.0f);
+                blink.setDuration(350);
+                blink.setRepeatMode(Animation.REVERSE);
+                blink.setRepeatCount(2);
+                btnCast.startAnimation(blink);
+            });
+        }
     }
 
     private void autoSelectTracks() {
