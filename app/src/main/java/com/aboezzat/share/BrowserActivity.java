@@ -882,7 +882,7 @@ public class BrowserActivity extends Activity {
                 "if(a)window.AboEzzatBridge.onCapturedAudioTrack(u,title,'');" +
                 "else if(v){if(/\\.mp4(?:[?#]|$)/i.test(l))window.AboEzzatBridge.onCapturedCandidateTrack(u,title,'');" +
                 "else window.AboEzzatBridge.onCapturedVideoTrack(u,title,'');}}" +
-                "var fs=d.querySelectorAll('iframe,frame');for(var k=0;k<fs.length;k++){try{if(fs[k].contentWindow)scan(fs[k].contentWindow,seen);}catch(e){}}"
+                "var fs=d.querySelectorAll('iframe,frame');for(var k=0;k<fs.length;k++){try{if(fs[k].contentWindow)scan(fs[k].contentWindow,seen);}catch(e){}}" +
                 "}catch(e){}}" +
                 "function tick(){scan(window,[]);}document.addEventListener('playing',tick,true);" +
                 "document.addEventListener('loadedmetadata',tick,true);window.addEventListener('load',tick,true);" +
