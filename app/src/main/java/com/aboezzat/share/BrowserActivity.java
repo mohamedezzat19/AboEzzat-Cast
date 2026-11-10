@@ -986,6 +986,19 @@ public class BrowserActivity extends Activity {
         synchronized (capturedList) {
             for (CapturedMedia item : capturedList) {
                 if (item.url.equalsIgnoreCase(url)) {
+                    // An active <video> element is authoritative: promote a URL
+                    // previously guessed as audio to a video track when necessary.
+                    if (mediaType == 1 && item.mediaType != 1) {
+                        item.mediaType = 1;
+                        item.isAudio = false;
+                        item.format = format;
+                        item.isSelected = true;
+                    } else if (mediaType == 2 && item.mediaType != 2) {
+                        item.mediaType = 2;
+                        item.isAudio = true;
+                        item.format = format;
+                        item.isSelected = true;
+                    }
                     if ((item.posterUrl == null || item.posterUrl.isEmpty()) && posterUrl != null && !posterUrl.isEmpty()) {
                         item.posterUrl = posterUrl;
                         loadThumbnailAsync(item);
