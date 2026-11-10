@@ -768,7 +768,7 @@ public class BrowserActivity extends Activity {
                 "function visible(v){return area(v)>Math.max(12000,(innerWidth*innerHeight)*0.025);}" +
                 "function bridgeStart(v,key){var t=titleFor(v),p=posterFor(v);" +
                 "if(key!==activeKey){activeKey=key;window.AboEzzatBridge.onActiveVideoChanged(key,t,p);}" +
-                "var src=v.currentSrc||v.src||'';if(/^https?:/i.test(src))window.AboEzzatBridge.onVideoPlayingWithPoster(src,t,p);" +
+                "var src=v.currentSrc||v.src||'';if(/^https?:/i.test(src))window.AboEzzatBridge.onActiveVideoTrack(src,t,p);" +
                 "}" +
                 "function scanResources(v){try{var entries=performance.getEntriesByType('resource'),now=performance.now();" +
                 "var videoTracks=[],bestAudio=null;" +
@@ -785,8 +785,8 @@ public class BrowserActivity extends Activity {
                 "else if(video&&!videoTracks.some(function(x){return x.url===u;})){videoTracks.push(item);}" +
                 "}" +
                 "videoTracks.sort(function(a,b){return b.score-a.score||b.time-a.time;});" +
-                "for(var j=0;j<Math.min(videoTracks.length,2);j++)window.AboEzzatBridge.onVideoPlayingWithPoster(videoTracks[j].url,titleFor(v),posterFor(v));" +
-                "if(bestAudio)window.AboEzzatBridge.onVideoPlayingWithPoster(bestAudio.url,titleFor(v),posterFor(v));" +
+                "for(var j=0;j<Math.min(videoTracks.length,2);j++)window.AboEzzatBridge.onCapturedVideoTrack(videoTracks[j].url,titleFor(v),posterFor(v));" +
+                "if(bestAudio)window.AboEzzatBridge.onCapturedAudioTrack(bestAudio.url,titleFor(v),posterFor(v));" +
                 "}catch(e){}}" +
                 "function pick(){try{if(!armed)return;var vids=[].slice.call(document.querySelectorAll('video'));" +
                 "var active=vids.filter(function(v){return !v.paused&&!v.ended&&v.readyState>=2&&visible(v);});" +
@@ -839,6 +839,33 @@ public class BrowserActivity extends Activity {
                     clearCapturedMedia();
                 }
             }
+        }
+
+        @JavascriptInterface
+        public void onActiveVideoTrack(String mediaUrl, String title, String posterUrl) {
+            if (activePlaybackKey.isEmpty() || mediaUrl == null || !mediaUrl.startsWith("http")) return;
+            String clean = mediaUrl.replaceAll("&bytestart=\\d+", "")
+                    .replaceAll("&byteend=\\d+", "");
+            String cleanTitle = title == null || title.trim().isEmpty() ? "فيديو قيد التشغيل" : title.trim();
+            addCapturedMedia(clean, cleanTitle, "🎬 مسار الفيديو النشط", posterUrl, 1);
+        }
+
+        @JavascriptInterface
+        public void onCapturedVideoTrack(String mediaUrl, String title, String posterUrl) {
+            if (activePlaybackKey.isEmpty() || mediaUrl == null || !mediaUrl.startsWith("http")) return;
+            String clean = mediaUrl.replaceAll("&bytestart=\\d+", "")
+                    .replaceAll("&byteend=\\d+", "");
+            String cleanTitle = title == null || title.trim().isEmpty() ? "فيديو قيد التشغيل" : title.trim();
+            addCapturedMedia(clean, cleanTitle, "🎬 مسار فيديو", posterUrl, 1);
+        }
+
+        @JavascriptInterface
+        public void onCapturedAudioTrack(String mediaUrl, String title, String posterUrl) {
+            if (activePlaybackKey.isEmpty() || mediaUrl == null || !mediaUrl.startsWith("http")) return;
+            String clean = mediaUrl.replaceAll("&bytestart=\\d+", "")
+                    .replaceAll("&byteend=\\d+", "");
+            String cleanTitle = title == null || title.trim().isEmpty() ? "فيديو قيد التشغيل" : title.trim();
+            addCapturedMedia(clean, cleanTitle, "🎵 مسار صوت منفصل", posterUrl, 2);
         }
 
         @JavascriptInterface
@@ -959,6 +986,19 @@ public class BrowserActivity extends Activity {
         synchronized (capturedList) {
             for (CapturedMedia item : capturedList) {
                 if (item.url.equalsIgnoreCase(url)) {
+                    // An active <video> element is authoritative: promote a URL
+                    // previously guessed as audio to a video track when necessary.
+                    if (mediaType == 1 && item.mediaType != 1) {
+                        item.mediaType = 1;
+                        item.isAudio = false;
+                        item.format = format;
+                        item.isSelected = true;
+                    } else if (mediaType == 2 && item.mediaType != 2) {
+                        item.mediaType = 2;
+                        item.isAudio = true;
+                        item.format = format;
+                        item.isSelected = true;
+                    }
                     if ((item.posterUrl == null || item.posterUrl.isEmpty()) && posterUrl != null && !posterUrl.isEmpty()) {
                         item.posterUrl = posterUrl;
                         loadThumbnailAsync(item);
@@ -1236,8 +1276,8 @@ public class BrowserActivity extends Activity {
                 "var z=/mime=video|type=video|contenttype=video|video\\/tos|pull-|videoplayback|\\.(mp4|m4v|m3u8|mpd|webm|flv|mov)(?:[?#]|$)/i.test(l);" +
                 "if(!a&&!z)continue;var q=(e.initiatorType==='video'||e.initiatorType==='media'?50:0)+(now-e.startTime<8000?20:0);" +
                 "if(a){if(!ba||q>ba.q)ba={u:u,q:q};}else if(z){if(!bv||q>bv.q)bv={u:u,q:q};}}" +
-                "if(bv)window.AboEzzatBridge.onVideoPlayingWithPoster(bv.u,t,v.poster||'');" +
-                "if(ba)window.AboEzzatBridge.onVideoPlayingWithPoster(ba.u,t,v.poster||'');" +
+                "if(bv)window.AboEzzatBridge.onCapturedVideoTrack(bv.u,t,v.poster||'');" +
+                "if(ba)window.AboEzzatBridge.onCapturedAudioTrack(ba.u,t,v.poster||'');" +
                 "}catch(e){}})()";
         current.evaluateJavascript(js, null);
     }
