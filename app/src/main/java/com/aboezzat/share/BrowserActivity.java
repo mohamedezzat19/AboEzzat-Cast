@@ -795,7 +795,7 @@ public class BrowserActivity extends Activity {
                 "var armed=false,activeKey='',activeSince=0,seenResources={};" +
                 // Keep extended preload history only for Threads; preserve Instagram behavior.
                 "var isThreadsHost=/(?:threads\\.net|threads\\.com)$/i.test(location.hostname||'');" +
-                "var isTikTokLivePage=/tiktok\\.com$/i.test(location.hostname||'')&&/\\/live(?:[/?#]|$)/i.test(location.pathname||'');" +
+                "var isTikTokLivePage=/(?:^|\\.)tiktok\\.com$/i.test(location.hostname||'')&&/\\/live(?:[/?#]|$)/i.test(location.pathname||'');" +
                 "if(isThreadsHost||isTikTokLivePage){try{if(performance.setResourceTimingBufferSize)performance.setResourceTimingBufferSize(1500);}catch(e){}}" +
                 "var style=document.getElementById('abo-ezzat-adblock');if(!style){style=document.createElement('style');style.id='abo-ezzat-adblock';" +
                 "style.innerHTML='.ytp-ad-overlay-container,.ytp-ad-message-container,ytd-promoted-sparkles-web-renderer,ytd-banner-promo-renderer,ytd-ad-slot-renderer,.ad-container,.ad-div,ytd-in-feed-ad-layout-renderer,ytm-promoted-sparkles-web-renderer,.ytp-ad-action-interstitial,[id^=\\\"google_ads_\\\"],iframe[src*=\\\"doubleclick\\\"]{display:none!important;width:0!important;height:0!important}';if(document.head)document.head.appendChild(style);}" +
