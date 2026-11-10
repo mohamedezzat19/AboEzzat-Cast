@@ -10,6 +10,11 @@ import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
 import android.widget.Toast;
+import android.widget.ProgressBar;
+import android.widget.LinearLayout;
+import android.widget.TextView;
+import android.view.Gravity;
+import android.view.ViewGroup;
 import androidx.core.content.FileProvider;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -94,7 +99,50 @@ public final class AppUpdater {
         }
     }
 
+    private int dp(float value) {
+        return (int) (value * activity.getResources().getDisplayMetrics().density + 0.5f);
+    }
+
+    private String formatBytes(long bytes) {
+        if (bytes < 1024) return bytes + " B";
+        if (bytes < 1024L * 1024L) return String.format(java.util.Locale.US, "%.0f KB", bytes / 1024.0);
+        return String.format(java.util.Locale.US, "%.2f MB", bytes / (1024.0 * 1024.0));
+    }
+
     private void download(String url, long version) {
+        LinearLayout panel = new LinearLayout(activity);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(dp(24), dp(12), dp(24), dp(8));
+
+        TextView status = new TextView(activity);
+        status.setText("جارٍ الاتصال بخادم التحديث...");
+        status.setTextSize(15);
+        panel.addView(status, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        ProgressBar progress = new ProgressBar(activity, null, android.R.attr.progressBarStyleHorizontal);
+        progress.setMax(1000);
+        progress.setIndeterminate(true);
+        LinearLayout.LayoutParams progressParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(12));
+        progressParams.topMargin = dp(16);
+        progressParams.bottomMargin = dp(12);
+        panel.addView(progress, progressParams);
+
+        TextView details = new TextView(activity);
+        details.setGravity(Gravity.CENTER_HORIZONTAL);
+        details.setText("في انتظار بدء التنزيل...");
+        details.setTextSize(14);
+        panel.addView(details, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        AlertDialog progressDialog = new AlertDialog.Builder(activity)
+                .setTitle("تنزيل التحديث " + version)
+                .setView(panel)
+                .setCancelable(false)
+                .create();
+        progressDialog.show();
+
         IO.execute(() -> {
             File apk = new File(activity.getExternalFilesDir(null), "aboezzat-classic-update-" + version + ".apk");
             try {
@@ -105,13 +153,54 @@ public final class AppUpdater {
                 c.setRequestProperty("User-Agent", "AboEzzat-Share-Classic-Updater");
                 if (c.getResponseCode() != HttpURLConnection.HTTP_OK)
                     throw new IllegalStateException("HTTP " + c.getResponseCode());
+
+                final long total = c.getContentLength();
+                MAIN.post(() -> {
+                    progress.setIndeterminate(total <= 0);
+                    status.setText("جارٍ تنزيل ملف التحديث...");
+                    details.setText(total > 0 ? "0%  •  0 / " + formatBytes(total) + "  •  السرعة: تُحسب..." :
+                            "تم بدء التنزيل  •  الحجم غير محدد من الخادم");
+                });
+
+                long downloaded = 0L;
+                long sampleBytes = 0L;
+                long sampleTime = System.currentTimeMillis();
+                long lastUiTime = 0L;
                 try (InputStream in = c.getInputStream(); FileOutputStream out = new FileOutputStream(apk)) {
                     byte[] b = new byte[8192];
                     int n;
-                    while ((n = in.read(b)) != -1) out.write(b, 0, n);
+                    while ((n = in.read(b)) != -1) {
+                        out.write(b, 0, n);
+                        downloaded += n;
+                        long now = System.currentTimeMillis();
+                        if (now - lastUiTime >= 300) {
+                            final long currentBytes = downloaded;
+                            final long elapsed = Math.max(1L, now - sampleTime);
+                            final long speed = (downloaded - sampleBytes) * 1000L / elapsed;
+                            final int percent = total > 0 ? (int) Math.min(1000L, downloaded * 1000L / total) : 0;
+                            MAIN.post(() -> {
+                                if (total > 0) progress.setProgress(percent);
+                                details.setText((total > 0 ? (percent / 10) + "." + (percent % 10) + "%  •  " : "") +
+                                        formatBytes(currentBytes) + (total > 0 ? " / " + formatBytes(total) : "") +
+                                        "  •  السرعة: " + formatBytes(speed) + "/ث");
+                            });
+                            sampleBytes = downloaded;
+                            sampleTime = now;
+                            lastUiTime = now;
+                        }
+                    }
+                    out.flush();
                 } finally {
                     c.disconnect();
                 }
+
+                final long finalDownloaded = downloaded;
+                MAIN.post(() -> {
+                    progress.setIndeterminate(false);
+                    progress.setProgress(1000);
+                    status.setText("اكتمل التنزيل، جارٍ التحقق من ملف التحديث...");
+                    details.setText(formatBytes(finalDownloaded) + "  •  اكتمل 100%");
+                });
 
                 PackageInfo archive = activity.getPackageManager().getPackageArchiveInfo(
                         apk.getAbsolutePath(), android.content.pm.PackageManager.GET_META_DATA);
@@ -121,13 +210,19 @@ public final class AppUpdater {
                         ? archive.getLongVersionCode() : archive.versionCode;
                 if (downloadedCode <= installedVersionCode() || downloadedCode < version)
                     throw new IllegalStateException("Downloaded APK is not a newer expected build");
-                MAIN.post(() -> install(apk));
+                MAIN.post(() -> {
+                    progressDialog.dismiss();
+                    install(apk);
+                });
             } catch (Exception e) {
                 if (apk.exists()) apk.delete();
                 android.util.Log.e("AboEzzatUpdater", "Classic update validation failed", e);
-                MAIN.post(() -> Toast.makeText(activity,
-                        "فشل تنزيل التحديث أو التحقق من ملفه. لم يتم تثبيت شيء.",
-                        Toast.LENGTH_LONG).show());
+                MAIN.post(() -> {
+                    if (progressDialog.isShowing()) progressDialog.dismiss();
+                    Toast.makeText(activity,
+                            "فشل تنزيل التحديث أو التحقق من ملفه. لم يتم تثبيت شيء.",
+                            Toast.LENGTH_LONG).show();
+                });
             }
         });
     }
