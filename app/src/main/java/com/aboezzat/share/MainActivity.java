@@ -376,20 +376,35 @@ public class MainActivity extends Activity {
     }
 
     private void exportSettings(Uri uri) {
+        SharedPreferences browserPrefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
         try (java.io.OutputStream out = getContentResolver().openOutputStream(uri)) {
             if (out == null) throw new IOException("تعذر فتح الملف");
             org.json.JSONObject json = new org.json.JSONObject();
+            json.put("format", "AboEzzatCastDrawerBackup");
+            json.put("version", 2);
             json.put("tv_ip", prefs.getString("tv_ip", ""));
-            json.put("custom_sites", new org.json.JSONArray(new ArrayList<>(prefs.getStringSet("custom_sites", new HashSet<String>()))));
             json.put("dark_mode", prefs.getBoolean("dark_mode", true));
+            json.put("custom_sites", new org.json.JSONArray(new ArrayList<>(prefs.getStringSet("custom_sites", new HashSet<String>()))));
+            json.put("browser_history", new org.json.JSONArray(new ArrayList<>(browserPrefs.getStringSet("browser_history", new HashSet<String>()))));
+            json.put("bookmarks", new org.json.JSONArray(new ArrayList<>(browserPrefs.getStringSet("custom_sites", new HashSet<String>()))));
+            org.json.JSONObject metadata = new org.json.JSONObject();
+            for (String url : browserPrefs.getStringSet("browser_history", new HashSet<String>())) {
+                org.json.JSONObject item = new org.json.JSONObject();
+                item.put("title", browserPrefs.getString("history_title_" + url, url));
+                item.put("time", browserPrefs.getLong("history_time_" + url, 0));
+                item.put("visits", browserPrefs.getInt("visit_count_" + url, 0));
+                metadata.put(url, item);
+            }
+            json.put("history_metadata", metadata);
             out.write(json.toString(2).getBytes(java.nio.charset.StandardCharsets.UTF_8));
-            Toast.makeText(this, "تم تصدير الإعدادات", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "تم تصدير إعدادات وبيانات الستارة", Toast.LENGTH_SHORT).show();
         } catch (Exception e) {
             Toast.makeText(this, "فشل التصدير: " + e.getMessage(), Toast.LENGTH_LONG).show();
         }
     }
 
     private void importSettings(Uri uri) {
+        SharedPreferences browserPrefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
         try (java.io.InputStream in = getContentResolver().openInputStream(uri)) {
             if (in == null) throw new IOException("تعذر قراءة الملف");
             java.io.ByteArrayOutputStream buffer = new java.io.ByteArrayOutputStream();
@@ -397,6 +412,7 @@ public class MainActivity extends Activity {
             while ((count = in.read(bytes)) != -1) buffer.write(bytes, 0, count);
             org.json.JSONObject json = new org.json.JSONObject(buffer.toString("UTF-8"));
             SharedPreferences.Editor edit = prefs.edit();
+            SharedPreferences.Editor browserEdit = browserPrefs.edit();
             if (json.has("tv_ip")) edit.putString("tv_ip", json.optString("tv_ip", ""));
             if (json.has("dark_mode")) edit.putBoolean("dark_mode", json.optBoolean("dark_mode", true));
             if (json.has("custom_sites")) {
@@ -405,11 +421,36 @@ public class MainActivity extends Activity {
                 if (array != null) for (int i = 0; i < array.length(); i++) sites.add(array.optString(i));
                 edit.putStringSet("custom_sites", sites);
             }
+            if (json.has("browser_history")) {
+                org.json.JSONArray array = json.optJSONArray("browser_history");
+                Set<String> history = new HashSet<>();
+                if (array != null) for (int i = 0; i < array.length(); i++) history.add(array.optString(i));
+                browserEdit.putStringSet("browser_history", history);
+            }
+            if (json.has("bookmarks")) {
+                org.json.JSONArray array = json.optJSONArray("bookmarks");
+                Set<String> bookmarks = new HashSet<>();
+                if (array != null) for (int i = 0; i < array.length(); i++) bookmarks.add(array.optString(i));
+                browserEdit.putStringSet("custom_sites", bookmarks);
+            }
+            org.json.JSONObject metadata = json.optJSONObject("history_metadata");
+            if (metadata != null) {
+                java.util.Iterator<String> keys = metadata.keys();
+                while (keys.hasNext()) {
+                    String url = keys.next();
+                    org.json.JSONObject item = metadata.optJSONObject(url);
+                    if (item == null) continue;
+                    browserEdit.putString("history_title_" + url, item.optString("title", url));
+                    browserEdit.putLong("history_time_" + url, item.optLong("time", 0));
+                    browserEdit.putInt("visit_count_" + url, item.optInt("visits", 0));
+                }
+            }
             edit.apply();
+            browserEdit.apply();
             if (etTvIp != null) etTvIp.setText(prefs.getString("tv_ip", ""));
             updateReceiverStatus();
             applyDarkMode(findViewById(R.id.drawer_layout), prefs.getBoolean("dark_mode", true));
-            Toast.makeText(this, "تم استعادة الإعدادات", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "تمت استعادة إعدادات الستارة والمفضلة والسجل", Toast.LENGTH_LONG).show();
         } catch (Exception e) {
             Toast.makeText(this, "فشل الاستعادة: " + e.getMessage(), Toast.LENGTH_LONG).show();
         }
