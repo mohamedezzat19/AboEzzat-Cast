@@ -138,6 +138,40 @@ public class BrowserActivity extends Activity {
     private String lastDiscoveredTitle = "";
     // Only capture resources after the user activates a visible video player.
     private volatile String activePlaybackKey = "";
+    // Isolated manual capture window for generic embedded players; never armed by share-sheet routes.
+    private volatile long manualSniffUntilMs = 0L;
+    // Automatic generic capture is armed only for ordinary web players and TikTok LIVE.
+    private volatile long genericAutoSniffUntilMs = 0L;
+
+    private boolean isManualSniffActive() {
+        return System.currentTimeMillis() <= manualSniffUntilMs;
+    }
+
+    private boolean isGenericAutoSniffActive() {
+        return System.currentTimeMillis() <= genericAutoSniffUntilMs;
+    }
+
+    private boolean shouldAutoCaptureGenericPage(String url) {
+        if (url == null || !url.startsWith("http")) return false;
+        try {
+            Uri uri = Uri.parse(url);
+            String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase();
+            String path = uri.getPath() == null ? "" : uri.getPath().toLowerCase();
+            if (host.equals("tiktok.com") || host.endsWith(".tiktok.com")) {
+                return path.matches(".*\\/live(?:\\/.*)?$");
+            }
+            // Keep existing platform-specific capture paths isolated and untouched.
+            if (host.equals("facebook.com") || host.endsWith(".facebook.com")
+                    || host.equals("fb.watch") || host.equals("instagram.com") || host.endsWith(".instagram.com")
+                    || host.equals("threads.net") || host.endsWith(".threads.net")
+                    || host.equals("threads.com") || host.endsWith(".threads.com")
+                    || host.equals("x.com") || host.endsWith(".x.com")
+                    || host.equals("twitter.com") || host.endsWith(".twitter.com")) return false;
+            return true;
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
 
     private final List<String> adDomains = Arrays.asList(
             "doubleclick.net", "googleads", "pagead2", "adservice.google",
@@ -567,7 +601,7 @@ public class BrowserActivity extends Activity {
 
                 // Ignore every page/list/thumbnail request until a specific visible
                 // player has been activated by the user in the browser.
-                if (view == getCurrentWebView() && !activePlaybackKey.isEmpty()) {
+                if (view == getCurrentWebView() && (!activePlaybackKey.isEmpty() || isManualSniffActive() || isGenericAutoSniffActive())) {
                     boolean isJunk = lowerUrl.matches(".*\\.(jpg|jpeg|png|webp|gif|bmp|svg|ts|m4s|js|css)(?:[?#].*)?$")
                             || lowerUrl.contains("preview") || lowerUrl.contains("thumbnail")
                             || lowerUrl.contains("google_ads") || lowerUrl.contains("ad-interrupting");
@@ -600,6 +634,9 @@ public class BrowserActivity extends Activity {
                 if (getCurrentWebView() == view && loadedUrl != null
                         && loadedUrl.startsWith("http")) {
                     activePlaybackKey = "";
+                    manualSniffUntilMs = 0L;
+                    genericAutoSniffUntilMs = shouldAutoCaptureGenericPage(loadedUrl)
+                            ? System.currentTimeMillis() + 10 * 60 * 1000L : 0L;
                     clearCapturedMedia();
                 }
             }
@@ -613,6 +650,9 @@ public class BrowserActivity extends Activity {
                 }
                 injectAdKiller(view);
                 injectTikTokLiveSniffer(view);
+                if (isGenericAutoSniffActive() && shouldAutoCaptureGenericPage(loadedUrl)) {
+                    injectGenericAutoCapture(view);
+                }
             }
         });
 
@@ -823,6 +863,34 @@ public class BrowserActivity extends Activity {
         view.evaluateJavascript(js, null);
     }
 
+    // Automatic generic player monitor. It is installed only on non-social web-player
+    // pages (plus TikTok LIVE), so existing platform-specific sniffers remain isolated.
+    private void injectGenericAutoCapture(WebView view) {
+        String js = "javascript:(function(){try{" +
+                "if(window.__aboGenericAutoCaptureInstalled)return;window.__aboGenericAutoCaptureInstalled=true;" +
+                "function scan(w,seen){try{if(!w||seen.indexOf(w)!==-1)return;seen.push(w);var d=w.document;if(!d)return;" +
+                "var title=d.title||document.title||'فيديو قيد التشغيل';" +
+                "var vs=[].slice.call(d.querySelectorAll('video'));" +
+                "for(var i=0;i<vs.length;i++){var v=vs[i],u=v.currentSrc||v.src||'';" +
+                "if(!v.paused&&!v.ended&&v.readyState>=2&&/^https?:/i.test(u))window.AboEzzatBridge.onVideoPlayingWithPoster(u,title,v.poster||'');}" +
+                "var es=w.performance&&w.performance.getEntriesByType?w.performance.getEntriesByType('resource'):[];" +
+                "var now=w.performance&&w.performance.now?w.performance.now():0;" +
+                "for(var j=0;j<es.length;j++){var e=es[j],u=e.name||'',l=u.toLowerCase();if(!/^https?:/i.test(u)||now-e.startTime>120000)continue;" +
+                "if(/\\.(jpg|jpeg|png|webp|gif|bmp|svg|ts|m4s|js|css|woff2?)(?:[?#]|$)/i.test(l))continue;" +
+                "var a=/mime(?:_|-)?type=audio|mime=audio|type=audio|content[_-]?type=audio|dash_ln_heaac|audio_dash|\\.(aac|m4a|mp3|opus|ogg)(?:[?#]|$)/i.test(l);" +
+                "var v=/mime(?:_|-)?type=video|mime=video|type=video|content[_-]?type=video|video\\/|videoplayback|pull-|\\.(m3u8|mpd|mp4|m4v|webm|flv|mov)(?:[?#]|$)/i.test(l);" +
+                "if(a)window.AboEzzatBridge.onCapturedAudioTrack(u,title,'');" +
+                "else if(v){if(/\\.mp4(?:[?#]|$)/i.test(l))window.AboEzzatBridge.onCapturedCandidateTrack(u,title,'');" +
+                "else window.AboEzzatBridge.onCapturedVideoTrack(u,title,'');}}" +
+                "var fs=d.querySelectorAll('iframe,frame');for(var k=0;k<fs.length;k++){try{if(fs[k].contentWindow)scan(fs[k].contentWindow,seen);}catch(e){}}" +
+                "}catch(e){}}" +
+                "function tick(){scan(window,[]);}document.addEventListener('playing',tick,true);" +
+                "document.addEventListener('loadedmetadata',tick,true);window.addEventListener('load',tick,true);" +
+                "tick();setInterval(tick,1400);" +
+                "}catch(e){}})()";
+        view.evaluateJavascript(js, null);
+    }
+
     private class JsBridge {
         @JavascriptInterface
         public void onMetaFound(String title, String posterUrl) {
@@ -857,7 +925,7 @@ public class BrowserActivity extends Activity {
 
         @JavascriptInterface
         public void onActiveVideoTrack(String mediaUrl, String title, String posterUrl) {
-            if (activePlaybackKey.isEmpty() || mediaUrl == null || !mediaUrl.startsWith("http")) return;
+            if ((activePlaybackKey.isEmpty() && !isManualSniffActive() && !isGenericAutoSniffActive()) || mediaUrl == null || !mediaUrl.startsWith("http")) return;
             String clean = mediaUrl.replaceAll("&bytestart=\\d+", "")
                     .replaceAll("&byteend=\\d+", "");
             String cleanTitle = title == null || title.trim().isEmpty() ? "فيديو قيد التشغيل" : title.trim();
@@ -875,7 +943,7 @@ public class BrowserActivity extends Activity {
 
         @JavascriptInterface
         public void onCapturedVideoTrack(String mediaUrl, String title, String posterUrl) {
-            if (activePlaybackKey.isEmpty() || mediaUrl == null || !mediaUrl.startsWith("http")) return;
+            if ((activePlaybackKey.isEmpty() && !isManualSniffActive() && !isGenericAutoSniffActive()) || mediaUrl == null || !mediaUrl.startsWith("http")) return;
             String clean = mediaUrl.replaceAll("&bytestart=\\d+", "")
                     .replaceAll("&byteend=\\d+", "");
             String cleanTitle = title == null || title.trim().isEmpty() ? "فيديو قيد التشغيل" : title.trim();
@@ -884,13 +952,13 @@ public class BrowserActivity extends Activity {
 
         @JavascriptInterface
         public void onCapturedCandidateTrack(String mediaUrl, String title, String posterUrl) {
-            if (activePlaybackKey.isEmpty() || mediaUrl == null || !mediaUrl.startsWith("http")) return;
+            if ((activePlaybackKey.isEmpty() && !isManualSniffActive() && !isGenericAutoSniffActive()) || mediaUrl == null || !mediaUrl.startsWith("http")) return;
             probeAndAddMp4(mediaUrl, title, posterUrl);
         }
 
         @JavascriptInterface
         public void onCapturedAudioTrack(String mediaUrl, String title, String posterUrl) {
-            if (activePlaybackKey.isEmpty() || mediaUrl == null || !mediaUrl.startsWith("http")) return;
+            if ((activePlaybackKey.isEmpty() && !isManualSniffActive() && !isGenericAutoSniffActive()) || mediaUrl == null || !mediaUrl.startsWith("http")) return;
             String clean = mediaUrl.replaceAll("&bytestart=\\d+", "")
                     .replaceAll("&byteend=\\d+", "");
             String cleanTitle = title == null || title.trim().isEmpty() ? "فيديو قيد التشغيل" : title.trim();
@@ -899,7 +967,7 @@ public class BrowserActivity extends Activity {
 
         @JavascriptInterface
         public void onVideoPlayingWithPoster(String mediaUrl, String title, String posterUrl) {
-            if (activePlaybackKey.isEmpty() || mediaUrl == null || mediaUrl.isEmpty()
+            if ((activePlaybackKey.isEmpty() && !isGenericAutoSniffActive()) || mediaUrl == null || mediaUrl.isEmpty()
                     || !mediaUrl.startsWith("http")) return;
             String cleanMedia = mediaUrl.replaceAll("&bytestart=\\d+", "")
                     .replaceAll("&byteend=\\d+", "");
@@ -1010,7 +1078,7 @@ public class BrowserActivity extends Activity {
     }
 
     private synchronized void addCapturedMedia(String url, String title, String format, String posterUrl, int mediaType) {
-        if ((mediaType != 1 && mediaType != 2) || activePlaybackKey.isEmpty()) return;
+        if ((mediaType != 1 && mediaType != 2) || (activePlaybackKey.isEmpty() && !isManualSniffActive() && !isGenericAutoSniffActive())) return;
         boolean added = false;
         synchronized (capturedList) {
             for (CapturedMedia item : capturedList) {
@@ -1113,7 +1181,7 @@ public class BrowserActivity extends Activity {
         if (mediaUrl == null || !mp4ProbeRequests.add(mediaUrl)) return;
         AsyncTask.execute(() -> {
             int type = Mp4TrackInspector.inspect(mediaUrl);
-            if (type == 0 || activePlaybackKey.isEmpty()) return;
+            if (type == 0 || (activePlaybackKey.isEmpty() && !isManualSniffActive() && !isGenericAutoSniffActive())) return;
             String clean = mediaUrl.replaceAll("&bytestart=\\d+", "")
                     .replaceAll("&byteend=\\d+", "");
             String label = type == 2 ? "🎵 مسار صوت (تم فحص MP4)" : "🎬 مسار فيديو (تم فحص MP4)";
@@ -1297,28 +1365,33 @@ public class BrowserActivity extends Activity {
     private void triggerManualSniff() {
         final WebView current = getCurrentWebView();
         if (current == null) return;
-        Toast.makeText(this, "شغّل الفيديو واضغط عليه أولاً، ثم جرّب القنص", Toast.LENGTH_SHORT).show();
+
+        // Arm only the generic manual-capture path for 45 seconds. This does not
+        // modify share-sheet dispatch or the platform-specific automatic sniffers.
+        manualSniffUntilMs = System.currentTimeMillis() + 45000L;
+        clearCapturedMedia();
+        Toast.makeText(this, "جاري فحص مشغل الموقع والتقاط مسارات الفيديو والصوت...", Toast.LENGTH_LONG).show();
 
         String js = "javascript:(function(){try{" +
-                "if(window.__aboArmActiveCapture)window.__aboArmActiveCapture();" +
-                "var vids=[].slice.call(document.querySelectorAll('video'));" +
-                "vids=vids.filter(function(v){var r=v.getBoundingClientRect();return !v.paused&&!v.ended&&v.readyState>=2&&" +
-                "r.width>0&&r.height>0&&r.bottom>0&&r.top<innerHeight;});" +
-                "vids.sort(function(a,b){var x=a.getBoundingClientRect(),y=b.getBoundingClientRect();return (y.width*y.height)-(x.width*x.height);});" +
-                "if(!vids.length){window.AboEzzatBridge.onActivePlaybackStopped('');return;}" +
-                "var v=vids[0],key=(v.currentSrc||v.src||'')+'|'+[].indexOf.call(document.querySelectorAll('video'),v);" +
-                "var t=(v.closest('article')&&(v.closest('article').innerText||'').trim())||document.title||'فيديو';" +
-                "window.AboEzzatBridge.onActiveVideoChanged(key,t.substring(0,90),v.poster||'');" +
-                "if(v.currentSrc||v.src)window.AboEzzatBridge.onVideoPlayingWithPoster(v.currentSrc||v.src,t,v.poster||'');" +
-                "var es=performance.getEntriesByType('resource'),now=performance.now(),bv=null,ba=null;" +
-                "for(var i=0;i<es.length;i++){var e=es[i],u=e.name||'',l=u.toLowerCase();if(!/^https?:/i.test(u)||now-e.startTime>25000)continue;" +
-                "if(/\\.(jpg|jpeg|png|webp|gif|ts|m4s|js|css)(?:[?#]|$)/i.test(l))continue;" +
-                "var a=/mime=audio|type=audio|contenttype=audio|dash_ln_heaac|\\.(aac|m4a|mp3|opus|ogg)(?:[?#]|$)/i.test(l);" +
-                "var z=/mime=video|type=video|contenttype=video|video\\/tos|pull-|videoplayback|\\.(mp4|m4v|m3u8|mpd|webm|flv|mov)(?:[?#]|$)/i.test(l);" +
-                "if(!a&&!z)continue;var q=(e.initiatorType==='video'||e.initiatorType==='media'?50:0)+(now-e.startTime<8000?20:0);" +
-                "if(a){if(!ba||q>ba.q)ba={u:u,q:q};}else if(z){if(!bv||q>bv.q)bv={u:u,q:q};}}" +
-                "if(bv)window.AboEzzatBridge.onCapturedVideoTrack(bv.u,t,v.poster||'');" +
-                "if(ba)window.AboEzzatBridge.onCapturedAudioTrack(ba.u,t,v.poster||'');" +
+                "var visited=[];" +
+                "function scan(w){try{if(!w||visited.indexOf(w)!==-1)return;visited.push(w);" +
+                "var d=w.document;if(d){" +
+                "var vs=[].slice.call(d.querySelectorAll('video'));" +
+                "vs.sort(function(a,b){var x=a.getBoundingClientRect(),y=b.getBoundingClientRect();return (y.width*y.height)-(x.width*x.height);});" +
+                "for(var i=0;i<vs.length;i++){var v=vs[i],u=v.currentSrc||v.src||'';if(/^https?:/i.test(u))window.AboEzzatBridge.onActiveVideoTrack(u,d.title||document.title,v.poster||'');}" +
+                "var es=w.performance&&w.performance.getEntriesByType?w.performance.getEntriesByType('resource'):[];" +
+                "for(var j=0;j<es.length;j++){var u=es[j].name||'',l=u.toLowerCase();if(!/^https?:/i.test(u))continue;" +
+                "if(/\\.(jpg|jpeg|png|webp|gif|bmp|svg|ts|m4s|js|css)(?:[?#]|$)/i.test(l))continue;" +
+                "var a=/mime(?:_|-)?type=audio|mime=audio|type=audio|content[_-]?type=audio|dash_ln_heaac|audio_dash|\\.(aac|m4a|mp3|opus|ogg)(?:[?#]|$)/i.test(l);" +
+                "var v=/mime(?:_|-)?type=video|mime=video|type=video|content[_-]?type=video|videoplayback|video\\/|\\.(m3u8|mpd|mp4|m4v|webm|flv|mov)(?:[?#]|$)/i.test(l);" +
+                "if(a)window.AboEzzatBridge.onCapturedAudioTrack(u,d.title||document.title,'');" +
+                "else if(v){if(/\\.mp4(?:[?#]|$)/i.test(l))window.AboEzzatBridge.onCapturedCandidateTrack(u,d.title||document.title,'');" +
+                "else window.AboEzzatBridge.onCapturedVideoTrack(u,d.title||document.title,'');}" +
+                "}" +
+                "var fs=d.querySelectorAll('iframe,frame');for(var k=0;k<fs.length;k++){try{if(fs[k].contentWindow)scan(fs[k].contentWindow);}catch(e){}}" +
+                "}" +
+                "}catch(e){}}" +
+                "scan(window);" +
                 "}catch(e){}})()";
         current.evaluateJavascript(js, null);
     }
