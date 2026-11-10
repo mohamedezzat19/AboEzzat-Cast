@@ -127,6 +127,13 @@ public class ShareActivity extends Activity {
             return;
         }
 
+        // Threads shared links belong to the full in-app browser capture flow.
+        // Keep this separate from ShareActivity's background/direct media handlers.
+        if (lowerUrl.contains("threads.net") || lowerUrl.contains("threads.com")) {
+            openThreadsInBrowser(url);
+            return;
+        }
+
         if (targetTvIp.isEmpty()) {
             Toast.makeText(this, "يرجى تعيين عنوان IP الشاشة أولاً", Toast.LENGTH_LONG).show();
             finish();
@@ -153,12 +160,6 @@ public class ShareActivity extends Activity {
         if (lowerUrl.contains("tiktok.com")) {
             Toast.makeText(this, "جاري استخراج فيديو تيك توك...", Toast.LENGTH_SHORT).show();
             handleTikTok(url);
-            return;
-        }
-
-        if (lowerUrl.contains("threads.net") || lowerUrl.contains("threads.com")) {
-            Toast.makeText(this, "جاري قنص ثريد للشاشة مباشرة...", Toast.LENGTH_SHORT).show();
-            startPlatformSniffer(url, "threads");
             return;
         }
 
