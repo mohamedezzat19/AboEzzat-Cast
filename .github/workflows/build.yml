@@ -30,17 +30,6 @@ jobs:
         with:
           gradle-version: '8.6'
 
-      - name: Build Debug APK
-        run: gradle assembleDebug --no-daemon
-
-      - name: Upload Debug APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: AboEzzat-Cast-debug-${{ github.run_number }}
-          path: app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
-          retention-days: 14
-
       - name: Detect signing configuration
         id: signing
         env:
@@ -50,23 +39,19 @@ jobs:
         shell: bash
         run: |
           if [[ -z "$KEYSTORE_BASE64" || -z "$STORE_PASSWORD" || -z "$KEY_PASSWORD" ]]; then
-            echo "HAS_SIGNING=false" >> "$GITHUB_ENV"
-            echo "AboEzzat Cast signing secrets are not configured; debug APK only."
-            exit 0
+            echo "::error::Release signing secrets are not configured. A Debug APK will not be built."
+            exit 1
           fi
           echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/classic-release-keystore.jks"
           ALIAS="${{ secrets.ABOEZZAT_SHARE_KEY_ALIAS }}"
           if [[ -z "$ALIAS" ]]; then
-            echo "HAS_SIGNING=false" >> "$GITHUB_ENV"
-            echo "::warning::Signing alias secret is missing."
-            exit 0
+            echo "::error::Signing alias secret is missing."
+            exit 1
           fi
           echo "KEYSTORE_FILE=$RUNNER_TEMP/classic-release-keystore.jks" >> "$GITHUB_ENV"
           echo "KEY_ALIAS=$ALIAS" >> "$GITHUB_ENV"
-          echo "HAS_SIGNING=true" >> "$GITHUB_ENV"
 
       - name: Build Signed Release APK
-        if: ${{ env.HAS_SIGNING == 'true' }}
         env:
           KEYSTORE_FILE: ${{ runner.temp }}/classic-release-keystore.jks
           KEYSTORE_PASSWORD: ${{ secrets.ABOEZZAT_SHARE_KEYSTORE_PASSWORD }}
@@ -75,7 +60,6 @@ jobs:
         run: gradle assembleRelease --no-daemon
 
       - name: Verify signed Classic APK
-        if: ${{ env.HAS_SIGNING == 'true' }}
         shell: bash
         run: |
           APK="app/build/outputs/apk/release/app-release.apk"
@@ -87,7 +71,6 @@ jobs:
           echo "$BADGING" | grep -q "versionCode='${GITHUB_RUN_NUMBER}'"
 
       - name: Upload Signed Release APK
-        if: ${{ env.HAS_SIGNING == 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: AboEzzat-Cast-release-${{ github.run_number }}
@@ -96,11 +79,11 @@ jobs:
           retention-days: 30
 
       - name: Publish Signed APK Release
-        if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch') && env.HAS_SIGNING == 'true' }}
+        if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch') }}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: cast-build-${{ github.run_number }}
           name: AboEzzat Cast Release ${{ github.run_number }}
-          body: "versionCode: ${{ github.run_number }}\nSigned AboEzzat Cast APK for in-app updates."
+          body: "versionCode: ${{ github.run_number }}\\nSigned AboEzzat Cast APK for in-app updates."
           files: app/build/outputs/apk/release/app-release.apk
           generate_release_notes: true
