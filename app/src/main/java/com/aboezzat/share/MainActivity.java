@@ -254,6 +254,12 @@ public class MainActivity extends Activity {
             startActivity(browserIntent);
         });
 
+        // 2. اكتشاف أجهزة الاستقبال على الشبكة
+        findViewById(R.id.menu_receiver).setOnClickListener(v -> {
+            closeDrawer();
+            scanForTvDevices();
+        });
+
         // 2. ملفات الهاتف
         findViewById(R.id.menu_local_media).setOnClickListener(v -> {
             closeDrawer();
