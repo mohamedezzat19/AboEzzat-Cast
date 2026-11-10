@@ -128,6 +128,7 @@ public class BrowserActivity extends Activity {
     }
 
     private final List<CapturedMedia> capturedList = Collections.synchronizedList(new ArrayList<CapturedMedia>());
+    private final Set<String> mp4ProbeRequests = Collections.synchronizedSet(new HashSet<String>());
     private final OkHttpClient client = new OkHttpClient();
     private String tvIp = "";
     private String lastDiscoveredPoster = "";
@@ -1092,6 +1093,7 @@ public class BrowserActivity extends Activity {
     }
 
     private void probeAndAddMp4(final String mediaUrl, final String title, final String posterUrl) {
+        if (mediaUrl == null || !mp4ProbeRequests.add(mediaUrl)) return;
         AsyncTask.execute(() -> {
             int type = Mp4TrackInspector.inspect(mediaUrl);
             if (type == 0 || activePlaybackKey.isEmpty()) return;
