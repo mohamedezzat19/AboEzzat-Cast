@@ -520,7 +520,8 @@ public class BrowserActivity extends Activity {
         settings.setBuiltInZoomControls(true);
         settings.setDisplayZoomControls(false);
 
-        // User-Agent رسمي كامل مطابق للمتصفحات لفتح تيك توك لايف بدون تسجيل دخول
+        // Keep the established UA for existing sites. QFilm receives the current
+        // Android WebView Chromium UA (without the WebView marker) for compatibility.
         settings.setUserAgentString("Mozilla/5.0 (Linux; Android 14; Mobile; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.6478.122 Mobile Safari/537.36");
         settings.setGeolocationEnabled(true);
 
@@ -631,6 +632,15 @@ public class BrowserActivity extends Activity {
             public void onPageStarted(WebView view, String loadedUrl, android.graphics.Bitmap favicon) {
                 super.onPageStarted(view, loadedUrl, favicon);
                 navigationStartedAt.put(view, System.currentTimeMillis());
+                if (loadedUrl != null && isQFilmUrl(loadedUrl)) {
+                    // QFilm server buttons commonly use target=_blank/window.open for
+                    // their player endpoints. Keep those destinations in this WebView.
+                    view.getSettings().setSupportMultipleWindows(false);
+                    view.getSettings().setUserAgentString(getQFilmCompatibleUserAgent());
+                } else if (loadedUrl != null && loadedUrl.startsWith("http")) {
+                    view.getSettings().setSupportMultipleWindows(true);
+                    view.getSettings().setUserAgentString("Mozilla/5.0 (Linux; Android 14; Mobile; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.6478.122 Mobile Safari/537.36");
+                }
                 if (getCurrentWebView() == view && loadedUrl != null
                         && loadedUrl.startsWith("http")) {
                     activePlaybackKey = "";
@@ -1227,6 +1237,27 @@ public class BrowserActivity extends Activity {
         btnTabs.setText("[ " + tabList.size() + " ]");
     }
 
+    private boolean isQFilmUrl(String value) {
+        if (value == null || value.trim().isEmpty()) return false;
+        try {
+            Uri uri = Uri.parse(value);
+            String host = uri.getHost();
+            if (host == null) return false;
+            host = host.toLowerCase(Locale.ROOT);
+            return host.equals("qfilm.tv") || host.endsWith(".qfilm.tv");
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    private String getQFilmCompatibleUserAgent() {
+        String ua = WebSettings.getDefaultUserAgent(this);
+        // The Android WebView UA can expose an explicit "; wv" marker that some
+        // player sites reject. Keep the installed Chromium version, not a stale
+        // hard-coded Chrome version, and remove only the WebView marker.
+        return ua.replace("; wv", "").replace(" Version/4.0", "");
+    }
+
     private void loadTargetUrl(String target) {
         WebView current = getCurrentWebView();
         if (current == null || target.isEmpty()) return;
@@ -1245,6 +1276,15 @@ public class BrowserActivity extends Activity {
             }
         }
         etUrl.setText(target);
+        // Apply compatibility before the first document script runs. This is scoped
+        // to QFilm only so existing Facebook/Instagram/TikTok behavior is unchanged.
+        if (isQFilmUrl(target)) {
+            current.getSettings().setSupportMultipleWindows(false);
+            current.getSettings().setUserAgentString(getQFilmCompatibleUserAgent());
+        } else {
+            current.getSettings().setSupportMultipleWindows(true);
+            current.getSettings().setUserAgentString("Mozilla/5.0 (Linux; Android 14; Mobile; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.6478.122 Mobile Safari/537.36");
+        }
 
         Map<String, String> extraHeaders = new HashMap<>();
         extraHeaders.put("Accept-Language", "ar-EG,ar;q=0.9,en-US;q=0.8");
