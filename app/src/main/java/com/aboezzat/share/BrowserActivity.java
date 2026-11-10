@@ -755,7 +755,8 @@ public class BrowserActivity extends Activity {
                 "var armed=false,activeKey='';" +
                 // Keep extended preload history only for Threads; preserve Instagram behavior.
                 "var isThreadsHost=/threads\\.net$/i.test(location.hostname||'');" +
-                "if(isThreadsHost){try{if(performance.setResourceTimingBufferSize)performance.setResourceTimingBufferSize(1500);}catch(e){}}" +
+                "var isTikTokLivePage=/tiktok\\.com$/i.test(location.hostname||'')&&/\\/live(?:[/?#]|$)/i.test(location.pathname||'');" +
+                "if(isThreadsHost||isTikTokLivePage){try{if(performance.setResourceTimingBufferSize)performance.setResourceTimingBufferSize(1500);}catch(e){}}" +
                 "var style=document.getElementById('abo-ezzat-adblock');if(!style){style=document.createElement('style');style.id='abo-ezzat-adblock';" +
                 "style.innerHTML='.ytp-ad-overlay-container,.ytp-ad-message-container,ytd-promoted-sparkles-web-renderer,ytd-banner-promo-renderer,ytd-ad-slot-renderer,.ad-container,.ad-div,ytd-in-feed-ad-layout-renderer,ytm-promoted-sparkles-web-renderer,.ytp-ad-action-interstitial,[id^=\\\"google_ads_\\\"],iframe[src*=\\\"doubleclick\\\"]{display:none!important;width:0!important;height:0!important}';if(document.head)document.head.appendChild(style);}" +
                 "if(!window.AboEzzatKillerLoop){window.AboEzzatKillerLoop=setInterval(function(){try{" +
@@ -784,7 +785,7 @@ public class BrowserActivity extends Activity {
                 "var videoTracks=[],bestAudio=null;" +
                 "for(var i=0;i<entries.length;i++){var e=entries[i],u=e.name||'',l=u.toLowerCase();if(!/^https?:/i.test(u))continue;" +
                 // Threads may preload DASH audio early; Instagram and other sites keep the original 10s window.
-                "if(!isThreadsHost&&now-e.startTime>10000)continue;" +
+                "if(!(isThreadsHost||isTikTokLivePage)&&now-e.startTime>10000)continue;" +
                 "if(/\\.(jpg|jpeg|png|webp|gif|bmp|svg|ts|m4s|js|css)(?:[?#]|$)/i.test(l))continue;" +
                 "var audio=/mime(?:_|-)?type=audio|mime=audio|type=audio|content[_-]?type=audio|dash_ln_heaac|audio_dash|\\.(aac|m4a|mp3|opus|ogg)(?:[?#]|$)/i.test(l);" +
                 "var mp4Candidate=/\\.mp4(?:[?#]|$)/i.test(l);" +
