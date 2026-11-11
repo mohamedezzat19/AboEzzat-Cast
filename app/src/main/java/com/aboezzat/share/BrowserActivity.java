@@ -1668,42 +1668,41 @@ public class BrowserActivity extends Activity {
     }
 
     private void downloadSelectedMedia(boolean audioOnly) {
-        String targetUrl = "";
-
-        for (CapturedMedia item : capturedList) {
-            if (item.isSelected) {
-                if (audioOnly && item.mediaType == 2) {
-                    targetUrl = item.url;
-                    break;
-                } else if (!audioOnly && item.mediaType == 1) {
-                    targetUrl = item.url;
-                    break;
-                }
-            }
-        }
-
-        if (targetUrl.isEmpty()) {
+        CapturedMedia bestVideo = null;
+        CapturedMedia selectedAudio = null;
+        synchronized (capturedList) {
             for (CapturedMedia item : capturedList) {
-                if (audioOnly && item.mediaType == 2) {
-                    targetUrl = item.url;
-                    break;
-                } else if (!audioOnly && item.mediaType == 1) {
-                    targetUrl = item.url;
-                    break;
+                if (!item.isSelected) continue;
+                if (item.mediaType == 1 && (bestVideo == null
+                        || capturedVideoQualityScore(item.url) > capturedVideoQualityScore(bestVideo.url))) {
+                    bestVideo = item;
+                } else if (item.mediaType == 2 && selectedAudio == null) {
+                    selectedAudio = item;
                 }
             }
         }
 
-        if (targetUrl.isEmpty() && !capturedList.isEmpty()) {
-            targetUrl = capturedList.get(0).url;
-        }
-
-        if (targetUrl.isEmpty()) {
-            Toast.makeText(this, "تعذر إيجاد مسار للتحميل", Toast.LENGTH_SHORT).show();
+        if (audioOnly) {
+            if (selectedAudio == null) {
+                Toast.makeText(this, "حدد مسار الصوت من مربعات الاختيار أولاً", Toast.LENGTH_LONG).show();
+                return;
+            }
+            downloadMedia(selectedAudio.url, true);
             return;
         }
 
-        downloadMedia(targetUrl, audioOnly);
+        if (bestVideo == null) {
+            Toast.makeText(this, "حدد مسار فيديو واحداً على الأقل من مربعات الاختيار", Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        WebView current = getCurrentWebView();
+        String referer = current == null || current.getUrl() == null ? "" : current.getUrl();
+        if (selectedAudio != null) {
+            BrowserFileDownloader.startMux(this, bestVideo.url, selectedAudio.url, referer, bestVideo.title);
+        } else {
+            downloadMedia(bestVideo.url, false);
+        }
     }
 
     private void castSelectedTracksManually() {
