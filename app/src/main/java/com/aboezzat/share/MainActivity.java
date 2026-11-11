@@ -1015,44 +1015,33 @@ public class MainActivity extends Activity {
         org.json.JSONArray items;
         try { items = new org.json.JSONArray(prefs.getString(key, "[]")); }
         catch (Exception e) { items = new org.json.JSONArray(); }
-        if (items.length() == 0) {
-            new AlertDialog.Builder(this).setTitle("التنزيلات")
-                    .setMessage("لا توجد تنزيلات داخل التطبيق حتى الآن.")
-                    .setPositiveButton("فتح تنزيلات أندرويد", (d, w) -> {
-                        try { startActivity(new Intent(DownloadManager.ACTION_VIEW_DOWNLOADS)); }
-                        catch (Exception ignored) { Toast.makeText(this, "لا يمكن فتح مدير التنزيلات", Toast.LENGTH_SHORT).show(); }
-                    }).setNegativeButton("إغلاق", null).show();
-            return;
-        }
 
         final ArrayList<org.json.JSONObject> records = new ArrayList<>();
         final ArrayList<String> labels = new ArrayList<>();
-        DownloadManager manager = (DownloadManager) getSystemService(Context.DOWNLOAD_SERVICE);
         for (int i = 0; i < items.length(); i++) {
             org.json.JSONObject item = items.optJSONObject(i);
             if (item == null) continue;
             records.add(item);
-            long id = item.optLong("id", -1);
-            String state = "قيد الانتظار";
-            int progress = -1;
-            if (manager != null && id > 0) {
-                android.database.Cursor cursor = null;
-                try {
-                    cursor = manager.query(new DownloadManager.Query().setFilterById(id));
-                    if (cursor != null && cursor.moveToFirst()) {
-                        int status = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS));
-                        long done = cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR));
-                        long total = cursor.getLong(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES));
-                        if (total > 0) progress = (int) (done * 100L / total);
-                        if (status == DownloadManager.STATUS_SUCCESSFUL) state = "اكتمل";
-                        else if (status == DownloadManager.STATUS_FAILED) state = "فشل";
-                        else if (status == DownloadManager.STATUS_RUNNING) state = progress >= 0 ? "جارٍ التنزيل " + progress + "%" : "جارٍ التنزيل";
-                        else if (status == DownloadManager.STATUS_PAUSED) state = "متوقف مؤقتاً";
-                    } else state = "الملف غير موجود";
-                } catch (Exception ignored) { state = "تعذر قراءة الحالة"; }
-                finally { if (cursor != null) cursor.close(); }
+            String status = item.optString("status", "failed");
+            String state;
+            if ("complete".equals(status)) {
+                long bytes = item.optLong("bytes", 0L);
+                state = bytes > 0 ? "اكتمل ✓ — " + formatDownloadSize(bytes) : "ملف غير صالح (صفر بايت)";
+            } else if ("downloading".equals(status)) {
+                int progress = item.optInt("progress", -1);
+                state = progress >= 0 ? "جارٍ التنزيل " + progress + "%" : "جارٍ التنزيل";
+            } else {
+                state = "فشل: " + item.optString("error", "تعذر تنزيل الملف");
             }
-            labels.add(item.optString("title", "تنزيل") + " — " + item.optString("file", "") + "\n" + state);
+            labels.add(item.optString("title", "تنزيل") + " — " + item.optString("file", "")
+                    + "\\n" + state);
+        }
+
+        if (records.isEmpty()) {
+            new AlertDialog.Builder(this).setTitle("تنزيلاتي داخل AboEzzat Cast")
+                    .setMessage("لسه ما نزلتش أي ملفات من المتصفح.")
+                    .setPositiveButton("حسنًا", null).show();
+            return;
         }
 
         android.widget.ListView list = new android.widget.ListView(this);
@@ -1065,28 +1054,34 @@ public class MainActivity extends Activity {
             if (position < 0 || position >= records.size()) return;
             org.json.JSONObject item = records.get(position);
             new AlertDialog.Builder(this).setTitle(item.optString("title", "التنزيل"))
-                    .setItems(new String[]{"فتح الملف", "حذف التنزيل من القائمة والملفات"}, (d, choice) -> {
-                        long id = item.optLong("id", -1);
+                    .setItems(new String[]{"فتح الملف", "حذف التنزيل من القائمة والجهاز"}, (d, choice) -> {
                         if (choice == 0) {
+                            String status = item.optString("status", "");
+                            long bytes = item.optLong("bytes", 0L);
+                            String savedUri = item.optString("uri", "");
+                            if (!"complete".equals(status) || bytes <= 0 || savedUri.isEmpty()) {
+                                Toast.makeText(this, "الملف لم يكتمل أو لم يتم حفظ بياناته بشكل سليم", Toast.LENGTH_LONG).show();
+                                return;
+                            }
                             try {
-                                Uri uri = manager == null ? null : manager.getUriForDownloadedFile(id);
-                                if (uri == null) {
-                                    Toast.makeText(this, "التنزيل لم يكتمل بعد أو تعذر العثور على الملف", Toast.LENGTH_SHORT).show();
-                                    return;
+                                String mime = item.optString("mime", "");
+                                if (mime.isEmpty() || mime.contains("*")) {
+                                    String type = item.optString("type", "video");
+                                    mime = "image".equals(type) ? "image/jpeg"
+                                            : "audio".equals(type) ? "audio/mpeg" : "video/mp4";
                                 }
-                                String type = item.optString("type", "video");
-                                String mime = type.equals("image") ? "image/*" : type.equals("audio") ? "audio/*" : "video/*";
                                 Intent open = new Intent(Intent.ACTION_VIEW);
-                                open.setDataAndType(uri, mime);
+                                open.setDataAndType(Uri.parse(savedUri), mime);
                                 open.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
                                 startActivity(open);
-                            } catch (Exception e) { Toast.makeText(this, "لا يوجد تطبيق لفتح هذا النوع من الملفات", Toast.LENGTH_SHORT).show(); }
+                            } catch (Exception e) {
+                                Toast.makeText(this, "لا يوجد مشغل مناسب لهذا الملف", Toast.LENGTH_SHORT).show();
+                            }
                         } else {
-                            if (manager != null && id > 0) manager.remove(id);
+                            BrowserFileDownloader.deleteFile(this, item);
                             org.json.JSONArray updated = new org.json.JSONArray();
                             for (int j = 0; j < records.size(); j++) {
-                                if (j == position) continue;
-                                updated.put(records.get(j));
+                                if (j != position) updated.put(records.get(j));
                             }
                             prefs.edit().putString(key, updated.toString()).apply();
                             dialog.dismiss();
@@ -1096,6 +1091,13 @@ public class MainActivity extends Activity {
         });
         dialog.show();
     }
+
+    private String formatDownloadSize(long bytes) {
+        if (bytes < 1024) return bytes + " بايت";
+        if (bytes < 1024L * 1024L) return String.format(java.util.Locale.ROOT, "%.1f كيلوبايت", bytes / 1024.0);
+        return String.format(java.util.Locale.ROOT, "%.1f ميجابايت", bytes / (1024.0 * 1024.0));
+    }
+
     private void updateReceiverStatus() {
         String ip = prefs.getString("tv_ip", "").trim();
         if (ip.isEmpty()) {
