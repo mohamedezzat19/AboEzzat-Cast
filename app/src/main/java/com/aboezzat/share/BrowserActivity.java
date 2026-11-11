@@ -520,9 +520,9 @@ public class BrowserActivity extends Activity {
             }
             return false;
         });
-        webView.setDownloadListener((url, userAgent, contentDisposition, mimeType, contentLength) -> {
+        webView.setDownloadListener((downloadUrl, userAgent, contentDisposition, mimeType, contentLength) -> {
             boolean audio = mimeType != null && mimeType.startsWith("audio/");
-            downloadMedia(url, audio, mimeType);
+            downloadMedia(downloadUrl, audio, mimeType);
         });
 
         WebSettings settings = webView.getSettings();
