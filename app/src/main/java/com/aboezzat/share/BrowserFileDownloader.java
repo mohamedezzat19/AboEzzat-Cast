@@ -67,6 +67,7 @@ final class BrowserFileDownloader {
             item.put("title", title);
             item.put("file", fileName);
             item.put("type", type);
+            item.put("mime", mime);
             item.put("url", target);
             item.put("status", "downloading");
             item.put("bytes", 0L);
