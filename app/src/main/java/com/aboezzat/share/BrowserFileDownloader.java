@@ -38,8 +38,9 @@ final class BrowserFileDownloader {
     private static final String PREFS = "AboEzzatSharePrefs";
     private static final String KEY = "in_app_download_items";
     private static final OkHttpClient CLIENT = new OkHttpClient.Builder()
-            .connectTimeout(25, TimeUnit.SECONDS)
-            .readTimeout(0, TimeUnit.MILLISECONDS)
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(90, TimeUnit.SECONDS)
+            .callTimeout(2, TimeUnit.HOURS)
             .writeTimeout(30, TimeUnit.SECONDS)
             .followRedirects(true)
             .followSslRedirects(true)
@@ -88,7 +89,7 @@ final class BrowserFileDownloader {
             item.put("status", "downloading");
             item.put("bytes", 0L);
             item.put("total", -1L);
-            item.put("progress", 0);
+            item.put("progress", -1);
             item.put("created", System.currentTimeMillis());
             saveItem(activity, item);
         } catch (Exception ignored) {}
@@ -129,6 +130,9 @@ final class BrowserFileDownloader {
                         throw new java.io.IOException("الموقع أرسل صفحة ويب بدلاً من ملف الوسائط؛ قد يحتاج تسجيل دخول أو رابطاً صالحاً");
                     }
                     long total = body.contentLength();
+                    // Switch from "connecting" to a real byte-based progress value
+                    // as soon as the response headers arrive.
+                    updateProgress(app, recordId, 0L, total);
                     destination = createDestination(app, finalName, finalMime);
                     if (destination == null) throw new java.io.IOException("تعذر إنشاء ملف في مجلد التنزيلات");
 
