@@ -263,7 +263,7 @@ final class BrowserFileDownloader {
     }
 
     private static String normalizeMime(String hinted, String ext, String type) {
-        if (hinted != null && !hinted.trim().isEmpty() && !hinted.contains("*")) {
+        if (hinted != null && !hinted.trim().isEmpty() && !hinted.contains("*")\n                && !hinted.equalsIgnoreCase("application/octet-stream")) {
             int semi = hinted.indexOf(';');
             return (semi >= 0 ? hinted.substring(0, semi) : hinted).trim().toLowerCase(Locale.ROOT);
         }
