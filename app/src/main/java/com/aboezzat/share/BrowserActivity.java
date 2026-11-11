@@ -1726,11 +1726,11 @@ public class BrowserActivity extends Activity {
                     } else if (which == 1) {
                         castToTv(media.url);
                     } else if (which == 2) {
-                        downloadMedia(media.url, false);
+                        downloadSelectedMedia(false);
                     } else if (which == 3) {
-                        downloadMedia(media.url, true);
+                        downloadSelectedMedia(true);
                     } else if (which == 4) {
-                        downloadMedia(media.url, false);
+                        downloadSelectedMedia(false);
                     }
                 })
                 .show();
