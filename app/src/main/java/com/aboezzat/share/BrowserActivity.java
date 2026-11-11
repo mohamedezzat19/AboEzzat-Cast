@@ -508,6 +508,22 @@ public class BrowserActivity extends Activity {
             }
             return false;
         });
+        webView.setOnLongClickListener(v -> {
+            WebView.HitTestResult hit = webView.getHitTestResult();
+            if (hit != null && (hit.getType() == WebView.HitTestResult.IMAGE_TYPE
+                    || hit.getType() == WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE)) {
+                String imageUrl = hit.getExtra();
+                if (imageUrl != null && (imageUrl.startsWith("http://") || imageUrl.startsWith("https://"))) {
+                    downloadMedia(imageUrl, false, "image/jpeg");
+                    return true;
+                }
+            }
+            return false;
+        });
+        webView.setDownloadListener((downloadUrl, userAgent, contentDisposition, mimeType, contentLength) -> {
+            boolean audio = mimeType != null && mimeType.startsWith("audio/");
+            downloadMedia(downloadUrl, audio, mimeType);
+        });
 
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
@@ -1699,7 +1715,8 @@ public class BrowserActivity extends Activity {
                 "🔗 دمج وبث بصوت وصورة (Merge & Cast)",
                 "📺 بث هذا المسار منفرداً (Cast Single Track)",
                 "🎬 تحميل الفيديو (MP4)",
-                "🎵 تحميل الصوت فقط (Clean Audio)"
+                "🎵 تحميل الصوت فقط (Clean Audio)",
+                "📥 تنزيل الملف داخل التطبيق"
         };
 
         new AlertDialog.Builder(this)
@@ -1713,6 +1730,8 @@ public class BrowserActivity extends Activity {
                         downloadMedia(media.url, false);
                     } else if (which == 3) {
                         downloadMedia(media.url, true);
+                    } else if (which == 4) {
+                        downloadMedia(media.url, false);
                     }
                 })
                 .show();
@@ -1918,9 +1937,15 @@ public class BrowserActivity extends Activity {
     }
 
     private void downloadMedia(String mediaUrl, boolean audioOnly) {
+        downloadMedia(mediaUrl, audioOnly, null);
+    }
+
+    private void downloadMedia(String mediaUrl, boolean audioOnly, String hintedMime) {
         try {
-            if (mediaUrl.contains(".m3u8") || mediaUrl.contains("pull-") || mediaUrl.contains(".flv")) {
-                Toast.makeText(this, "البث المباشر الحي يبث للشاشة فقط ولا يتم تنزيله", Toast.LENGTH_LONG).show();
+            if (mediaUrl == null || mediaUrl.trim().isEmpty()) throw new IllegalArgumentException("رابط فارغ");
+            String lower = mediaUrl.toLowerCase(java.util.Locale.ROOT);
+            if (lower.contains(".m3u8") || lower.contains("pull-") || lower.contains(".flv") || lower.contains(".mpd")) {
+                Toast.makeText(this, "البث المباشر أو المتكيف يحتاج معالجة خاصة ولا يتم تنزيله كملف واحد", Toast.LENGTH_LONG).show();
                 return;
             }
 
@@ -1928,24 +1953,64 @@ public class BrowserActivity extends Activity {
             if (cleanUrl.contains("&bytestart=")) {
                 cleanUrl = cleanUrl.replaceAll("&bytestart=\\d+", "").replaceAll("&byteend=\\d+", "");
             }
+            String path = Uri.parse(cleanUrl).getPath();
+            String ext = "";
+            if (path != null && path.lastIndexOf('.') >= 0) {
+                ext = path.substring(path.lastIndexOf('.')).toLowerCase(java.util.Locale.ROOT);
+                if (ext.length() > 8 || !ext.matches("\\.[a-z0-9]{2,7}")) ext = "";
+            }
+            String type;
+            if (hintedMime != null && hintedMime.startsWith("image/")) {
+                type = "image";
+                if (ext.isEmpty()) ext = ".jpg";
+            } else if (audioOnly || (hintedMime != null && hintedMime.startsWith("audio/"))) {
+                type = "audio";
+                if (ext.isEmpty() || ext.equals(".mp4")) ext = lower.contains("dash_ln_heaac") ? ".m4a" : ".mp3";
+            } else if (ext.matches("\\.(jpg|jpeg|png|webp|gif|bmp|avif)")) {
+                type = "image";
+            } else if (ext.matches("\\.(mp3|m4a|aac|ogg|opus|wav|flac)")) {
+                type = "audio";
+            } else {
+                type = "video";
+                if (ext.isEmpty()) ext = ".mp4";
+            }
 
-            String ext = audioOnly ? (cleanUrl.contains("dash_ln_heaac") || cleanUrl.contains("mp4") ? ".m4a" : ".mp3") : ".mp4";
-            String title = audioOnly ? "تحميل صوت - Abo Ezzat" : "تحميل فيديو - Abo Ezzat";
-
+            String title = type.equals("image") ? "صورة - Abo Ezzat"
+                    : type.equals("audio") ? "صوت - Abo Ezzat" : "فيديو - Abo Ezzat";
+            String fileName = "AboEzzat_" + System.currentTimeMillis() + ext;
             DownloadManager.Request request = new DownloadManager.Request(Uri.parse(cleanUrl));
             request.setAllowedNetworkTypes(DownloadManager.Request.NETWORK_WIFI | DownloadManager.Request.NETWORK_MOBILE);
             request.setTitle(title);
-            request.setDescription("جاري تنزيل الملف...");
+            request.setDescription("التنزيل داخل مكتبة AboEzzat Cast");
             request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
-            request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "AboEzzat_" + System.currentTimeMillis() + ext);
+            request.setDestinationInExternalFilesDir(this, Environment.DIRECTORY_DOWNLOADS, fileName);
+            String cookie = CookieManager.getInstance().getCookie(cleanUrl);
+            if (cookie != null && !cookie.isEmpty()) request.addRequestHeader("Cookie", cookie);
+            request.addRequestHeader("User-Agent", WebSettings.getDefaultUserAgent(this));
+            String mime = hintedMime != null && !hintedMime.trim().isEmpty()
+                    ? hintedMime : type.equals("image") ? "image/*" : type.equals("audio") ? "audio/*" : "video/*";
+            request.setMimeType(mime);
 
             DownloadManager manager = (DownloadManager) getSystemService(Context.DOWNLOAD_SERVICE);
-            if (manager != null) {
-                manager.enqueue(request);
-                Toast.makeText(this, "بدأ التنزيل بنجاح في مجلد Downloads ✓", Toast.LENGTH_SHORT).show();
-            }
+            if (manager == null) throw new IllegalStateException("خدمة التنزيل غير متاحة");
+            long downloadId = manager.enqueue(request);
+
+            android.content.SharedPreferences downloadPrefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
+            org.json.JSONArray items;
+            try { items = new org.json.JSONArray(downloadPrefs.getString("in_app_download_items", "[]")); }
+            catch (Exception ignored) { items = new org.json.JSONArray(); }
+            org.json.JSONObject item = new org.json.JSONObject();
+            item.put("id", downloadId);
+            item.put("title", title);
+            item.put("file", fileName);
+            item.put("type", type);
+            item.put("url", cleanUrl);
+            item.put("created", System.currentTimeMillis());
+            items.put(item);
+            downloadPrefs.edit().putString("in_app_download_items", items.toString()).apply();
+            Toast.makeText(this, "بدأ التنزيل داخل تطبيق AboEzzat Cast ✓", Toast.LENGTH_SHORT).show();
         } catch (Exception e) {
-            Toast.makeText(this, "تعذر بدء التنزيل", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "تعذر بدء التنزيل: " + e.getMessage(), Toast.LENGTH_LONG).show();
         }
     }
 
