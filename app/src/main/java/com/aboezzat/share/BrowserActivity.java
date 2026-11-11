@@ -1945,8 +1945,12 @@ public class BrowserActivity extends Activity {
             Toast.makeText(this, "رابط التنزيل غير صالح", Toast.LENGTH_SHORT).show();
             return;
         }
-        String lower = mediaUrl.toLowerCase(java.util.Locale.ROOT);
-        String path = Uri.parse(mediaUrl).getPath();
+        String cleanUrl = mediaUrl;
+        if (cleanUrl.contains("&bytestart=")) {
+            cleanUrl = cleanUrl.replaceAll("&bytestart=\\d+", "").replaceAll("&byteend=\\d+", "");
+        }
+        String lower = cleanUrl.toLowerCase(java.util.Locale.ROOT);
+        String path = Uri.parse(cleanUrl).getPath();
         String ext = "";
         if (path != null && path.lastIndexOf('.') >= 0) {
             ext = path.substring(path.lastIndexOf('.')).toLowerCase(java.util.Locale.ROOT);
@@ -1966,7 +1970,7 @@ public class BrowserActivity extends Activity {
 
         WebView current = getCurrentWebView();
         String referer = current == null || current.getUrl() == null ? "" : current.getUrl();
-        BrowserFileDownloader.start(this, mediaUrl, type, hintedMime, referer);
+        BrowserFileDownloader.start(this, cleanUrl, type, hintedMime, referer);
     }
 
     private void showSideMenu() {
