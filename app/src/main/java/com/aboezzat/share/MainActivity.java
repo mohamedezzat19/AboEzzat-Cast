@@ -393,10 +393,17 @@ public class MainActivity extends Activity {
             if (out == null) throw new IOException("تعذر فتح الملف");
             org.json.JSONObject json = new org.json.JSONObject();
             json.put("format", "AboEzzatCastDrawerBackup");
-            json.put("version", 2);
+            json.put("version", 3);
             json.put("tv_ip", prefs.getString("tv_ip", ""));
             json.put("dark_mode", prefs.getBoolean("dark_mode", true));
             json.put("custom_sites", new org.json.JSONArray(new ArrayList<>(prefs.getStringSet("custom_sites", new HashSet<String>()))));
+            // Include Cast-specific media data managed from the navigation drawer.
+            json.put("saved_media_urls", prefs.getString("saved_media_urls", "[]"));
+            json.put("video_queue_uris", prefs.getString("video_queue_uris", "[]"));
+            json.put("slideshow_queue_uris", prefs.getString("slideshow_queue_uris", "[]"));
+            json.put("recent_media_uris", prefs.getString("recent_media_uris", "[]"));
+            json.put("current_video_index", currentVideoIndex);
+            json.put("current_slide_index", currentSlideIndex);
             json.put("browser_history", new org.json.JSONArray(new ArrayList<>(browserPrefs.getStringSet("browser_history", new HashSet<String>()))));
             json.put("bookmarks", new org.json.JSONArray(new ArrayList<>(browserPrefs.getStringSet("custom_sites", new HashSet<String>()))));
             org.json.JSONObject metadata = new org.json.JSONObject();
@@ -425,6 +432,15 @@ public class MainActivity extends Activity {
             org.json.JSONObject json = new org.json.JSONObject(buffer.toString("UTF-8"));
             SharedPreferences.Editor edit = prefs.edit();
             SharedPreferences.Editor browserEdit = browserPrefs.edit();
+            boolean restoreMediaQueueState = json.has("video_queue_uris") || json.has("slideshow_queue_uris");
+            for (String key : new String[]{"saved_media_urls", "video_queue_uris", "slideshow_queue_uris", "recent_media_uris"}) {
+                if (json.has(key)) {
+                    String value = json.optString(key, "[]");
+                    // Validate every imported list before changing preferences.
+                    new org.json.JSONArray(value);
+                    edit.putString(key, value);
+                }
+            }
             if (json.has("tv_ip")) edit.putString("tv_ip", json.optString("tv_ip", ""));
             if (json.has("dark_mode")) edit.putBoolean("dark_mode", json.optBoolean("dark_mode", true));
             if (json.has("custom_sites")) {
@@ -459,6 +475,13 @@ public class MainActivity extends Activity {
             }
             edit.apply();
             browserEdit.apply();
+            if (restoreMediaQueueState) {
+                restoreMediaQueues();
+                currentVideoIndex = Math.min(Math.max(0, json.optInt("current_video_index", 0)),
+                        Math.max(0, videoQueue.size() - 1));
+                currentSlideIndex = Math.min(Math.max(0, json.optInt("current_slide_index", 0)),
+                        Math.max(0, slideshowQueue.size() - 1));
+            }
             if (etTvIp != null) etTvIp.setText(prefs.getString("tv_ip", ""));
             updateReceiverStatus();
             applyDarkMode(findViewById(R.id.drawer_layout), prefs.getBoolean("dark_mode", true));
