@@ -508,6 +508,22 @@ public class BrowserActivity extends Activity {
             }
             return false;
         });
+        webView.setOnLongClickListener(v -> {
+            WebView.HitTestResult hit = webView.getHitTestResult();
+            if (hit != null && (hit.getType() == WebView.HitTestResult.IMAGE_TYPE
+                    || hit.getType() == WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE)) {
+                String imageUrl = hit.getExtra();
+                if (imageUrl != null && (imageUrl.startsWith("http://") || imageUrl.startsWith("https://"))) {
+                    downloadMedia(imageUrl, false, "image/jpeg");
+                    return true;
+                }
+            }
+            return false;
+        });
+        webView.setDownloadListener((url, userAgent, contentDisposition, mimeType, contentLength) -> {
+            boolean audio = mimeType != null && mimeType.startsWith("audio/");
+            downloadMedia(url, audio, mimeType);
+        });
 
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
@@ -1921,6 +1937,10 @@ public class BrowserActivity extends Activity {
     }
 
     private void downloadMedia(String mediaUrl, boolean audioOnly) {
+        downloadMedia(mediaUrl, audioOnly, null);
+    }
+
+    private void downloadMedia(String mediaUrl, boolean audioOnly, String hintedMime) {
         try {
             if (mediaUrl == null || mediaUrl.trim().isEmpty()) throw new IllegalArgumentException("رابط فارغ");
             String lower = mediaUrl.toLowerCase(java.util.Locale.ROOT);
@@ -1940,7 +1960,10 @@ public class BrowserActivity extends Activity {
                 if (ext.length() > 8 || !ext.matches("\\.[a-z0-9]{2,7}")) ext = "";
             }
             String type;
-            if (audioOnly) {
+            if (hintedMime != null && hintedMime.startsWith("image/")) {
+                type = "image";
+                if (ext.isEmpty()) ext = ".jpg";
+            } else if (audioOnly || (hintedMime != null && hintedMime.startsWith("audio/"))) {
                 type = "audio";
                 if (ext.isEmpty() || ext.equals(".mp4")) ext = lower.contains("dash_ln_heaac") ? ".m4a" : ".mp3";
             } else if (ext.matches("\\.(jpg|jpeg|png|webp|gif|bmp|avif)")) {
@@ -1964,7 +1987,8 @@ public class BrowserActivity extends Activity {
             String cookie = CookieManager.getInstance().getCookie(cleanUrl);
             if (cookie != null && !cookie.isEmpty()) request.addRequestHeader("Cookie", cookie);
             request.addRequestHeader("User-Agent", WebSettings.getDefaultUserAgent(this));
-            String mime = type.equals("image") ? "image/*" : type.equals("audio") ? "audio/*" : "video/*";
+            String mime = hintedMime != null && !hintedMime.trim().isEmpty()
+                    ? hintedMime : type.equals("image") ? "image/*" : type.equals("audio") ? "audio/*" : "video/*";
             request.setMimeType(mime);
 
             DownloadManager manager = (DownloadManager) getSystemService(Context.DOWNLOAD_SERVICE);
