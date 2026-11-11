@@ -902,7 +902,7 @@ public class MainActivity extends Activity {
             urls.add(url);
             String host;
             try { host = Uri.parse(url).getHost(); } catch (Exception ignored) { host = null; }
-            labels.add((host == null || host.trim().isEmpty() ? "وسائط محفوظة" : host) + "\\n" + url);
+            labels.add((host == null || host.trim().isEmpty() ? "وسائط محفوظة" : host) + "\n" + url);
         }
 
         android.widget.ListView list = new android.widget.ListView(this);
