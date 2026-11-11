@@ -56,8 +56,16 @@ final class BrowserFileDownloader {
         }
 
         String extension = extensionFromUrl(target);
-        String mime = normalizeMime(hintedMime, extension, type);
-        if (extension.isEmpty()) extension = extensionForMime(mime, type);
+        String mime;
+        if ("audio".equals(type) && (extension.isEmpty() || ".mp4".equals(extension))) {
+            mime = hintedMime != null && hintedMime.toLowerCase(Locale.ROOT).startsWith("audio/")
+                    ? normalizeMime(hintedMime, "", type) : "audio/mp4";
+            extension = extensionForMime(mime, type);
+            if (extension.isEmpty() || ".mp4".equals(extension)) extension = ".m4a";
+        } else {
+            mime = normalizeMime(hintedMime, extension, type);
+            if (extension.isEmpty()) extension = extensionForMime(mime, type);
+        }
         String fileName = "AboEzzat_" + System.currentTimeMillis() + extension;
         long id = System.currentTimeMillis();
         String title = "image".equals(type) ? "صورة" : "audio".equals(type) ? "ملف صوتي" : "فيديو";
