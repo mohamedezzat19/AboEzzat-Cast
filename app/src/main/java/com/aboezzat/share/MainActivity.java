@@ -331,11 +331,13 @@ public class MainActivity extends Activity {
             closeDrawer();
             new AlertDialog.Builder(MainActivity.this)
                     .setTitle("إعدادات Abo Ezzat Share")
-                    .setItems(new String[]{"التحقق من التحديثات", "إعداد عنوان IP الشاشة"}, (dialog, which) -> {
+                    .setItems(new String[]{"التحقق من التحديثات", "إعداد عنوان IP الشاشة", "إعدادات أندرويد وأذونات التطبيق"}, (dialog, which) -> {
                         if (which == 0) {
                             new AppUpdater(MainActivity.this).checkForUpdate(true);
-                        } else {
+                        } else if (which == 1) {
                             showManualIpDialog();
+                        } else {
+                            openAppPermissionSettings();
                         }
                     })
                     .setNegativeButton("إغلاق", null)
@@ -349,6 +351,16 @@ public class MainActivity extends Activity {
         });
     }
 
+
+    private void openAppPermissionSettings() {
+        try {
+            Intent intent = new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+            intent.setData(Uri.parse("package:" + getPackageName()));
+            startActivity(intent);
+        } catch (Exception e) {
+            Toast.makeText(this, "افتح إعدادات أندرويد > التطبيقات > AboEzzat Cast > الأذونات", Toast.LENGTH_LONG).show();
+        }
+    }
 
     private void toggleDarkMode() {
         boolean enabled = !prefs.getBoolean("dark_mode", true);
