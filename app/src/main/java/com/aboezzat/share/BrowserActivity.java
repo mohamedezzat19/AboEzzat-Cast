@@ -2186,11 +2186,15 @@ public class BrowserActivity extends Activity {
 
                 View.OnClickListener actions = v -> {
                     final String uriText = item.optString("uri", "");
-                    final boolean complete = "complete".equals(item.optString("status", ""))
+                    final String itemStatus = item.optString("status", "");
+                    final boolean downloading = "downloading".equals(itemStatus);
+                    final boolean complete = "complete".equals(itemStatus)
                             && item.optLong("bytes", 0L) > 0 && !uriText.isEmpty();
                     String[] actionsList = complete
-                            ? new String[]{"فتح الملف", "مشاركة الملف", "حذف من القائمة"}
-                            : new String[]{"عرض التفاصيل", "حذف من القائمة"};
+                            ? new String[]{"فتح الملف", "مشاركة الملف", "حذف الملف"}
+                            : downloading
+                                    ? new String[]{"عرض التفاصيل"}
+                                    : new String[]{"عرض التفاصيل", "إزالة من القائمة"};
                     new AlertDialog.Builder(this).setTitle(item.optString("file", "التنزيل"))
                             .setItems(actionsList, (actionDialog, choice) -> {
                                 if (complete && choice == 0) {
@@ -2212,7 +2216,7 @@ public class BrowserActivity extends Activity {
                                     } catch (Exception e) {
                                         Toast.makeText(this, "تعذرت مشاركة الملف", Toast.LENGTH_SHORT).show();
                                     }
-                                } else if ((complete && choice == 2) || (!complete && choice == 1)) {
+                                } else if ((complete && choice == 2) || (!complete && !downloading && choice == 1)) {
                                     BrowserFileDownloader.deleteFile(this, item);
                                     org.json.JSONArray updated = new org.json.JSONArray();
                                     for (org.json.JSONObject record : records) {
