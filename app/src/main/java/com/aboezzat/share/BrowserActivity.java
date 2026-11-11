@@ -1667,38 +1667,63 @@ public class BrowserActivity extends Activity {
         return main;
     }
 
+    private boolean isCapturedAudioTrack(CapturedMedia item) {
+        if (item == null) return false;
+        String label = item.format == null ? "" : item.format.toLowerCase(java.util.Locale.ROOT);
+        return item.mediaType == 2 || item.isAudio || label.contains("audio")
+                || label.contains("مسار صوت") || label.contains("صوت فقط");
+    }
+
     private void downloadSelectedMedia(boolean audioOnly) {
         CapturedMedia bestVideo = null;
         CapturedMedia selectedAudio = null;
+        int audioTrackCount = 0;
+        CapturedMedia onlyAudioTrack = null;
+
         synchronized (capturedList) {
             for (CapturedMedia item : capturedList) {
+                if (isCapturedAudioTrack(item)) {
+                    audioTrackCount++;
+                    onlyAudioTrack = item;
+                }
                 if (!item.isSelected) continue;
-                if (item.mediaType == 1 && (bestVideo == null
+
+                if (isCapturedAudioTrack(item)) {
+                    if (selectedAudio == null || capturedUrlConfidence(item.url, 2)
+                            > capturedUrlConfidence(selectedAudio.url, 2)) {
+                        selectedAudio = item;
+                    }
+                } else if (item.mediaType == 1 && (bestVideo == null
                         || capturedVideoQualityScore(item.url) > capturedVideoQualityScore(bestVideo.url))) {
                     bestVideo = item;
-                } else if (item.mediaType == 2 && selectedAudio == null) {
-                    selectedAudio = item;
                 }
             }
         }
 
+        // A single captured audio rendition is unambiguous: allow the audio button
+        // to use it even if a checkbox state was lost while the dialog was refreshed.
+        if (audioOnly && selectedAudio == null && audioTrackCount == 1) {
+            selectedAudio = onlyAudioTrack;
+        }
+
         if (audioOnly) {
             if (selectedAudio == null) {
-                Toast.makeText(this, "حدد مسار الصوت من مربعات الاختيار أولاً", Toast.LENGTH_LONG).show();
+                Toast.makeText(this, "لم يتم العثور على مسار صوت صالح في القائمة. افتح قائمة المسارات وتأكد من ظهور مسار الصوت.", Toast.LENGTH_LONG).show();
                 return;
             }
-            downloadMedia(selectedAudio.url, true);
+            downloadMedia(selectedAudio.url, true, "audio/mp4");
             return;
         }
 
         if (bestVideo == null) {
-            Toast.makeText(this, "حدد مسار فيديو واحداً على الأقل من مربعات الاختيار", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "حدد مسار فيديو من مربعات الاختيار أولاً", Toast.LENGTH_LONG).show();
             return;
         }
 
         WebView current = getCurrentWebView();
         String referer = current == null || current.getUrl() == null ? "" : current.getUrl();
         if (selectedAudio != null) {
+            Toast.makeText(this, "تم تحديد الفيديو والصوت — جاري تنزيلهما ودمجهما", Toast.LENGTH_SHORT).show();
             BrowserFileDownloader.startMux(this, bestVideo.url, selectedAudio.url, referer, bestVideo.title);
         } else {
             downloadMedia(bestVideo.url, false);
@@ -1728,9 +1753,17 @@ public class BrowserActivity extends Activity {
                     } else if (which == 2) {
                         downloadSelectedMedia(false);
                     } else if (which == 3) {
-                        downloadSelectedMedia(true);
+                        if (isCapturedAudioTrack(media)) {
+                            downloadMedia(media.url, true, "audio/mp4");
+                        } else {
+                            downloadSelectedMedia(true);
+                        }
                     } else if (which == 4) {
-                        downloadSelectedMedia(false);
+                        if (isCapturedAudioTrack(media)) {
+                            downloadMedia(media.url, true, "audio/mp4");
+                        } else {
+                            downloadSelectedMedia(false);
+                        }
                     }
                 })
                 .show();
