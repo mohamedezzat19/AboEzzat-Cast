@@ -376,7 +376,10 @@ final class BrowserFileDownloader {
                 if (audioTime < 0 || (videoTime >= 0 && videoTime <= audioTime)) {
                     videoBuffer.clear();
                     int size = videoExtractor.readSampleData(videoBuffer, 0);
-                    if (size < 0) break;
+                    if (size < 0) {
+                        videoTime = -1L;
+                        continue;
+                    }
                     videoInfo.set(0, size, Math.max(0L, videoTime), videoExtractor.getSampleFlags());
                     muxer.writeSampleData(videoOut, videoBuffer, videoInfo);
                     videoExtractor.advance();
@@ -384,13 +387,18 @@ final class BrowserFileDownloader {
                 } else {
                     audioBuffer.clear();
                     int size = audioExtractor.readSampleData(audioBuffer, 0);
-                    if (size < 0) break;
+                    if (size < 0) {
+                        audioTime = -1L;
+                        continue;
+                    }
                     audioInfo.set(0, size, Math.max(0L, audioTime), audioExtractor.getSampleFlags());
                     muxer.writeSampleData(audioOut, audioBuffer, audioInfo);
                     audioExtractor.advance();
                     audioTime = audioExtractor.getSampleTime();
                 }
             }
+            muxer.stop();
+            muxerStarted = false;
             if (outputFile.length() <= 0) throw new java.io.IOException("فشل إنشاء ملف MP4 من المسارين");
         } finally {
             if (muxer != null) {
