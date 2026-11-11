@@ -110,6 +110,9 @@ public class MainActivity extends Activity {
         } else if (getIntent().getBooleanExtra("open_library", false)) {
             new Handler(Looper.getMainLooper()).post(() -> showLibraryDialog());
         }
+        else if (getIntent().getBooleanExtra("open_downloads", false)) {
+            new Handler(Looper.getMainLooper()).post(() -> openDownloads());
+        }
     }
 
     private void initViews() {
@@ -1239,6 +1242,9 @@ private void showManualIpDialog() {
             // The Library tab must always open bookmarks and browsing history.
             // Recent media is a separate action and must not run on Library navigation.
             new Handler(Looper.getMainLooper()).post(() -> showLibraryDialog());
+        }
+        else if (intent != null && intent.getBooleanExtra("open_downloads", false)) {
+            new Handler(Looper.getMainLooper()).post(() -> openDownloads());
         }
     }
 
