@@ -2002,19 +2002,10 @@ public class BrowserActivity extends Activity {
     }
 
     private void openDownloadsFolder() {
-        try {
-            Intent intent = new Intent(DownloadManager.ACTION_VIEW_DOWNLOADS);
-            startActivity(intent);
-        } catch (Exception e) {
-            try {
-                Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
-                Uri uri = Uri.parse(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS).getPath());
-                intent.setDataAndType(uri, "*/*");
-                startActivity(Intent.createChooser(intent, "فتح التنزيلات"));
-            } catch (Exception ex) {
-                Toast.makeText(this, "تعذر فتح مجلد التنزيلات تلقائياً", Toast.LENGTH_SHORT).show();
-            }
-        }
+        Intent intent = new Intent(BrowserActivity.this, MainActivity.class);
+        intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+        intent.putExtra("open_downloads", true);
+        startActivity(intent);
     }
 
     private void showTabsDialog() {
