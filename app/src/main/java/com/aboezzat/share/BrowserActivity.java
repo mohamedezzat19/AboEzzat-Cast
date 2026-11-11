@@ -1941,77 +1941,36 @@ public class BrowserActivity extends Activity {
     }
 
     private void downloadMedia(String mediaUrl, boolean audioOnly, String hintedMime) {
-        try {
-            if (mediaUrl == null || mediaUrl.trim().isEmpty()) throw new IllegalArgumentException("رابط فارغ");
-            String lower = mediaUrl.toLowerCase(java.util.Locale.ROOT);
-            if (lower.contains(".m3u8") || lower.contains("pull-") || lower.contains(".flv") || lower.contains(".mpd")) {
-                Toast.makeText(this, "البث المباشر أو المتكيف يحتاج معالجة خاصة ولا يتم تنزيله كملف واحد", Toast.LENGTH_LONG).show();
-                return;
-            }
-
-            String cleanUrl = mediaUrl;
-            if (cleanUrl.contains("&bytestart=")) {
-                cleanUrl = cleanUrl.replaceAll("&bytestart=\\d+", "").replaceAll("&byteend=\\d+", "");
-            }
-            String path = Uri.parse(cleanUrl).getPath();
-            String ext = "";
-            if (path != null && path.lastIndexOf('.') >= 0) {
-                ext = path.substring(path.lastIndexOf('.')).toLowerCase(java.util.Locale.ROOT);
-                if (ext.length() > 8 || !ext.matches("\\.[a-z0-9]{2,7}")) ext = "";
-            }
-            String type;
-            if (hintedMime != null && hintedMime.startsWith("image/")) {
-                type = "image";
-                if (ext.isEmpty()) ext = ".jpg";
-            } else if (audioOnly || (hintedMime != null && hintedMime.startsWith("audio/"))) {
-                type = "audio";
-                if (ext.isEmpty() || ext.equals(".mp4")) ext = lower.contains("dash_ln_heaac") ? ".m4a" : ".mp3";
-            } else if (ext.matches("\\.(jpg|jpeg|png|webp|gif|bmp|avif)")) {
-                type = "image";
-            } else if (ext.matches("\\.(mp3|m4a|aac|ogg|opus|wav|flac)")) {
-                type = "audio";
-            } else {
-                type = "video";
-                if (ext.isEmpty()) ext = ".mp4";
-            }
-
-            String title = type.equals("image") ? "صورة - Abo Ezzat"
-                    : type.equals("audio") ? "صوت - Abo Ezzat" : "فيديو - Abo Ezzat";
-            String fileName = "AboEzzat_" + System.currentTimeMillis() + ext;
-            DownloadManager.Request request = new DownloadManager.Request(Uri.parse(cleanUrl));
-            request.setAllowedNetworkTypes(DownloadManager.Request.NETWORK_WIFI | DownloadManager.Request.NETWORK_MOBILE);
-            request.setTitle(title);
-            request.setDescription("التنزيل داخل مكتبة AboEzzat Cast");
-            request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
-            request.setDestinationInExternalFilesDir(this, Environment.DIRECTORY_DOWNLOADS, fileName);
-            String cookie = CookieManager.getInstance().getCookie(cleanUrl);
-            if (cookie != null && !cookie.isEmpty()) request.addRequestHeader("Cookie", cookie);
-            request.addRequestHeader("User-Agent", WebSettings.getDefaultUserAgent(this));
-            String mime = hintedMime != null && !hintedMime.trim().isEmpty()
-                    ? hintedMime : type.equals("image") ? "image/*" : type.equals("audio") ? "audio/*" : "video/*";
-            request.setMimeType(mime);
-
-            DownloadManager manager = (DownloadManager) getSystemService(Context.DOWNLOAD_SERVICE);
-            if (manager == null) throw new IllegalStateException("خدمة التنزيل غير متاحة");
-            long downloadId = manager.enqueue(request);
-
-            android.content.SharedPreferences downloadPrefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
-            org.json.JSONArray items;
-            try { items = new org.json.JSONArray(downloadPrefs.getString("in_app_download_items", "[]")); }
-            catch (Exception ignored) { items = new org.json.JSONArray(); }
-            org.json.JSONObject item = new org.json.JSONObject();
-            item.put("id", downloadId);
-            item.put("title", title);
-            item.put("file", fileName);
-            item.put("type", type);
-            item.put("url", cleanUrl);
-            item.put("created", System.currentTimeMillis());
-            items.put(item);
-            downloadPrefs.edit().putString("in_app_download_items", items.toString()).apply();
-            Toast.makeText(this, "بدأ التنزيل داخل تطبيق AboEzzat Cast ✓", Toast.LENGTH_SHORT).show();
-        } catch (Exception e) {
-            Toast.makeText(this, "تعذر بدء التنزيل: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        if (mediaUrl == null || mediaUrl.trim().isEmpty()) {
+            Toast.makeText(this, "رابط التنزيل غير صالح", Toast.LENGTH_SHORT).show();
+            return;
         }
+        String cleanUrl = mediaUrl;
+        if (cleanUrl.contains("&bytestart=")) {
+            cleanUrl = cleanUrl.replaceAll("&bytestart=\\d+", "").replaceAll("&byteend=\\d+", "");
+        }
+        String lower = cleanUrl.toLowerCase(java.util.Locale.ROOT);
+        String path = Uri.parse(cleanUrl).getPath();
+        String ext = "";
+        if (path != null && path.lastIndexOf('.') >= 0) {
+            ext = path.substring(path.lastIndexOf('.')).toLowerCase(java.util.Locale.ROOT);
+            if (!ext.matches("\\.[a-z0-9]{2,7}")) ext = "";
+        }
+
+        String type;
+        if ((hintedMime != null && hintedMime.toLowerCase(java.util.Locale.ROOT).startsWith("image/"))
+                || ext.matches("\\.(jpg|jpeg|png|webp|gif|bmp|avif)")) {
+            type = "image";
+        } else if (audioOnly || (hintedMime != null && hintedMime.toLowerCase(java.util.Locale.ROOT).startsWith("audio/"))
+                || ext.matches("\\.(mp3|m4a|aac|ogg|opus|wav|flac)")) {
+            type = "audio";
+        } else {
+            type = "video";
+        }
+
+        WebView current = getCurrentWebView();
+        String referer = current == null || current.getUrl() == null ? "" : current.getUrl();
+        BrowserFileDownloader.start(this, cleanUrl, type, hintedMime, referer);
     }
 
     private void showSideMenu() {
@@ -2047,19 +2006,92 @@ public class BrowserActivity extends Activity {
     }
 
     private void openDownloadsFolder() {
-        try {
-            Intent intent = new Intent(DownloadManager.ACTION_VIEW_DOWNLOADS);
-            startActivity(intent);
-        } catch (Exception e) {
-            try {
-                Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
-                Uri uri = Uri.parse(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS).getPath());
-                intent.setDataAndType(uri, "*/*");
-                startActivity(Intent.createChooser(intent, "فتح التنزيلات"));
-            } catch (Exception ex) {
-                Toast.makeText(this, "تعذر فتح مجلد التنزيلات تلقائياً", Toast.LENGTH_SHORT).show();
+        showBrowserDownloadsDialog();
+    }
+
+    private void showBrowserDownloadsDialog() {
+        final String key = "in_app_download_items";
+        SharedPreferences prefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
+        org.json.JSONArray items;
+        try { items = new org.json.JSONArray(prefs.getString(key, "[]")); }
+        catch (Exception ignored) { items = new org.json.JSONArray(); }
+
+        final List<org.json.JSONObject> records = new ArrayList<>();
+        final List<String> labels = new ArrayList<>();
+        for (int i = 0; i < items.length(); i++) {
+            org.json.JSONObject item = items.optJSONObject(i);
+            if (item == null) continue;
+            records.add(item);
+            String status = item.optString("status", "failed");
+            String state;
+            if ("complete".equals(status)) {
+                long bytes = item.optLong("bytes", 0L);
+                state = bytes > 0 ? "اكتمل ✓ — " + formatBrowserDownloadSize(bytes) : "ملف غير صالح";
+            } else if ("downloading".equals(status)) {
+                int progress = item.optInt("progress", -1);
+                state = progress >= 0 ? "جارٍ التنزيل " + progress + "%" : "جارٍ التنزيل";
+            } else {
+                state = "فشل: " + item.optString("error", "تعذر التنزيل");
             }
+            labels.add(item.optString("file", "ملف") + "\\n" + state);
         }
+
+        if (records.isEmpty()) {
+            new AlertDialog.Builder(this).setTitle("تنزيلات المتصفح")
+                    .setMessage("لا توجد ملفات تم تنزيلها من المتصفح حتى الآن.")
+                    .setPositiveButton("إغلاق", null).show();
+            return;
+        }
+
+        android.widget.ListView list = new android.widget.ListView(this);
+        android.widget.ArrayAdapter<String> adapter = new android.widget.ArrayAdapter<>(
+                this, android.R.layout.simple_list_item_1, labels);
+        list.setAdapter(adapter);
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("تنزيلات AboEzzat Cast")
+                .setView(list)
+                .setNegativeButton("إغلاق", null)
+                .create();
+        list.setOnItemClickListener((parent, view, position, rowId) -> {
+            if (position < 0 || position >= records.size()) return;
+            org.json.JSONObject item = records.get(position);
+            new AlertDialog.Builder(this).setTitle(item.optString("file", "التنزيل"))
+                    .setItems(new String[]{"فتح الملف", "حذف الملف"}, (d, choice) -> {
+                        if (choice == 0) {
+                            if (!"complete".equals(item.optString("status", ""))
+                                    || item.optLong("bytes", 0L) <= 0
+                                    || item.optString("uri", "").isEmpty()) {
+                                Toast.makeText(this, "الملف لم يكتمل بعد أو فشل التحقق منه", Toast.LENGTH_LONG).show();
+                                return;
+                            }
+                            try {
+                                String mime = item.optString("mime", "video/mp4");
+                                Intent open = new Intent(Intent.ACTION_VIEW);
+                                open.setDataAndType(Uri.parse(item.getString("uri")), mime);
+                                open.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                                startActivity(open);
+                            } catch (Exception e) {
+                                Toast.makeText(this, "لا يوجد مشغل مناسب لهذا الملف", Toast.LENGTH_SHORT).show();
+                            }
+                        } else {
+                            BrowserFileDownloader.deleteFile(this, item);
+                            org.json.JSONArray updated = new org.json.JSONArray();
+                            for (int j = 0; j < records.size(); j++) {
+                                if (j != position) updated.put(records.get(j));
+                            }
+                            prefs.edit().putString(key, updated.toString()).apply();
+                            dialog.dismiss();
+                            showBrowserDownloadsDialog();
+                        }
+                    }).setNegativeButton("إلغاء", null).show();
+        });
+        dialog.show();
+    }
+
+    private String formatBrowserDownloadSize(long bytes) {
+        if (bytes < 1024) return bytes + " B";
+        if (bytes < 1024L * 1024L) return String.format(Locale.ROOT, "%.1f KB", bytes / 1024.0);
+        return String.format(Locale.ROOT, "%.1f MB", bytes / (1024.0 * 1024.0));
     }
 
     private void showTabsDialog() {
