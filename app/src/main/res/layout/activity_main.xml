@@ -581,6 +581,27 @@
                     android:textSize="15sp" />
             </LinearLayout>
 
+            <!-- 5. الوسائط المحفوظة -->
+            <LinearLayout
+                android:id="@+id/menu_saved_media"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:gravity="center_vertical"
+                android:clickable="true"
+                android:focusable="true">
+                <TextView
+                    android:layout_width="35dp"
+                    android:layout_height="wrap_content"
+                    android:text="⭐"
+                    android:textSize="18sp" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="الوسائط المحفوظة"
+                    android:textColor="#FFFFFF"
+                    android:textSize="15sp" />
+            </LinearLayout>
+
             <!-- 5. قائمة التشغيل -->
             <LinearLayout
                 android:id="@+id/menu_playlist"

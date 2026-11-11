@@ -278,6 +278,12 @@ public class MainActivity extends Activity {
             showRecentMediaDialog();
         });
 
+        // Saved direct media links, kept separately from browser bookmarks.
+        findViewById(R.id.menu_saved_media).setOnClickListener(v -> {
+            closeDrawer();
+            showSavedMediaDialog();
+        });
+
         // 5. قائمة التشغيل
         findViewById(R.id.menu_playlist).setOnClickListener(v -> {
             closeDrawer();
@@ -875,6 +881,98 @@ public class MainActivity extends Activity {
             return true;
         });
         dialog.show();
+    }
+
+
+    private org.json.JSONArray readSavedMediaUrls() {
+        try {
+            return new org.json.JSONArray(prefs.getString("saved_media_urls", "[]"));
+        } catch (Exception ignored) {
+            return new org.json.JSONArray();
+        }
+    }
+
+    private void showSavedMediaDialog() {
+        org.json.JSONArray saved = readSavedMediaUrls();
+        List<String> urls = new ArrayList<>();
+        List<String> labels = new ArrayList<>();
+        for (int i = 0; i < saved.length(); i++) {
+            String url = saved.optString(i, "").trim();
+            if (url.isEmpty() || !url.startsWith("http://") && !url.startsWith("https://")) continue;
+            urls.add(url);
+            String host;
+            try { host = Uri.parse(url).getHost(); } catch (Exception ignored) { host = null; }
+            labels.add((host == null || host.trim().isEmpty() ? "وسائط محفوظة" : host) + "\n" + url);
+        }
+
+        android.widget.ListView list = new android.widget.ListView(this);
+        list.setAdapter(new android.widget.ArrayAdapter<String>(this,
+                android.R.layout.simple_list_item_1, labels));
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("الوسائط المحفوظة")
+                .setView(list)
+                .setPositiveButton("إضافة رابط", (d, w) -> showAddSavedMediaDialog())
+                .setNegativeButton("إغلاق", null)
+                .create();
+
+        list.setOnItemClickListener((parent, view, position, id) -> {
+            castUrlDirectlyToTv(urls.get(position));
+            dialog.dismiss();
+        });
+        list.setOnItemLongClickListener((parent, view, position, id) -> {
+            String url = urls.get(position);
+            new AlertDialog.Builder(MainActivity.this)
+                    .setTitle("حذف الوسيط المحفوظ؟")
+                    .setMessage(url)
+                    .setPositiveButton("حذف", (confirm, which) -> {
+                        org.json.JSONArray latest = readSavedMediaUrls();
+                        org.json.JSONArray kept = new org.json.JSONArray();
+                        for (int i = 0; i < latest.length(); i++) {
+                            String candidate = latest.optString(i, "");
+                            if (!url.equals(candidate)) kept.put(candidate);
+                        }
+                        prefs.edit().putString("saved_media_urls", kept.toString()).apply();
+                        dialog.dismiss();
+                        Toast.makeText(MainActivity.this, "تم حذف الوسيط المحفوظ", Toast.LENGTH_SHORT).show();
+                        showSavedMediaDialog();
+                    })
+                    .setNegativeButton("إلغاء", null)
+                    .show();
+            return true;
+        });
+        dialog.show();
+    }
+
+    private void showAddSavedMediaDialog() {
+        EditText input = new EditText(this);
+        input.setSingleLine(true);
+        input.setHint("https:// رابط الفيديو أو الصوت المباشر");
+        input.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_URI);
+        new AlertDialog.Builder(this)
+                .setTitle("إضافة وسيط محفوظ")
+                .setMessage("أضف رابط بث أو ملف وسائط مباشر. اضغط عليه لاحقًا لإرساله إلى الشاشة.")
+                .setView(input)
+                .setPositiveButton("حفظ", (d, w) -> {
+                    String url = input.getText().toString().trim();
+                    if (!(url.startsWith("http://") || url.startsWith("https://"))) {
+                        Toast.makeText(this, "أدخل رابطًا يبدأ بـ http أو https", Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                    org.json.JSONArray saved = readSavedMediaUrls();
+                    for (int i = 0; i < saved.length(); i++) {
+                        if (url.equals(saved.optString(i, ""))) {
+                            Toast.makeText(this, "الرابط محفوظ بالفعل", Toast.LENGTH_SHORT).show();
+                            showSavedMediaDialog();
+                            return;
+                        }
+                    }
+                    saved.put(url);
+                    prefs.edit().putString("saved_media_urls", saved.toString()).apply();
+                    Toast.makeText(this, "تم حفظ رابط الوسائط", Toast.LENGTH_SHORT).show();
+                    showSavedMediaDialog();
+                })
+                .setNegativeButton("إلغاء", null)
+                .show();
     }
 
     private void openDownloads() {
