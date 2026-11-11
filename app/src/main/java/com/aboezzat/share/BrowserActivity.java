@@ -390,6 +390,7 @@ public class BrowserActivity extends Activity {
         android.widget.PopupMenu menu = new android.widget.PopupMenu(this, anchor);
         menu.getMenu().add("إضافة تبويب").setOnMenuItemClickListener(item -> { addNewTab("about:home"); return true; });
         menu.getMenu().add("علامات التبويب").setOnMenuItemClickListener(item -> { showTabsDialog(); return true; });
+        menu.getMenu().add("التنزيلات").setOnMenuItemClickListener(item -> { showBrowserDownloadsDialog(); return true; });
         menu.getMenu().add("المواقع السريعة").setOnMenuItemClickListener(item -> { showQuickSitesDialog(); return true; });
         menu.getMenu().add("المفضلة").setOnMenuItemClickListener(item -> {
             WebView current = getCurrentWebView();
