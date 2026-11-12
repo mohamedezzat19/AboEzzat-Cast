@@ -397,13 +397,14 @@ public class BrowserActivity extends Activity {
             showSideMenu();
             return;
         }
+        // Keep one flat menu: each browser action appears once and opens its
+        // destination directly instead of chaining into another menu.
         android.widget.PopupMenu menu = new android.widget.PopupMenu(this, anchor);
         menu.getMenu().add("مدير التنزيلات").setOnMenuItemClickListener(item -> { showBrowserDownloadsDialog(); return true; });
-        menu.getMenu().add("فتح مجلد التنزيلات").setOnMenuItemClickListener(item -> { openDownloadsFolder(); return true; });
         menu.getMenu().add("تحديث الصفحة").setOnMenuItemClickListener(item -> { WebView current = getCurrentWebView(); if (current != null) current.reload(); return true; });
         menu.getMenu().add("سجل التصفح").setOnMenuItemClickListener(item -> { showBrowserHistoryDialog(); return true; });
-        menu.getMenu().add("المفضلة والمواقع المحفوظة").setOnMenuItemClickListener(item -> { showQuickSitesDialog(); return true; });
-        menu.getMenu().add("المفضلة").setOnMenuItemClickListener(item -> {
+        menu.getMenu().add("المواقع المحفوظة").setOnMenuItemClickListener(item -> { showQuickSitesDialog(); return true; });
+        menu.getMenu().add("حفظ الصفحة الحالية").setOnMenuItemClickListener(item -> {
             WebView current = getCurrentWebView();
             if (current != null && current.getUrl() != null
                     && (current.getUrl().startsWith("http://") || current.getUrl().startsWith("https://"))) {
@@ -417,9 +418,13 @@ public class BrowserActivity extends Activity {
             }
             return true;
         });
-        menu.getMenu().add("الإعدادات").setOnMenuItemClickListener(item -> { showBrowserSettingsDialog(); return true; });
+        menu.getMenu().add("مسح ذاكرة التخزين المؤقت").setOnMenuItemClickListener(item -> {
+            WebView current = getCurrentWebView();
+            if (current != null) current.clearCache(true);
+            Toast.makeText(this, "تم مسح ذاكرة المتصفح", Toast.LENGTH_SHORT).show();
+            return true;
+        });
         menu.getMenu().add("مسح الكوكيز وبيانات المواقع").setOnMenuItemClickListener(item -> { clearBrowserSiteData(); return true; });
-        menu.getMenu().add("القائمة الجانبية").setOnMenuItemClickListener(item -> { showSideMenu(); return true; });
         menu.show();
     }
 
@@ -1859,8 +1864,7 @@ public class BrowserActivity extends Activity {
                 "🔗 دمج وبث بصوت وصورة (Merge & Cast)",
                 "📺 بث هذا المسار منفرداً (Cast Single Track)",
                 "🎬 تحميل الفيديو (MP4)",
-                "🎵 تحميل الصوت فقط (Clean Audio)",
-                "📥 تنزيل الملف داخل التطبيق"
+                "🎵 تحميل الصوت فقط (Clean Audio)"
         };
 
         new AlertDialog.Builder(this)
@@ -1877,12 +1881,6 @@ public class BrowserActivity extends Activity {
                             downloadMedia(media.url, true, "audio/mp4");
                         } else {
                             downloadSelectedMedia(true);
-                        }
-                    } else if (which == 4) {
-                        if (isCapturedAudioTrack(media)) {
-                            downloadMedia(media.url, true, "audio/mp4");
-                        } else {
-                            downloadSelectedMedia(false);
                         }
                     }
                 })
@@ -2349,10 +2347,29 @@ public class BrowserActivity extends Activity {
                             ? new String[]{"فتح الملف", "مشاركة الملف", "حذف الملف"}
                             : downloading
                                     ? new String[]{"عرض التفاصيل"}
-                                    : new String[]{"عرض التفاصيل", "إزالة من القائمة"};
+                                    : new String[]{"إعادة المحاولة", "عرض التفاصيل", "إزالة من القائمة"};
                     new AlertDialog.Builder(this).setTitle(item.optString("file", "التنزيل"))
                             .setItems(actionsList, (actionDialog, choice) -> {
-                                if (complete && choice == 0) {
+                                if (!complete && !downloading && choice == 0) {
+                                    String retryUrl = item.optString("url", "");
+                                    if (retryUrl.isEmpty()) {
+                                        Toast.makeText(this, "هذا التنزيل لا يحتوي على رابط مباشر لإعادة المحاولة", Toast.LENGTH_LONG).show();
+                                    } else {
+                                        org.json.JSONArray updated = new org.json.JSONArray();
+                                        for (org.json.JSONObject record : records) {
+                                            if (record != item) updated.put(record);
+                                        }
+                                        prefs.edit().putString(key, updated.toString()).apply();
+                                        WebView current = getCurrentWebView();
+                                        String retryReferer = current == null || current.getUrl() == null ? "" : current.getUrl();
+                                        BrowserFileDownloader.start(this, retryUrl,
+                                                item.optString("type", "video"),
+                                                item.optString("mime", "video/mp4"),
+                                                retryReferer);
+                                        dialog.dismiss();
+                                        showBrowserDownloadsDialog(selected[0]);
+                                    }
+                                } else if (complete && choice == 0) {
                                     try {
                                         Intent open = new Intent(Intent.ACTION_VIEW);
                                         open.setDataAndType(Uri.parse(uriText), item.optString("mime", "*/*"));
@@ -2371,7 +2388,7 @@ public class BrowserActivity extends Activity {
                                     } catch (Exception e) {
                                         Toast.makeText(this, "تعذرت مشاركة الملف", Toast.LENGTH_SHORT).show();
                                     }
-                                } else if ((complete && choice == 2) || (!complete && !downloading && choice == 1)) {
+                                } else if ((complete && choice == 2) || (!complete && !downloading && choice == 2)) {
                                     BrowserFileDownloader.deleteFile(this, item);
                                     org.json.JSONArray updated = new org.json.JSONArray();
                                     for (org.json.JSONObject record : records) {
@@ -2480,13 +2497,27 @@ public class BrowserActivity extends Activity {
                         ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
                 rp.bottomMargin = dp(7);
                 rows.addView(row, rp);
+                LinearLayout tabText = new LinearLayout(this);
+                tabText.setOrientation(LinearLayout.VERTICAL);
+                tabText.setPadding(0, dp(2), dp(6), dp(2));
                 TextView title = new TextView(this);
                 String label = tabTitles.get(i);
                 title.setText(label == null || label.trim().isEmpty() ? "صفحة جديدة" : label);
                 title.setTextColor(Color.WHITE);
                 title.setTextSize(14);
                 title.setMaxLines(2);
-                row.addView(title, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+                title.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                tabText.addView(title);
+                TextView address = new TextView(this);
+                WebView tabWebView = tabList.get(i);
+                String tabUrl = tabWebView == null ? "" : tabWebView.getUrl();
+                address.setText(tabUrl == null ? "" : tabUrl);
+                address.setTextColor(Color.LTGRAY);
+                address.setTextSize(11);
+                address.setSingleLine(true);
+                address.setEllipsize(android.text.TextUtils.TruncateAt.MIDDLE);
+                tabText.addView(address);
+                row.addView(tabText, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
                 Button close = new Button(this);
                 close.setText("×");
                 close.setTextSize(19);
