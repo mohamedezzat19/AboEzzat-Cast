@@ -1612,6 +1612,21 @@ public class BrowserActivity extends Activity {
         current.evaluateJavascript(js, null);
     }
 
+    private String buildCapturedMediaSummary() {
+        int videoCount = 0;
+        int audioCount = 0;
+        int selectedCount = 0;
+        synchronized (capturedList) {
+            for (CapturedMedia media : capturedList) {
+                if (media.mediaType == 1) videoCount++;
+                else if (media.mediaType == 2) audioCount++;
+                if (media.isSelected) selectedCount++;
+            }
+        }
+        return "المسارات: " + capturedList.size() + " • فيديو: " + videoCount
+                + " • صوت: " + audioCount + " • محدد: " + selectedCount;
+    }
+
     private void showMediaListDialog() {
         if (capturedList.isEmpty()) {
             Toast.makeText(this, "لا توجد فيديوهات مكتشفة، شغل الفيديو أولاً ثم اضغط 🎯", Toast.LENGTH_SHORT).show();
@@ -1635,7 +1650,7 @@ public class BrowserActivity extends Activity {
         main.setPadding(20, 20, 20, 20);
 
         TextView header = new TextView(this);
-        header.setText("المسارات المكتشفة (" + capturedList.size() + ") - محددة تلقائياً");
+        header.setText(buildCapturedMediaSummary());
         header.setTextColor(Color.WHITE);
         header.setTextSize(16);
         header.setGravity(Gravity.CENTER);
@@ -1668,7 +1683,10 @@ public class BrowserActivity extends Activity {
 
                 CheckBox cb = new CheckBox(BrowserActivity.this);
                 cb.setChecked(item.isSelected);
-                cb.setOnCheckedChangeListener((buttonView, isChecked) -> item.isSelected = isChecked);
+                cb.setOnCheckedChangeListener((buttonView, isChecked) -> {
+                    item.isSelected = isChecked;
+                    header.setText(buildCapturedMediaSummary());
+                });
                 row.addView(cb);
 
                 LinearLayout infoLayout = new LinearLayout(BrowserActivity.this);
@@ -2211,6 +2229,10 @@ public class BrowserActivity extends Activity {
             org.json.JSONObject item = items.optJSONObject(i);
             if (item != null) records.add(item);
         }
+        // Keep the newest downloads at the top, regardless of when their status changed.
+        Collections.sort(records, (left, right) ->
+                Long.compare(right.optLong("created", right.optLong("id", 0L)),
+                        left.optLong("created", left.optLong("id", 0L))));
 
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
@@ -2218,7 +2240,17 @@ public class BrowserActivity extends Activity {
         content.setBackgroundColor(Color.rgb(12, 18, 32));
 
         TextView summary = new TextView(this);
-        summary.setText(records.size() + " عنصر في مدير التنزيلات");
+        int completeCount = 0;
+        int downloadingCount = 0;
+        int failedCount = 0;
+        for (org.json.JSONObject record : records) {
+            String recordStatus = record.optString("status", "failed");
+            if ("complete".equals(recordStatus)) completeCount++;
+            else if ("downloading".equals(recordStatus)) downloadingCount++;
+            else failedCount++;
+        }
+        summary.setText(records.size() + " عنصر • مكتمل: " + completeCount
+                + " • جارٍ: " + downloadingCount + " • فشل: " + failedCount);
         summary.setTextColor(Color.LTGRAY);
         summary.setTextSize(12);
         summary.setPadding(dp(4), dp(4), dp(4), dp(10));
@@ -2253,13 +2285,18 @@ public class BrowserActivity extends Activity {
         Runnable renderRows = () -> {
             rows.removeAllViews();
             int visibleCount = 0;
+            int completeCount = 0;
+            int downloadingCount = 0;
+            int failedCount = 0;
             for (int i = 0; i < records.size(); i++) {
                 final org.json.JSONObject item = records.get(i);
                 String type = browserDownloadCategory(item);
+                String status = item.optString("status", "failed");
+                if ("complete".equals(status)) completeCount++;
+                else if ("downloading".equals(status)) downloadingCount++;
+                else failedCount++;
                 if (!"all".equals(selected[0]) && !selected[0].equals(type)) continue;
                 visibleCount++;
-
-                String status = item.optString("status", "failed");
                 String state;
                 if ("complete".equals(status)) {
                     long bytes = item.optLong("bytes", 0L);
@@ -2416,7 +2453,9 @@ public class BrowserActivity extends Activity {
                 empty.setPadding(dp(12), dp(30), dp(12), dp(30));
                 rows.addView(empty);
             }
-            summary.setText(visibleCount + " عنصر في هذا القسم • " + records.size() + " إجمالاً");
+            summary.setText(visibleCount + " في القسم • مكتمل: " + completeCount
+                    + " • جارٍ: " + downloadingCount + " • فشل: " + failedCount
+                    + " • الإجمالي: " + records.size());
         };
 
         for (int i = 0; i < categories.length; i++) {
