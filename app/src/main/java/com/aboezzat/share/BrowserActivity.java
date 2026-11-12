@@ -390,6 +390,7 @@ public class BrowserActivity extends Activity {
         android.widget.PopupMenu menu = new android.widget.PopupMenu(this, anchor);
         menu.getMenu().add("إضافة تبويب").setOnMenuItemClickListener(item -> { addNewTab("about:home"); return true; });
         menu.getMenu().add("علامات التبويب").setOnMenuItemClickListener(item -> { showTabsDialog(); return true; });
+        menu.getMenu().add("التنزيلات").setOnMenuItemClickListener(item -> { showBrowserDownloadsDialog(); return true; });
         menu.getMenu().add("المواقع السريعة").setOnMenuItemClickListener(item -> { showQuickSitesDialog(); return true; });
         menu.getMenu().add("المفضلة").setOnMenuItemClickListener(item -> {
             WebView current = getCurrentWebView();
@@ -2042,6 +2043,10 @@ public class BrowserActivity extends Activity {
     }
 
     private void showBrowserDownloadsDialog() {
+        showBrowserDownloadsDialog("all");
+    }
+
+    private void showBrowserDownloadsDialog(String initialCategory) {
         final String key = "in_app_download_items";
         SharedPreferences prefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
         org.json.JSONArray items;
@@ -2049,75 +2054,238 @@ public class BrowserActivity extends Activity {
         catch (Exception ignored) { items = new org.json.JSONArray(); }
 
         final List<org.json.JSONObject> records = new ArrayList<>();
-        final List<String> labels = new ArrayList<>();
         for (int i = 0; i < items.length(); i++) {
             org.json.JSONObject item = items.optJSONObject(i);
-            if (item == null) continue;
-            records.add(item);
-            String status = item.optString("status", "failed");
-            String state;
-            if ("complete".equals(status)) {
-                long bytes = item.optLong("bytes", 0L);
-                state = bytes > 0 ? "اكتمل ✓ — " + formatBrowserDownloadSize(bytes) : "ملف غير صالح";
-            } else if ("downloading".equals(status)) {
-                int progress = item.optInt("progress", -1);
-                state = progress >= 0 ? "جارٍ التنزيل " + progress + "%" : "جارٍ التنزيل";
-            } else {
-                state = "فشل: " + item.optString("error", "تعذر التنزيل");
-            }
-            labels.add(item.optString("file", "ملف") + "\\n" + state);
+            if (item != null) records.add(item);
         }
 
-        if (records.isEmpty()) {
-            new AlertDialog.Builder(this).setTitle("تنزيلات المتصفح")
-                    .setMessage("لا توجد ملفات تم تنزيلها من المتصفح حتى الآن.")
-                    .setPositiveButton("إغلاق", null).show();
-            return;
-        }
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(14), dp(8), dp(14), dp(8));
+        content.setBackgroundColor(Color.rgb(12, 18, 32));
 
-        android.widget.ListView list = new android.widget.ListView(this);
-        android.widget.ArrayAdapter<String> adapter = new android.widget.ArrayAdapter<>(
-                this, android.R.layout.simple_list_item_1, labels);
-        list.setAdapter(adapter);
-        AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle("تنزيلات AboEzzat Cast")
-                .setView(list)
+        TextView summary = new TextView(this);
+        summary.setText(records.size() + " عنصر في مدير التنزيلات");
+        summary.setTextColor(Color.LTGRAY);
+        summary.setTextSize(12);
+        summary.setPadding(dp(4), dp(4), dp(4), dp(10));
+        content.addView(summary);
+
+        android.widget.HorizontalScrollView filterScroll = new android.widget.HorizontalScrollView(this);
+        filterScroll.setHorizontalScrollBarEnabled(false);
+        LinearLayout filters = new LinearLayout(this);
+        filters.setOrientation(LinearLayout.HORIZONTAL);
+        final String[] categories = {"all", "video", "audio", "image", "file"};
+        final String[] categoryLabels = {"الكل", "فيديو", "صوت", "صور", "ملفات"};
+        final String[] selected = {initialCategory == null ? "all" : initialCategory};
+        filterScroll.addView(filters);
+        content.addView(filterScroll);
+
+        android.widget.ScrollView scroll = new android.widget.ScrollView(this);
+        LinearLayout rows = new LinearLayout(this);
+        rows.setOrientation(LinearLayout.VERTICAL);
+        rows.setPadding(0, dp(8), 0, dp(8));
+        scroll.addView(rows);
+        LinearLayout.LayoutParams scrollParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(390));
+        scrollParams.topMargin = dp(8);
+        content.addView(scroll, scrollParams);
+
+        final AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("مدير تنزيلات AboEzzat Cast")
+                .setView(content)
                 .setNegativeButton("إغلاق", null)
                 .create();
-        list.setOnItemClickListener((parent, view, position, rowId) -> {
-            if (position < 0 || position >= records.size()) return;
-            org.json.JSONObject item = records.get(position);
-            new AlertDialog.Builder(this).setTitle(item.optString("file", "التنزيل"))
-                    .setItems(new String[]{"فتح الملف", "حذف الملف"}, (d, choice) -> {
-                        if (choice == 0) {
-                            if (!"complete".equals(item.optString("status", ""))
-                                    || item.optLong("bytes", 0L) <= 0
-                                    || item.optString("uri", "").isEmpty()) {
-                                Toast.makeText(this, "الملف لم يكتمل بعد أو فشل التحقق منه", Toast.LENGTH_LONG).show();
-                                return;
-                            }
-                            try {
-                                String mime = item.optString("mime", "video/mp4");
-                                Intent open = new Intent(Intent.ACTION_VIEW);
-                                open.setDataAndType(Uri.parse(item.getString("uri")), mime);
-                                open.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-                                startActivity(open);
-                            } catch (Exception e) {
-                                Toast.makeText(this, "لا يوجد مشغل مناسب لهذا الملف", Toast.LENGTH_SHORT).show();
-                            }
-                        } else {
-                            BrowserFileDownloader.deleteFile(this, item);
-                            org.json.JSONArray updated = new org.json.JSONArray();
-                            for (int j = 0; j < records.size(); j++) {
-                                if (j != position) updated.put(records.get(j));
-                            }
-                            prefs.edit().putString(key, updated.toString()).apply();
-                            dialog.dismiss();
-                            showBrowserDownloadsDialog();
-                        }
-                    }).setNegativeButton("إلغاء", null).show();
-        });
+
+        Runnable renderRows = () -> {
+            rows.removeAllViews();
+            int visibleCount = 0;
+            for (int i = 0; i < records.size(); i++) {
+                final org.json.JSONObject item = records.get(i);
+                String type = browserDownloadCategory(item);
+                if (!"all".equals(selected[0]) && !selected[0].equals(type)) continue;
+                visibleCount++;
+
+                String status = item.optString("status", "failed");
+                String state;
+                if ("complete".equals(status)) {
+                    long bytes = item.optLong("bytes", 0L);
+                    state = bytes > 0 ? "اكتمل التنزيل • " + formatBrowserDownloadSize(bytes) : "ملف غير صالح";
+                } else if ("downloading".equals(status)) {
+                    int progress = item.optInt("progress", -1);
+                    state = progress >= 0 ? "جارٍ التنزيل • " + progress + "%" : "جارٍ الاتصال...";
+                } else {
+                    state = "فشل التنزيل • " + item.optString("error", "تعذر التنزيل");
+                }
+
+                LinearLayout card = new LinearLayout(this);
+                card.setOrientation(LinearLayout.VERTICAL);
+                card.setPadding(dp(12), dp(10), dp(12), dp(10));
+                android.graphics.drawable.GradientDrawable cardBg = new android.graphics.drawable.GradientDrawable();
+                cardBg.setColor(Color.rgb(25, 35, 55));
+                cardBg.setCornerRadius(dp(12));
+                cardBg.setStroke(dp(1), Color.rgb(48, 64, 91));
+                card.setBackground(cardBg);
+                LinearLayout.LayoutParams cardParams = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                cardParams.bottomMargin = dp(8);
+                rows.addView(card, cardParams);
+
+                LinearLayout heading = new LinearLayout(this);
+                heading.setOrientation(LinearLayout.HORIZONTAL);
+                heading.setGravity(Gravity.CENTER_VERTICAL);
+                TextView typeIcon = new TextView(this);
+                typeIcon.setText("video".equals(type) ? "🎬" : "audio".equals(type) ? "🎵"
+                        : "image".equals(type) ? "🖼️" : "📄");
+                typeIcon.setTextSize(22);
+                heading.addView(typeIcon, new LinearLayout.LayoutParams(dp(38), ViewGroup.LayoutParams.WRAP_CONTENT));
+
+                LinearLayout textColumn = new LinearLayout(this);
+                textColumn.setOrientation(LinearLayout.VERTICAL);
+                TextView name = new TextView(this);
+                name.setText(item.optString("title", item.optString("file", "ملف بدون اسم")));
+                name.setTextColor(Color.WHITE);
+                name.setTextSize(14);
+                name.setMaxLines(2);
+                TextView fileName = new TextView(this);
+                fileName.setText(item.optString("file", "ملف"));
+                fileName.setTextColor(Color.rgb(165, 178, 198));
+                fileName.setTextSize(11);
+                fileName.setMaxLines(1);
+                fileName.setEllipsize(android.text.TextUtils.TruncateAt.MIDDLE);
+                textColumn.addView(name);
+                textColumn.addView(fileName);
+                heading.addView(textColumn, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+                TextView more = new TextView(this);
+                more.setText("⋮");
+                more.setTextSize(25);
+                more.setTextColor(Color.WHITE);
+                more.setGravity(Gravity.CENTER);
+                heading.addView(more, new LinearLayout.LayoutParams(dp(34), dp(42)));
+                card.addView(heading);
+
+                TextView stateText = new TextView(this);
+                stateText.setText(state);
+                stateText.setTextColor("complete".equals(status) ? Color.rgb(105, 220, 145)
+                        : "failed".equals(status) ? Color.rgb(255, 145, 125) : Color.rgb(255, 205, 105));
+                stateText.setTextSize(12);
+                stateText.setPadding(dp(38), dp(5), 0, 0);
+                card.addView(stateText);
+
+                if ("downloading".equals(status)) {
+                    ProgressBar progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+                    progress.setMax(100);
+                    int value = item.optInt("progress", -1);
+                    if (value >= 0) progress.setProgress(value);
+                    else progress.setIndeterminate(true);
+                    LinearLayout.LayoutParams progressParams = new LinearLayout.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT, dp(4));
+                    progressParams.setMargins(dp(38), dp(7), 0, 0);
+                    card.addView(progress, progressParams);
+                }
+
+                View.OnClickListener actions = v -> {
+                    final String uriText = item.optString("uri", "");
+                    final String itemStatus = item.optString("status", "");
+                    final boolean downloading = "downloading".equals(itemStatus);
+                    final boolean complete = "complete".equals(itemStatus)
+                            && item.optLong("bytes", 0L) > 0 && !uriText.isEmpty();
+                    String[] actionsList = complete
+                            ? new String[]{"فتح الملف", "مشاركة الملف", "حذف الملف"}
+                            : downloading
+                                    ? new String[]{"عرض التفاصيل"}
+                                    : new String[]{"عرض التفاصيل", "إزالة من القائمة"};
+                    new AlertDialog.Builder(this).setTitle(item.optString("file", "التنزيل"))
+                            .setItems(actionsList, (actionDialog, choice) -> {
+                                if (complete && choice == 0) {
+                                    try {
+                                        Intent open = new Intent(Intent.ACTION_VIEW);
+                                        open.setDataAndType(Uri.parse(uriText), item.optString("mime", "*/*"));
+                                        open.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                                        startActivity(open);
+                                    } catch (Exception e) {
+                                        Toast.makeText(this, "لا يوجد تطبيق مناسب لفتح الملف", Toast.LENGTH_SHORT).show();
+                                    }
+                                } else if (complete && choice == 1) {
+                                    try {
+                                        Intent share = new Intent(Intent.ACTION_SEND);
+                                        share.setType(item.optString("mime", "*/*"));
+                                        share.putExtra(Intent.EXTRA_STREAM, Uri.parse(uriText));
+                                        share.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                                        startActivity(Intent.createChooser(share, "مشاركة الملف"));
+                                    } catch (Exception e) {
+                                        Toast.makeText(this, "تعذرت مشاركة الملف", Toast.LENGTH_SHORT).show();
+                                    }
+                                } else if ((complete && choice == 2) || (!complete && !downloading && choice == 1)) {
+                                    BrowserFileDownloader.deleteFile(this, item);
+                                    org.json.JSONArray updated = new org.json.JSONArray();
+                                    for (org.json.JSONObject record : records) {
+                                        if (record != item) updated.put(record);
+                                    }
+                                    prefs.edit().putString(key, updated.toString()).apply();
+                                    dialog.dismiss();
+                                    showBrowserDownloadsDialog(selected[0]);
+                                } else {
+                                    String detail = "الحالة: " + item.optString("status", "غير معروفة")
+                                            + "\nالحجم: " + formatBrowserDownloadSize(item.optLong("bytes", 0L))
+                                            + (item.optString("error", "").isEmpty() ? "" : "\nالسبب: " + item.optString("error"));
+                                    new AlertDialog.Builder(this).setMessage(detail).setPositiveButton("حسنًا", null).show();
+                                }
+                            }).setNegativeButton("إلغاء", null).show();
+                };
+                card.setOnClickListener(actions);
+                more.setOnClickListener(actions);
+            }
+            if (visibleCount == 0) {
+                TextView empty = new TextView(this);
+                empty.setText("لا توجد عناصر في هذا القسم حتى الآن");
+                empty.setTextColor(Color.LTGRAY);
+                empty.setGravity(Gravity.CENTER);
+                empty.setPadding(dp(12), dp(30), dp(12), dp(30));
+                rows.addView(empty);
+            }
+            summary.setText(visibleCount + " عنصر في هذا القسم • " + records.size() + " إجمالاً");
+        };
+
+        for (int i = 0; i < categories.length; i++) {
+            final String category = categories[i];
+            Button filter = new Button(this);
+            filter.setText(categoryLabels[i]);
+            filter.setAllCaps(false);
+            filter.setTextSize(12);
+            filter.setTextColor(Color.WHITE);
+            filter.setMinHeight(0);
+            filter.setPadding(dp(10), 0, dp(10), 0);
+            filter.setBackgroundTintList(android.content.res.ColorStateList.valueOf(
+                    category.equals(selected[0]) ? Color.rgb(0, 120, 190) : Color.rgb(37, 49, 70)));
+            LinearLayout.LayoutParams filterParams = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, dp(38));
+            filterParams.setMargins(dp(3), dp(3), dp(3), dp(3));
+            filters.addView(filter, filterParams);
+            filter.setOnClickListener(v -> {
+                selected[0] = category;
+                for (int j = 0; j < filters.getChildCount(); j++) {
+                    Button button = (Button) filters.getChildAt(j);
+                    button.setBackgroundTintList(android.content.res.ColorStateList.valueOf(
+                            categoryLabels[j].equals(button.getText().toString())
+                                    ? Color.rgb(0, 120, 190) : Color.rgb(37, 49, 70)));
+                }
+                renderRows.run();
+            });
+        }
+
+        renderRows.run();
         dialog.show();
+    }
+
+    private String browserDownloadCategory(org.json.JSONObject item) {
+        String type = item == null ? "" : item.optString("type", "").toLowerCase(Locale.ROOT);
+        String mime = item == null ? "" : item.optString("mime", "").toLowerCase(Locale.ROOT);
+        String file = item == null ? "" : item.optString("file", "").toLowerCase(Locale.ROOT);
+        if ("audio".equals(type) || mime.startsWith("audio/") || file.matches(".*\\.(mp3|m4a|aac|wav|ogg|flac|opus)$")) return "audio";
+        if ("image".equals(type) || mime.startsWith("image/") || file.matches(".*\\.(jpg|jpeg|png|webp|gif|bmp|svg)$")) return "image";
+        if ("video".equals(type) || mime.startsWith("video/") || file.matches(".*\\.(mp4|mkv|webm|mov|avi|3gp|m4v)$")) return "video";
+        return "file";
     }
 
     private String formatBrowserDownloadSize(long bytes) {
