@@ -100,6 +100,7 @@ public class BrowserActivity extends Activity {
     private Button btnSniff;
     private Button btnCast;
     private TextView btnTabs;
+    private View browserMenuButton;
 
     // Consent bar for external app/store redirects and pop-up requests.
     private LinearLayout redirectBar;
@@ -209,14 +210,21 @@ public class BrowserActivity extends Activity {
         topBar.setPadding(8, 8, 8, 8);
         topBar.setBackgroundColor(Color.parseColor("#0D1733"));
         topBar.setGravity(Gravity.CENTER_VERTICAL);
+        topBar.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
 
         Button btnMenu = new Button(this);
-        btnMenu.setText("☰");
+        btnMenu.setText("⋮");
+        btnMenu.setAllCaps(false);
         btnMenu.setTextColor(Color.WHITE);
         btnMenu.setBackgroundColor(Color.TRANSPARENT);
-        btnMenu.setTextSize(20);
-        btnMenu.setOnClickListener(v -> showSideMenu());
-        topBar.addView(btnMenu, new LinearLayout.LayoutParams(95, ViewGroup.LayoutParams.WRAP_CONTENT));
+        btnMenu.setTextSize(24);
+        btnMenu.setMinWidth(0);
+        btnMenu.setMinimumWidth(0);
+        btnMenu.setPadding(0, 0, 0, 0);
+        btnMenu.setContentDescription("قائمة المتصفح");
+        btnMenu.setOnClickListener(v -> showBrowserMoreMenu());
+        browserMenuButton = btnMenu;
+        topBar.addView(btnMenu, new LinearLayout.LayoutParams(dp(44), dp(44)));
 
         etUrl = new EditText(this);
         etUrl.setHint("اكتب الرابط أو ابحث...");
@@ -224,6 +232,7 @@ public class BrowserActivity extends Activity {
         etUrl.setTextColor(Color.WHITE);
         etUrl.setTextSize(13);
         etUrl.setSingleLine(true);
+        etUrl.setTextDirection(View.TEXT_DIRECTION_LTR);
         etUrl.setBackgroundColor(Color.parseColor("#182442"));
         etUrl.setPadding(15, 10, 15, 10);
         LinearLayout.LayoutParams urlParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
@@ -240,7 +249,7 @@ public class BrowserActivity extends Activity {
         btnSniff.setTextColor(Color.WHITE);
         btnSniff.setBackgroundColor(Color.parseColor("#D32F2F"));
         btnSniff.setOnClickListener(v -> triggerManualSniff());
-        LinearLayout.LayoutParams sniffParams = new LinearLayout.LayoutParams(95, ViewGroup.LayoutParams.WRAP_CONTENT);
+        LinearLayout.LayoutParams sniffParams = new LinearLayout.LayoutParams(dp(46), dp(44));
         sniffParams.setMargins(0, 5, 5, 0);
         topBar.addView(btnSniff, sniffParams);
 
@@ -300,8 +309,9 @@ public class BrowserActivity extends Activity {
             else Toast.makeText(this, "مفيش صفحة تالية", Toast.LENGTH_SHORT).show();
         }));
 
-        btnTabs = createBottomButton("⋮", v -> showBrowserMoreMenu());
-        btnTabs.setContentDescription("المزيد من أدوات المتصفح");
+        btnTabs = createBottomButton("▢", v -> showTabsDialog());
+        btnTabs.setTextSize(21);
+        btnTabs.setContentDescription("عرض علامات التبويب المفتوحة وإضافة تبويب");
         bottomBar.addView(btnTabs);
 
         rootLayout.addView(bottomBar);
@@ -382,15 +392,15 @@ public class BrowserActivity extends Activity {
     }
 
     private void showBrowserMoreMenu() {
-        TextView anchor = btnTabs;
+        View anchor = browserMenuButton;
         if (anchor == null) {
             showSideMenu();
             return;
         }
         android.widget.PopupMenu menu = new android.widget.PopupMenu(this, anchor);
-        menu.getMenu().add("إضافة تبويب").setOnMenuItemClickListener(item -> { addNewTab("about:home"); return true; });
-        menu.getMenu().add("علامات التبويب").setOnMenuItemClickListener(item -> { showTabsDialog(); return true; });
-        menu.getMenu().add("التنزيلات").setOnMenuItemClickListener(item -> { showBrowserDownloadsDialog(); return true; });
+        menu.getMenu().add("مدير التنزيلات").setOnMenuItemClickListener(item -> { showBrowserDownloadsDialog(); return true; });
+        menu.getMenu().add("فتح مجلد التنزيلات").setOnMenuItemClickListener(item -> { openDownloadsFolder(); return true; });
+        menu.getMenu().add("تحديث الصفحة").setOnMenuItemClickListener(item -> { WebView current = getCurrentWebView(); if (current != null) current.reload(); return true; });
         menu.getMenu().add("سجل التصفح").setOnMenuItemClickListener(item -> { showBrowserHistoryDialog(); return true; });
         menu.getMenu().add("المفضلة والمواقع المحفوظة").setOnMenuItemClickListener(item -> { showQuickSitesDialog(); return true; });
         menu.getMenu().add("المفضلة").setOnMenuItemClickListener(item -> {
@@ -408,6 +418,7 @@ public class BrowserActivity extends Activity {
             return true;
         });
         menu.getMenu().add("الإعدادات").setOnMenuItemClickListener(item -> { showBrowserSettingsDialog(); return true; });
+        menu.getMenu().add("مسح الكوكيز وبيانات المواقع").setOnMenuItemClickListener(item -> { clearBrowserSiteData(); return true; });
         menu.getMenu().add("القائمة الجانبية").setOnMenuItemClickListener(item -> { showSideMenu(); return true; });
         menu.show();
     }
@@ -1350,7 +1361,7 @@ public class BrowserActivity extends Activity {
             String u = current.getUrl();
             etUrl.setText((u == null || u.equals("about:home")) ? "" : u);
         }
-        btnTabs.setText("[ " + tabList.size() + " ]");
+        btnTabs.setContentDescription("علامات التبويب المفتوحة: " + tabList.size());
     }
 
     private boolean isBlockedAdUrl(String value) {
@@ -1777,6 +1788,7 @@ public class BrowserActivity extends Activity {
     private void downloadSelectedMedia(boolean audioOnly) {
         CapturedMedia bestVideo = null;
         CapturedMedia selectedAudio = null;
+        CapturedMedia bestAvailableAudio = null;
         int audioTrackCount = 0;
         CapturedMedia onlyAudioTrack = null;
 
@@ -1785,6 +1797,10 @@ public class BrowserActivity extends Activity {
                 if (isCapturedAudioTrack(item)) {
                     audioTrackCount++;
                     onlyAudioTrack = item;
+                    if (bestAvailableAudio == null || capturedUrlConfidence(item.url, 2)
+                            > capturedUrlConfidence(bestAvailableAudio.url, 2)) {
+                        bestAvailableAudio = item;
+                    }
                 }
                 if (!item.isSelected) continue;
 
@@ -1819,6 +1835,10 @@ public class BrowserActivity extends Activity {
             Toast.makeText(this, "حدد مسار فيديو من مربعات الاختيار أولاً", Toast.LENGTH_LONG).show();
             return;
         }
+
+        // The video-download action means a complete video: if the page exposed
+        // a separate audio rendition, prefer it even if its checkbox was toggled off.
+        if (selectedAudio == null) selectedAudio = bestAvailableAudio;
 
         WebView current = getCurrentWebView();
         String referer = current == null || current.getUrl() == null ? "" : current.getUrl();
@@ -1879,6 +1899,11 @@ public class BrowserActivity extends Activity {
     }
 
     private void mergeAndCastToTv() {
+        String youtubePage = getCurrentYouTubePageUrl();
+        if (youtubePage != null) {
+            castToTv(youtubePage);
+            return;
+        }
         String videoTrackUrl = "";
         String audioTrackUrl = "";
         CapturedMedia bestVideo = null;
@@ -1992,7 +2017,26 @@ public class BrowserActivity extends Activity {
         }
     }
 
+    private String getCurrentYouTubePageUrl() {
+        WebView current = getCurrentWebView();
+        if (current == null) return null;
+        String page = current.getUrl();
+        if (page == null || page.trim().isEmpty()) return null;
+        try {
+            Uri uri = Uri.parse(page.trim());
+            String host = uri.getHost();
+            if (host == null) return null;
+            host = host.toLowerCase(Locale.ROOT);
+            if (host.equals("youtu.be") || host.equals("youtube.com")
+                    || host.endsWith(".youtube.com") || host.equals("youtube-nocookie.com")
+                    || host.endsWith(".youtube-nocookie.com")) return page.trim();
+        } catch (Exception ignored) { }
+        return null;
+    }
+
     private void castToTv(String mediaUrl) {
+        String youtubePage = getCurrentYouTubePageUrl();
+        if (youtubePage != null) mediaUrl = youtubePage;
         if (tvIp.isEmpty()) {
             Toast.makeText(this, "يرجى تعيين IP الشاشة أولاً", Toast.LENGTH_SHORT).show();
             return;
@@ -2082,6 +2126,14 @@ public class BrowserActivity extends Activity {
             cleanUrl = cleanUrl.replaceAll("&bytestart=\\d+", "").replaceAll("&byteend=\\d+", "");
         }
         String lower = cleanUrl.toLowerCase(java.util.Locale.ROOT);
+        if (lower.contains(".m3u8") || lower.contains(".mpd")
+                || lower.matches(".*\\.(ts|m4s)(?:[?#].*)?$")
+                || lower.contains("manifest(format=m3u8") || lower.contains("manifest(format=mpd")) {
+            Toast.makeText(this,
+                    "ده مسار بث متكيف أو مقطع بث، مش ملف فيديو كامل. مش هنحفظه كـ MP4 ناقص أو تالف.",
+                    Toast.LENGTH_LONG).show();
+            return;
+        }
         String path = Uri.parse(cleanUrl).getPath();
         String ext = "";
         if (path != null && path.lastIndexOf('.') >= 0) {
@@ -2105,6 +2157,18 @@ public class BrowserActivity extends Activity {
         BrowserFileDownloader.start(this, cleanUrl, type, hintedMime, referer);
     }
 
+    private void clearBrowserSiteData() {
+        CookieManager.getInstance().removeAllCookies(null);
+        CookieManager.getInstance().flush();
+        android.webkit.WebStorage.getInstance().deleteAllData();
+        for (WebView webView : new ArrayList<>(tabList)) {
+            webView.clearCache(true);
+            webView.clearFormData();
+            webView.clearHistory();
+        }
+        Toast.makeText(this, "تم مسح الكوكيز وبيانات المواقع وذاكرة المتصفح", Toast.LENGTH_SHORT).show();
+    }
+
     private void showSideMenu() {
         String[] menuItems = {
                 "🔄 تحديث الصفحة الحالية",
@@ -2123,15 +2187,7 @@ public class BrowserActivity extends Activity {
                     } else if (which == 2) {
                         addNewTab("about:home");
                     } else if (which == 3) {
-                        CookieManager.getInstance().removeAllCookies(null);
-                        CookieManager.getInstance().flush();
-                        android.webkit.WebStorage.getInstance().deleteAllData();
-                        for (WebView webView : new ArrayList<>(tabList)) {
-                            webView.clearCache(true);
-                            webView.clearFormData();
-                            webView.clearHistory();
-                        }
-                        Toast.makeText(BrowserActivity.this, "تم مسح الكوكيز وبيانات المواقع وذاكرة المتصفح", Toast.LENGTH_SHORT).show();
+                        clearBrowserSiteData();
                     }
                 })
                 .show();
@@ -2404,7 +2460,7 @@ public class BrowserActivity extends Activity {
         content.addView(scroll, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(360)));
         AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle("علامات التبويب • " + tabList.size())
+                .setTitle("علامات التبويب المفتوحة")
                 .setView(content)
                 .setPositiveButton("＋ تبويب جديد", (d, w) -> addNewTab("about:home"))
                 .setNegativeButton("إغلاق", null).create();
@@ -2424,11 +2480,6 @@ public class BrowserActivity extends Activity {
                         ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
                 rp.bottomMargin = dp(7);
                 rows.addView(row, rp);
-                TextView number = new TextView(this);
-                number.setText(String.valueOf(i + 1));
-                number.setTextColor(Color.LTGRAY);
-                number.setTextSize(13);
-                row.addView(number, new LinearLayout.LayoutParams(dp(28), ViewGroup.LayoutParams.WRAP_CONTENT));
                 TextView title = new TextView(this);
                 String label = tabTitles.get(i);
                 title.setText(label == null || label.trim().isEmpty() ? "صفحة جديدة" : label);
