@@ -391,7 +391,8 @@ public class BrowserActivity extends Activity {
         menu.getMenu().add("إضافة تبويب").setOnMenuItemClickListener(item -> { addNewTab("about:home"); return true; });
         menu.getMenu().add("علامات التبويب").setOnMenuItemClickListener(item -> { showTabsDialog(); return true; });
         menu.getMenu().add("التنزيلات").setOnMenuItemClickListener(item -> { showBrowserDownloadsDialog(); return true; });
-        menu.getMenu().add("المواقع السريعة").setOnMenuItemClickListener(item -> { showQuickSitesDialog(); return true; });
+        menu.getMenu().add("سجل التصفح").setOnMenuItemClickListener(item -> { showBrowserHistoryDialog(); return true; });
+        menu.getMenu().add("المفضلة والمواقع المحفوظة").setOnMenuItemClickListener(item -> { showQuickSitesDialog(); return true; });
         menu.getMenu().add("المفضلة").setOnMenuItemClickListener(item -> {
             WebView current = getCurrentWebView();
             if (current != null && current.getUrl() != null
@@ -411,25 +412,123 @@ public class BrowserActivity extends Activity {
         menu.show();
     }
 
+    private void showBrowserHistoryDialog() {
+        SharedPreferences prefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
+        Set<String> saved = prefs.getStringSet("browser_history", new HashSet<String>());
+        List<String> urls = new ArrayList<>(saved == null ? new HashSet<String>() : saved);
+        Collections.sort(urls, (a, b) -> Long.compare(
+                prefs.getLong("history_time_" + b, 0L), prefs.getLong("history_time_" + a, 0L)));
+        if (urls.isEmpty()) {
+            new AlertDialog.Builder(this).setTitle("سجل التصفح")
+                    .setMessage("لا توجد مواقع في سجل التصفح حتى الآن.")
+                    .setPositiveButton("إغلاق", null).show();
+            return;
+        }
+        List<String> labels = new ArrayList<>();
+        for (String url : urls) {
+            String title = prefs.getString("history_title_" + url, url);
+            labels.add(title + "\\n" + url);
+        }
+        android.widget.ListView list = new android.widget.ListView(this);
+        list.setAdapter(new android.widget.ArrayAdapter<>(this, android.R.layout.simple_list_item_2,
+                android.R.id.text1, labels) {
+            @Override public View getView(int position, View convertView, ViewGroup parent) {
+                View row = super.getView(position, convertView, parent);
+                TextView first = row.findViewById(android.R.id.text1);
+                TextView second = row.findViewById(android.R.id.text2);
+                String url = urls.get(position);
+                first.setText(prefs.getString("history_title_" + url, url));
+                second.setText(url);
+                first.setTextColor(Color.WHITE);
+                second.setTextColor(Color.LTGRAY);
+                return row;
+            }
+        });
+        AlertDialog dialog = new AlertDialog.Builder(this).setTitle("سجل التصفح • " + urls.size())
+                .setView(list).setNegativeButton("إغلاق", null)
+                .setNeutralButton("مسح السجل", (d, w) -> {
+                    prefs.edit().putStringSet("browser_history", new HashSet<String>())
+                            .putLong("history_cleared_at", System.currentTimeMillis()).apply();
+                    Toast.makeText(this, "تم مسح سجل التصفح", Toast.LENGTH_SHORT).show();
+                }).create();
+        list.setOnItemClickListener((parent, view, position, id) -> {
+            if (position >= 0 && position < urls.size()) {
+                loadTargetUrl(urls.get(position));
+                dialog.dismiss();
+            }
+        });
+        list.setOnItemLongClickListener((parent, view, position, id) -> {
+            if (position < 0 || position >= urls.size()) return true;
+            String url = urls.get(position);
+            Set<String> updated = new HashSet<>(prefs.getStringSet("browser_history", new HashSet<String>()));
+            updated.remove(url);
+            prefs.edit().putStringSet("browser_history", updated)
+                    .remove("history_title_" + url).remove("history_time_" + url)
+                    .remove("visit_count_" + url).apply();
+            dialog.dismiss();
+            showBrowserHistoryDialog();
+            return true;
+        });
+        dialog.show();
+    }
+
     private void showQuickSitesDialog() {
         SharedPreferences prefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
         Set<String> saved = prefs.getStringSet("custom_sites", new HashSet<String>());
-        List<String> labels = new ArrayList<>();
-        List<String> urls = new ArrayList<>();
-        for (String entry : saved) {
-            if (entry == null) continue;
-            int split = entry.indexOf('|');
-            if (split <= 0 || split >= entry.length() - 1) continue;
-            labels.add(entry.substring(0, split));
-            urls.add(entry.substring(split + 1));
+        List<String> entries = new ArrayList<>();
+        if (saved != null) {
+            for (String entry : saved) {
+                if (entry != null) {
+                    int split = entry.indexOf('|');
+                    if (split > 0 && split < entry.length() - 1) entries.add(entry);
+                }
+            }
         }
-        if (labels.isEmpty()) {
-            Toast.makeText(this, "لا توجد مواقع محفوظة بعد", Toast.LENGTH_SHORT).show();
+        Collections.sort(entries, (a, b) -> a.substring(0, a.indexOf('|'))
+                .compareToIgnoreCase(b.substring(0, b.indexOf('|'))));
+        if (entries.isEmpty()) {
+            new AlertDialog.Builder(this).setTitle("المفضلة والمواقع المحفوظة")
+                    .setMessage("لم تحفظ أي مواقع بعد. افتح موقعاً ثم اختر المفضلة من قائمة المتصفح.")
+                    .setPositiveButton("حسنًا", null).show();
             return;
         }
-        new AlertDialog.Builder(this).setTitle("المواقع السريعة")
-                .setItems(labels.toArray(new String[0]), (dialog, which) -> loadTargetUrl(urls.get(which)))
-                .setNegativeButton("إغلاق", null).show();
+        android.widget.ListView list = new android.widget.ListView(this);
+        list.setAdapter(new android.widget.ArrayAdapter<String>(this,
+                android.R.layout.simple_list_item_2, android.R.id.text1, entries) {
+            @Override public View getView(int position, View convertView, ViewGroup parent) {
+                View row = super.getView(position, convertView, parent);
+                String entry = entries.get(position);
+                int split = entry.indexOf('|');
+                TextView title = row.findViewById(android.R.id.text1);
+                TextView address = row.findViewById(android.R.id.text2);
+                title.setText(entry.substring(0, split));
+                address.setText(entry.substring(split + 1));
+                title.setTextColor(Color.WHITE);
+                address.setTextColor(Color.LTGRAY);
+                return row;
+            }
+        });
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("المفضلة والمواقع المحفوظة • " + entries.size())
+                .setView(list).setNegativeButton("إغلاق", null).create();
+        list.setOnItemClickListener((parent, view, position, id) -> {
+            if (position >= 0 && position < entries.size()) {
+                loadTargetUrl(entries.get(position).substring(entries.get(position).indexOf('|') + 1));
+                dialog.dismiss();
+            }
+        });
+        list.setOnItemLongClickListener((parent, view, position, id) -> {
+            if (position < 0 || position >= entries.size()) return true;
+            String entry = entries.get(position);
+            Set<String> updated = new HashSet<>(prefs.getStringSet("custom_sites", new HashSet<String>()));
+            updated.remove(entry);
+            prefs.edit().putStringSet("custom_sites", updated).apply();
+            dialog.dismiss();
+            showQuickSitesDialog();
+            Toast.makeText(this, "تم حذف الموقع من المفضلة", Toast.LENGTH_SHORT).show();
+            return true;
+        });
+        dialog.show();
     }
 
     private void showBrowserSettingsDialog() {
@@ -2295,29 +2394,87 @@ public class BrowserActivity extends Activity {
     }
 
     private void showTabsDialog() {
-        String[] titles = new String[tabList.size()];
-        for (int i = 0; i < tabList.size(); i++) {
-            titles[i] = (i + 1) + ". " + tabTitles.get(i);
-        }
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(12), dp(8), dp(12), dp(8));
+        android.widget.ScrollView scroll = new android.widget.ScrollView(this);
+        LinearLayout rows = new LinearLayout(this);
+        rows.setOrientation(LinearLayout.VERTICAL);
+        scroll.addView(rows);
+        content.addView(scroll, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(360)));
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("علامات التبويب • " + tabList.size())
+                .setView(content)
+                .setPositiveButton("＋ تبويب جديد", (d, w) -> addNewTab("about:home"))
+                .setNegativeButton("إغلاق", null).create();
+        final Runnable[] render = new Runnable[1];
+        render[0] = () -> {
+            rows.removeAllViews();
+            for (int i = 0; i < tabList.size(); i++) {
+                final int index = i;
+                LinearLayout row = new LinearLayout(this);
+                row.setGravity(Gravity.CENTER_VERTICAL);
+                row.setPadding(dp(10), dp(8), dp(6), dp(8));
+                android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
+                bg.setColor(i == currentTabIndex ? Color.rgb(31, 65, 94) : Color.rgb(25, 35, 52));
+                bg.setCornerRadius(dp(10));
+                row.setBackground(bg);
+                LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                rp.bottomMargin = dp(7);
+                rows.addView(row, rp);
+                TextView number = new TextView(this);
+                number.setText(String.valueOf(i + 1));
+                number.setTextColor(Color.LTGRAY);
+                number.setTextSize(13);
+                row.addView(number, new LinearLayout.LayoutParams(dp(28), ViewGroup.LayoutParams.WRAP_CONTENT));
+                TextView title = new TextView(this);
+                String label = tabTitles.get(i);
+                title.setText(label == null || label.trim().isEmpty() ? "صفحة جديدة" : label);
+                title.setTextColor(Color.WHITE);
+                title.setTextSize(14);
+                title.setMaxLines(2);
+                row.addView(title, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+                Button close = new Button(this);
+                close.setText("×");
+                close.setTextSize(19);
+                close.setAllCaps(false);
+                close.setMinWidth(0);
+                close.setMinimumWidth(0);
+                close.setPadding(dp(8), 0, dp(8), 0);
+                row.addView(close, new LinearLayout.LayoutParams(dp(42), dp(42)));
+                row.setOnClickListener(v -> {
+                    switchToTab(index);
+                    dialog.dismiss();
+                });
+                close.setOnClickListener(v -> {
+                    closeTabAt(index);
+                    if (tabList.isEmpty()) addNewTab("about:home");
+                    render[0].run();
+                });
+            }
+        };
+        render[0].run();
+        dialog.show();
+    }
 
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("علامات التبويب المفتوحة (" + tabList.size() + ")");
-        builder.setItems(titles, (dialog, which) -> switchToTab(which));
-        builder.setPositiveButton("➕ علامة تبويب جديدة", (dialog, which) -> addNewTab("about:home"));
-        if (tabList.size() > 1) {
-            builder.setNegativeButton("✖ إغلاق التبويب الحالي", (dialog, which) -> closeCurrentTab());
-        }
-        builder.show();
+    private void closeTabAt(int index) {
+        if (index < 0 || index >= tabList.size() || tabList.size() <= 1) return;
+        WebView removed = tabList.remove(index);
+        tabTitles.remove(index);
+        navigationStartedAt.remove(removed);
+        webContainer.removeView(removed);
+        removed.stopLoading();
+        removed.destroy();
+        int next = currentTabIndex;
+        if (index < currentTabIndex) next--;
+        else if (index == currentTabIndex) next = Math.min(index, tabList.size() - 1);
+        switchToTab(Math.max(0, next));
     }
 
     private void closeCurrentTab() {
-        if (tabList.size() <= 1) return;
-        WebView toRemove = tabList.remove(currentTabIndex);
-        tabTitles.remove(currentTabIndex);
-        navigationStartedAt.remove(toRemove);
-        webContainer.removeView(toRemove);
-        toRemove.destroy();
-        switchToTab(Math.max(0, currentTabIndex - 1));
+        closeTabAt(currentTabIndex);
     }
 
     private void recordVisitedUrl(WebView sourceView, String url) {
