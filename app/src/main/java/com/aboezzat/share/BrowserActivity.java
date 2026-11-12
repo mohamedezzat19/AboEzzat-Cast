@@ -2347,10 +2347,29 @@ public class BrowserActivity extends Activity {
                             ? new String[]{"فتح الملف", "مشاركة الملف", "حذف الملف"}
                             : downloading
                                     ? new String[]{"عرض التفاصيل"}
-                                    : new String[]{"عرض التفاصيل", "إزالة من القائمة"};
+                                    : new String[]{"إعادة المحاولة", "عرض التفاصيل", "إزالة من القائمة"};
                     new AlertDialog.Builder(this).setTitle(item.optString("file", "التنزيل"))
                             .setItems(actionsList, (actionDialog, choice) -> {
-                                if (complete && choice == 0) {
+                                if (!complete && !downloading && choice == 0) {
+                                    String retryUrl = item.optString("url", "");
+                                    if (retryUrl.isEmpty()) {
+                                        Toast.makeText(this, "هذا التنزيل لا يحتوي على رابط مباشر لإعادة المحاولة", Toast.LENGTH_LONG).show();
+                                    } else {
+                                        org.json.JSONArray updated = new org.json.JSONArray();
+                                        for (org.json.JSONObject record : records) {
+                                            if (record != item) updated.put(record);
+                                        }
+                                        prefs.edit().putString(key, updated.toString()).apply();
+                                        WebView current = getCurrentWebView();
+                                        String retryReferer = current == null || current.getUrl() == null ? "" : current.getUrl();
+                                        BrowserFileDownloader.start(this, retryUrl,
+                                                item.optString("type", "video"),
+                                                item.optString("mime", "video/mp4"),
+                                                retryReferer);
+                                        dialog.dismiss();
+                                        showBrowserDownloadsDialog(selected[0]);
+                                    }
+                                } else if (complete && choice == 0) {
                                     try {
                                         Intent open = new Intent(Intent.ACTION_VIEW);
                                         open.setDataAndType(Uri.parse(uriText), item.optString("mime", "*/*"));
@@ -2369,7 +2388,7 @@ public class BrowserActivity extends Activity {
                                     } catch (Exception e) {
                                         Toast.makeText(this, "تعذرت مشاركة الملف", Toast.LENGTH_SHORT).show();
                                     }
-                                } else if ((complete && choice == 2) || (!complete && !downloading && choice == 1)) {
+                                } else if ((complete && choice == 2) || (!complete && !downloading && choice == 2)) {
                                     BrowserFileDownloader.deleteFile(this, item);
                                     org.json.JSONArray updated = new org.json.JSONArray();
                                     for (org.json.JSONObject record : records) {
