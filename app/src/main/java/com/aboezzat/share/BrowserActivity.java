@@ -2285,13 +2285,18 @@ public class BrowserActivity extends Activity {
         Runnable renderRows = () -> {
             rows.removeAllViews();
             int visibleCount = 0;
+            int completeCount = 0;
+            int downloadingCount = 0;
+            int failedCount = 0;
             for (int i = 0; i < records.size(); i++) {
                 final org.json.JSONObject item = records.get(i);
                 String type = browserDownloadCategory(item);
+                String status = item.optString("status", "failed");
+                if ("complete".equals(status)) completeCount++;
+                else if ("downloading".equals(status)) downloadingCount++;
+                else failedCount++;
                 if (!"all".equals(selected[0]) && !selected[0].equals(type)) continue;
                 visibleCount++;
-
-                String status = item.optString("status", "failed");
                 String state;
                 if ("complete".equals(status)) {
                     long bytes = item.optLong("bytes", 0L);
