@@ -1788,6 +1788,7 @@ public class BrowserActivity extends Activity {
     private void downloadSelectedMedia(boolean audioOnly) {
         CapturedMedia bestVideo = null;
         CapturedMedia selectedAudio = null;
+        CapturedMedia bestAvailableAudio = null;
         int audioTrackCount = 0;
         CapturedMedia onlyAudioTrack = null;
 
@@ -1796,6 +1797,10 @@ public class BrowserActivity extends Activity {
                 if (isCapturedAudioTrack(item)) {
                     audioTrackCount++;
                     onlyAudioTrack = item;
+                    if (bestAvailableAudio == null || capturedUrlConfidence(item.url, 2)
+                            > capturedUrlConfidence(bestAvailableAudio.url, 2)) {
+                        bestAvailableAudio = item;
+                    }
                 }
                 if (!item.isSelected) continue;
 
@@ -1830,6 +1835,10 @@ public class BrowserActivity extends Activity {
             Toast.makeText(this, "حدد مسار فيديو من مربعات الاختيار أولاً", Toast.LENGTH_LONG).show();
             return;
         }
+
+        // The video-download action means a complete video: if the page exposed
+        // a separate audio rendition, prefer it even if its checkbox was toggled off.
+        if (selectedAudio == null) selectedAudio = bestAvailableAudio;
 
         WebView current = getCurrentWebView();
         String referer = current == null || current.getUrl() == null ? "" : current.getUrl();
@@ -2117,6 +2126,14 @@ public class BrowserActivity extends Activity {
             cleanUrl = cleanUrl.replaceAll("&bytestart=\\d+", "").replaceAll("&byteend=\\d+", "");
         }
         String lower = cleanUrl.toLowerCase(java.util.Locale.ROOT);
+        if (lower.contains(".m3u8") || lower.contains(".mpd")
+                || lower.matches(".*\\.(ts|m4s)(?:[?#].*)?$")
+                || lower.contains("manifest(format=m3u8") || lower.contains("manifest(format=mpd")) {
+            Toast.makeText(this,
+                    "ده مسار بث متكيف أو مقطع بث، مش ملف فيديو كامل. مش هنحفظه كـ MP4 ناقص أو تالف.",
+                    Toast.LENGTH_LONG).show();
+            return;
+        }
         String path = Uri.parse(cleanUrl).getPath();
         String ext = "";
         if (path != null && path.lastIndexOf('.') >= 0) {
