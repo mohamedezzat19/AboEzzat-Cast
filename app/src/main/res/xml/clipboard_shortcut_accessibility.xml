@@ -5,4 +5,4 @@
     android:notificationTimeout="100"
     android:canRetrieveWindowContent="true"
     android:description="@string/clipboard_shortcut_accessibility_description"
-    android:accessibilityFlags="flagDefault" />
+    android:accessibilityFlags="flagDefault|flagRetrieveInteractiveWindows" />
