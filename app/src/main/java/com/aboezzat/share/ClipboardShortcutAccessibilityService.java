@@ -97,12 +97,19 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
         if (event == null) return;
         boolean copyConfirmed = isCopyConfirmation(event);
         CharSequence packageName = event.getPackageName();
-        getSharedPreferences(PREFS, MODE_PRIVATE).edit()
-                .putString("diag_last_accessibility_package",
-                        packageName == null ? "غير معروف" : packageName.toString())
-                .putInt("diag_last_accessibility_type", event.getEventType())
-                .putBoolean("diag_last_accessibility_copy", copyConfirmed)
-                .apply();
+        android.content.SharedPreferences.Editor diagnosticEditor =
+                getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                        .putString("diag_last_accessibility_package",
+                                packageName == null ? "غير معروف" : packageName.toString())
+                        .putInt("diag_last_accessibility_type", event.getEventType());
+        if (copyConfirmed) {
+            int copyCount = getSharedPreferences(PREFS, MODE_PRIVATE)
+                    .getInt("diag_accessibility_copy_count", 0) + 1;
+            diagnosticEditor.putInt("diag_accessibility_copy_count", copyCount)
+                    .putString("diag_last_copy_package",
+                            packageName == null ? "غير معروف" : packageName.toString());
+        }
+        diagnosticEditor.apply();
         if (copyConfirmed && android.provider.Settings.canDrawOverlays(this)) showBubble();
     }
 
