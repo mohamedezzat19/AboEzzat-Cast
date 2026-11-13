@@ -94,6 +94,10 @@ public class MainActivity extends Activity {
         restoreMediaQueues();
         startLocalServer();
 
+        // Read clipboard only after the user taps the floating shortcut and
+        // this Activity has been brought to the foreground.
+        if (handleClipboardCastShortcut(getIntent())) return;
+
         // Silently check the Classic app's own release channel on launch.
         new AppUpdater(this).checkForUpdate(false);
 
@@ -1234,6 +1238,7 @@ private void showManualIpDialog() {
         super.onNewIntent(intent);
         setIntent(intent);
 
+        if (handleClipboardCastShortcut(intent)) return;
         if (handleIncomingShareIntent(intent)) return;
 
         if (intent != null && intent.getBooleanExtra("open_media_picker", false)) {
@@ -1246,6 +1251,42 @@ private void showManualIpDialog() {
         else if (intent != null && intent.getBooleanExtra("open_downloads", false)) {
             new Handler(Looper.getMainLooper()).post(() -> openDownloads());
         }
+    }
+
+    private boolean handleClipboardCastShortcut(Intent intent) {
+        if (intent == null || !intent.getBooleanExtra("clipboard_cast_shortcut", false)) return false;
+        intent.removeExtra("clipboard_cast_shortcut");
+
+        new Handler(Looper.getMainLooper()).postDelayed(() -> {
+            try {
+                android.content.ClipboardManager clipboard =
+                        (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                if (clipboard == null || !clipboard.hasPrimaryClip()) {
+                    Toast.makeText(this, "لا يوجد رابط في الحافظة", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                ClipData clip = clipboard.getPrimaryClip();
+                if (clip == null || clip.getItemCount() == 0) {
+                    Toast.makeText(this, "لا يوجد رابط في الحافظة", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                CharSequence text = clip.getItemAt(0).coerceToText(this);
+                if (text == null) {
+                    Toast.makeText(this, "الحافظة لا تحتوي على رابط نصي", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                Matcher matcher = Pattern.compile("https?://\\\\S+").matcher(text);
+                if (matcher.find()) {
+                    String url = matcher.group(0).replaceAll("[),.؛،]+$", "");
+                    processSharedLink(url);
+                } else {
+                    Toast.makeText(this, "لم يتم العثور على رابط فيديو في الحافظة", Toast.LENGTH_SHORT).show();
+                }
+            } catch (Exception e) {
+                Toast.makeText(this, "تعذر قراءة الرابط من الحافظة", Toast.LENGTH_SHORT).show();
+            }
+        }, 300L);
+        return true;
     }
 
     private boolean handleIncomingShareIntent(Intent intent) {
