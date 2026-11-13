@@ -82,7 +82,8 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
                                     }
                                 }
                             }
-                            if (containsTextOrUrl) showBubble();
+                            // MIME type alone does not prove that the copied text is a URL.
+                            // The SystemUI clipboard preview is checked below instead.
                         }
                     }
                 } catch (Exception ignored) {}
@@ -108,19 +109,17 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
             return;
         }
 
-        boolean copyConfirmed = isCopyConfirmation(event);
-
-        // Android/MIUI may expose clipboard confirmation through SystemUI
-        // or the Xiaomi launcher. Inspect only these system-owned windows,
-        // and accept only an explicit clipboard confirmation phrase.
+        // Do not depend on a localized "Copied" toast. On Android/MIUI,
+        // inspect only the SystemUI clipboard-preview window and trigger only
+        // when that system-owned window actually exposes an HTTP(S) URL.
+        boolean copyConfirmed = false;
         boolean systemClipboardHost = "com.android.systemui".equals(eventPackage)
                 || "com.mi.android.globallauncher".equals(eventPackage);
-        if (!copyConfirmed
-                && event.getEventType() == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+        if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
                 && systemClipboardHost) {
-            copyConfirmed = hasSystemClipboardCopyConfirmation();
+            copyConfirmed = hasSystemClipboardUrl();
             getSharedPreferences(PREFS, MODE_PRIVATE).edit()
-                    .putBoolean("diag_last_systemui_copy_match", copyConfirmed)
+                    .putBoolean("diag_last_systemui_url_match", copyConfirmed)
                     .putString("diag_last_clipboard_host", eventPackage)
                     .apply();
         }
@@ -141,7 +140,7 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
         if (copyConfirmed && android.provider.Settings.canDrawOverlays(this)) showBubble();
     }
 
-    private boolean hasSystemClipboardCopyConfirmation() {
+    private boolean hasSystemClipboardUrl() {
         // MIUI may place the clipboard toast in a separate overlay window.
         if (Build.VERSION.SDK_INT >= 21) {
             try {
@@ -160,7 +159,7 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
                                 root.recycle();
                                 continue;
                             }
-                            if (containsClipboardConfirmation(root, 120)) return true;
+                            if (containsClipboardUrl(root, 120)) return true;
                         } catch (Exception ignored) {
                             if (root != null) try { root.recycle(); } catch (Exception ignoredAgain) {}
                         }
@@ -183,7 +182,7 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
     }
 
     // Takes ownership of root and recycles every inspected node.
-    private boolean containsClipboardConfirmation(
+    private boolean containsClipboardUrl(
             android.view.accessibility.AccessibilityNodeInfo root, int maxNodes) {
         java.util.ArrayDeque<android.view.accessibility.AccessibilityNodeInfo> queue =
                 new java.util.ArrayDeque<>();
@@ -216,19 +215,21 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
         return false;
     }
 
-    private boolean isExplicitClipboardConfirmation(CharSequence value) {
+    private boolean containsWebUrl(CharSequence value) {
         if (value == null) return false;
-        String text = value.toString().trim().toLowerCase(java.util.Locale.ROOT);
-        return text.equals("copied")
-                || text.equals("link copied")
-                || text.contains("copied to clipboard")
-                || text.contains("link copied")
-                || text.contains("تم النسخ")
-                || text.contains("تم نسخ")
-                || text.contains("تم النسخ إلى الحافظة")
-                || text.contains("تم نسخ الرابط")
-                || text.contains("نسخ إلى الحافظة")
-                || text.contains("تم النسخ إلى الحافظة");
+        java.util.regex.Matcher matcher = java.util.regex.Pattern
+                .compile("(?i)https?://[^\\s<>\\\"']+")
+                .matcher(value);
+        while (matcher.find()) {
+            String candidate = matcher.group().replaceAll("[\\]),}،.؛!?]+$", "");
+            try {
+                android.net.Uri uri = android.net.Uri.parse(candidate);
+                String host = uri.getHost();
+                if (host != null && host.contains(".")
+                        && host.matches("(?i)[a-z0-9.-]+")) return true;
+            } catch (Exception ignored) {}
+        }
+        return false;
     }
 
     private boolean isCopyConfirmation(AccessibilityEvent event) {
