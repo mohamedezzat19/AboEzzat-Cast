@@ -1345,17 +1345,14 @@ private void showManualIpDialog() {
                     if (clipboardShortcutLaunch) finish();
                     return;
                 }
-                Matcher matcher = Pattern.compile("https?://\\S+").matcher(text);
-                if (matcher.find()) {
-                    String url = matcher.group(0).replaceAll("[),.؛،]+$", "");
-                    if (isLikelyVideoClipboardUrl(url)) {
-                        processSharedLink(url);
-                    } else {
-                        Toast.makeText(this, "الرابط المنسوخ ليس رابط فيديو مدعومًا", Toast.LENGTH_SHORT).show();
-                        if (clipboardShortcutLaunch) finish();
-                    }
-                } else {
-                    Toast.makeText(this, "لم يتم العثور على رابط فيديو في الحافظة", Toast.LENGTH_SHORT).show();
+                // Re-enter through the exact same ACTION_SEND handler used by
+                // Android's Sharesheet when the user selects AboEzzat Cast.
+                // This keeps URL parsing and direct-vs-browser routing identical.
+                Intent shareIntent = new Intent(Intent.ACTION_SEND);
+                shareIntent.setType("text/plain");
+                shareIntent.putExtra(Intent.EXTRA_TEXT, text.toString());
+                if (!handleIncomingShareIntent(shareIntent)) {
+                    Toast.makeText(this, "لم يتم العثور على رابط قابل للمشاركة", Toast.LENGTH_SHORT).show();
                     if (clipboardShortcutLaunch) finish();
                 }
             } catch (Exception e) {
