@@ -106,9 +106,13 @@ public class ShareActivity extends Activity {
     }
 
     private String extractUrl(String text) {
-        Pattern pattern = Pattern.compile("(https?://[\\w\\-\\.\\?\\=\\&\\%\\/\\#\\+]+)");
+        // Accept both fully-qualified links and copied links beginning with www.
+        Pattern pattern = Pattern.compile("(?i)((?:https?://|www\\.)[\\w\\-\\.\\?\\=\\&\\%\\/\\#\\+]+)");
         Matcher matcher = pattern.matcher(text);
-        if (matcher.find()) return matcher.group(1);
+        if (matcher.find()) {
+            String url = matcher.group(1);
+            return url.regionMatches(true, 0, "www.", 0, 4) ? "https://" + url : url;
+        }
         return null;
     }
 
