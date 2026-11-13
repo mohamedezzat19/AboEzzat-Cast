@@ -440,25 +440,19 @@ final class BrowserFileDownloader {
     }
 
     private static Uri createDestination(Context context, String name, String mime) throws Exception {
-        String normalizedMime = mime == null ? "" : mime.toLowerCase(Locale.ROOT);
-        boolean audio = normalizedMime.startsWith("audio/");
-        boolean image = normalizedMime.startsWith("image/");
-        String relativeFolder = audio ? Environment.DIRECTORY_MUSIC
-                : image ? Environment.DIRECTORY_PICTURES : Environment.DIRECTORY_MOVIES;
+        // Keep the stable Downloads collection for Android/MIUI compatibility.
+        // Media type remains explicit in MIME and the filename extension.
         if (Build.VERSION.SDK_INT >= 29) {
             ContentValues values = new ContentValues();
             values.put(MediaStore.MediaColumns.DISPLAY_NAME, name);
             values.put(MediaStore.MediaColumns.MIME_TYPE, mime);
-            values.put(MediaStore.MediaColumns.RELATIVE_PATH, relativeFolder + "/AboEzzat Cast");
+            values.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/AboEzzat Cast");
             values.put(MediaStore.MediaColumns.IS_PENDING, 1);
-            Uri collection = audio ? MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
-                    : image ? MediaStore.Images.Media.EXTERNAL_CONTENT_URI
-                    : MediaStore.Video.Media.EXTERNAL_CONTENT_URI;
-            return context.getContentResolver().insert(collection, values);
+            return context.getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
         }
-        java.io.File folder = context.getExternalFilesDir(relativeFolder);
-        if (folder == null) throw new java.io.IOException("مجلد حفظ الوسائط غير متاح");
-        if (!folder.exists() && !folder.mkdirs()) throw new java.io.IOException("تعذر إنشاء مجلد الوسائط");
+        java.io.File folder = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
+        if (folder == null) throw new java.io.IOException("مجلد التنزيلات غير متاح");
+        if (!folder.exists() && !folder.mkdirs()) throw new java.io.IOException("تعذر إنشاء مجلد التنزيلات");
         java.io.File file = new java.io.File(folder, name);
         return Uri.fromFile(file);
     }
