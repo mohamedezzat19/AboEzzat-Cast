@@ -7,6 +7,7 @@ import org.schabi.newpipe.extractor.NewPipe;
 import org.schabi.newpipe.extractor.downloader.Downloader;
 import org.schabi.newpipe.extractor.downloader.Request;
 import org.schabi.newpipe.extractor.exceptions.ReCaptchaException;
+import org.schabi.newpipe.extractor.stream.AudioStream;
 import org.schabi.newpipe.extractor.stream.StreamInfo;
 import org.schabi.newpipe.extractor.stream.VideoStream;
 
@@ -24,10 +25,14 @@ import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.RequestBody;
 
-/** Extracts a playable YouTube media URL on the sender phone. */
+/**
+ * Extracts real, short-lived YouTube media URLs on the sender phone.
+ * Prefer the highest video-only rendition plus the best audio rendition;
+ * fall back to the best progressive (video+audio) stream when needed.
+ */
 public final class YoutubeDirectExtractor {
     public interface Callback {
-        void onSuccess(String streamUrl, String title, String quality);
+        void onSuccess(String videoUrl, String audioUrl, String title, String quality);
         void onError(String reason);
     }
 
@@ -35,9 +40,9 @@ public final class YoutubeDirectExtractor {
     private static final ExecutorService WORKER = Executors.newSingleThreadExecutor();
     private static final OkHttpClient HTTP = new OkHttpClient.Builder()
             .followRedirects(true).followSslRedirects(true)
-            .connectTimeout(15, TimeUnit.SECONDS)
-            .readTimeout(25, TimeUnit.SECONDS)
-            .callTimeout(45, TimeUnit.SECONDS).build();
+            .connectTimeout(20, TimeUnit.SECONDS)
+            .readTimeout(35, TimeUnit.SECONDS)
+            .callTimeout(90, TimeUnit.SECONDS).build();
     private static volatile boolean initialized;
 
     private YoutubeDirectExtractor() {}
@@ -86,28 +91,50 @@ public final class YoutubeDirectExtractor {
                 if (!isYouTubeUrl(pageUrl)) throw new IOException("رابط YouTube غير صالح");
                 initialize();
                 StreamInfo info = StreamInfo.getInfo(pageUrl);
-                List<VideoStream> streams = new ArrayList<>(info.getVideoStreams());
-                streams.removeIf(stream -> stream == null || !stream.isUrl()
+
+                List<VideoStream> videoOnly = new ArrayList<>(info.getVideoOnlyStreams());
+                videoOnly.removeIf(stream -> stream == null || !stream.isUrl()
                         || stream.getContent() == null || !isHttp(stream.getContent()));
-                streams.sort(Comparator.comparingInt(YoutubeDirectExtractor::resolutionNumber).reversed());
+                videoOnly.sort(Comparator.comparingInt(YoutubeDirectExtractor::resolutionNumber).reversed());
 
-                String selectedUrl = null;
+                List<AudioStream> audioStreams = new ArrayList<>(info.getAudioStreams());
+                audioStreams.removeIf(stream -> stream == null || !stream.isUrl()
+                        || stream.getContent() == null || !isHttp(stream.getContent()));
+                audioStreams.sort(Comparator.comparingInt(AudioStream::getAverageBitrate).reversed());
+
+                String videoUrl = null;
+                String audioUrl = null;
                 String quality = "غير محددة";
-                if (!streams.isEmpty()) {
-                    VideoStream selected = streams.get(0);
-                    selectedUrl = selected.getContent();
-                    quality = selected.getResolution();
-                } else if (info.getHlsUrl() != null && isHttp(info.getHlsUrl())) {
-                    selectedUrl = info.getHlsUrl();
-                    quality = "HLS تلقائي";
-                }
-                if (selectedUrl == null) throw new IOException("لم يتوفر مسار مباشر متوافق لهذا الفيديو");
 
-                final String result = selectedUrl;
+                if (!videoOnly.isEmpty() && !audioStreams.isEmpty()) {
+                    VideoStream video = videoOnly.get(0);
+                    videoUrl = video.getContent();
+                    audioUrl = audioStreams.get(0).getContent();
+                    quality = video.getResolution() + " (فيديو + صوت منفصل)";
+                } else {
+                    // Progressive renditions already contain both video and audio.
+                    List<VideoStream> combined = new ArrayList<>(info.getVideoStreams());
+                    combined.removeIf(stream -> stream == null || !stream.isUrl()
+                            || stream.getContent() == null || !isHttp(stream.getContent()));
+                    combined.sort(Comparator.comparingInt(YoutubeDirectExtractor::resolutionNumber).reversed());
+                    if (!combined.isEmpty()) {
+                        VideoStream selected = combined.get(0);
+                        videoUrl = selected.getContent();
+                        quality = selected.getResolution() + " (صوت وصورة)";
+                    } else if (info.getHlsUrl() != null && isHttp(info.getHlsUrl())) {
+                        videoUrl = info.getHlsUrl();
+                        quality = "HLS تلقائي";
+                    }
+                }
+
+                if (videoUrl == null) throw new IOException(
+                        "لم يتوفر رابط فيديو مباشر قابل للتشغيل لهذا الفيديو");
+                final String resultVideo = videoUrl;
+                final String resultAudio = audioUrl;
                 final String title = info.getName();
                 final String selectedQuality = quality;
                 new android.os.Handler(android.os.Looper.getMainLooper()).post(
-                        () -> callback.onSuccess(result, title, selectedQuality));
+                        () -> callback.onSuccess(resultVideo, resultAudio, title, selectedQuality));
             } catch (Throwable error) {
                 Log.e(TAG, "Sender-side YouTube extraction failed", error);
                 String message = error.getMessage();
