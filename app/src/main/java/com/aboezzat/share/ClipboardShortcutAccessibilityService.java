@@ -142,14 +142,55 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
     }
 
     private boolean hasSystemClipboardCopyConfirmation() {
+        // MIUI may place the clipboard toast in a separate overlay window.
+        if (Build.VERSION.SDK_INT >= 21) {
+            try {
+                java.util.List<android.view.accessibility.AccessibilityWindowInfo> windows = getWindows();
+                if (windows != null) {
+                    for (android.view.accessibility.AccessibilityWindowInfo window : windows) {
+                        if (window == null) continue;
+                        android.view.accessibility.AccessibilityNodeInfo root = null;
+                        try {
+                            root = window.getRoot();
+                            if (root == null) continue;
+                            CharSequence owner = root.getPackageName();
+                            String ownerPackage = owner == null ? "" : owner.toString();
+                            if (!"com.android.systemui".equals(ownerPackage)
+                                    && !"com.mi.android.globallauncher".equals(ownerPackage)) {
+                                root.recycle();
+                                continue;
+                            }
+                            if (containsClipboardConfirmation(root, 120)) return true;
+                        } catch (Exception ignored) {
+                            if (root != null) try { root.recycle(); } catch (Exception ignoredAgain) {}
+                        }
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+
+        // Fallback for devices where interactive-window retrieval is unavailable.
         android.view.accessibility.AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root == null) return false;
+        CharSequence owner = root.getPackageName();
+        String ownerPackage = owner == null ? "" : owner.toString();
+        if (!"com.android.systemui".equals(ownerPackage)
+                && !"com.mi.android.globallauncher".equals(ownerPackage)) {
+            root.recycle();
+            return false;
+        }
+        return containsClipboardConfirmation(root, 120);
+    }
+
+    // Takes ownership of root and recycles every inspected node.
+    private boolean containsClipboardConfirmation(
+            android.view.accessibility.AccessibilityNodeInfo root, int maxNodes) {
         java.util.ArrayDeque<android.view.accessibility.AccessibilityNodeInfo> queue =
                 new java.util.ArrayDeque<>();
         queue.add(root);
         int inspected = 0;
         try {
-            while (!queue.isEmpty() && inspected < 40) {
+            while (!queue.isEmpty() && inspected < maxNodes) {
                 android.view.accessibility.AccessibilityNodeInfo node = queue.removeFirst();
                 inspected++;
                 CharSequence text = node.getText();
@@ -159,7 +200,8 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
                     node.recycle();
                     return true;
                 }
-                for (int i = 0; i < node.getChildCount() && inspected + queue.size() < 40; i++) {
+                for (int i = 0; i < node.getChildCount()
+                        && inspected + queue.size() < maxNodes; i++) {
                     android.view.accessibility.AccessibilityNodeInfo child = node.getChild(i);
                     if (child != null) queue.addLast(child);
                 }
