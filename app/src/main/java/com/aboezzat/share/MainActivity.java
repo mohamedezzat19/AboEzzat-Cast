@@ -719,6 +719,24 @@ public class MainActivity extends Activity {
         }
     }
 
+    private void showIptvDialog() {
+        EditText input = new EditText(this);
+        input.setHint("الصق رابط بث IPTV (m3u8 أو flv)");
+        input.setTextColor(0xFFFFFFFF);
+        input.setBackgroundColor(0xFF262833);
+        input.setPadding(16, 16, 16, 16);
+
+        new AlertDialog.Builder(this)
+                .setTitle("تشغيل IPTV على الشاشة")
+                .setView(input)
+                .setPositiveButton("بث مباشر 📺", (dialog, which) -> {
+                    String url = input.getText().toString().trim();
+                    if (!url.isEmpty()) castUrlDirectlyToTv(url);
+                })
+                .setNegativeButton("إلغاء", null)
+                .show();
+    }
+
     private String getMediaDisplayName(Uri uri, int index) {
         if (uri == null) return "ملف " + (index + 1);
         String name = uri.getLastPathSegment();
