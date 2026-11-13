@@ -370,7 +370,7 @@ public class MainActivity extends Activity {
     private void openClipboardShortcutSetup() {
         new AlertDialog.Builder(this)
                 .setTitle("اختصار AboEzzat Cast العائم")
-                .setMessage("لتشغيل الاختصار عند نسخ رابط من أي تطبيق، فعّل الإذنين التاليين مرة واحدة:\n\n1) السماح بالظهور فوق التطبيقات الأخرى.\n2) تفعيل خدمة إمكانية الوصول باسم «اختصار AboEzzat Cast عند النسخ».\n\nالخدمة تراقب رسائل تأكيد النسخ فقط، ولا تقرأ محتوى الحافظة إلا بعد ضغطك على الأيقونة. تظهر الأيقونة 3 ثوانٍ ويمكنك سحبها لمكان مناسب.")
+                .setMessage("لتشغيل الاختصار عند نسخ رابط فيديو مدعوم، فعّل الإذنين التاليين مرة واحدة:\n\n1) السماح بالظهور فوق التطبيقات الأخرى.\n2) تفعيل خدمة إمكانية الوصول باسم «اختصار AboEzzat Cast عند النسخ».\n\nالخدمة تعرض الأيقونة فقط عندما يظهر رابط فيديو مدعوم ضمن إشعار النسخ، ولا تقرأ محتوى الحافظة في الخلفية. تظهر الأيقونة 3 ثوانٍ ويمكنك سحبها لمكان مناسب.")
                 .setPositiveButton("إذن الظهور فوق التطبيقات", (d, w) -> {
                     try {
                         Intent overlay = new Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
@@ -1368,6 +1368,7 @@ private void showManualIpDialog() {
         String tvIp = prefs.getString("tv_ip", "").trim();
         if (tvIp.isEmpty()) {
             Toast.makeText(this, "يرجى تعيين عنوان الشاشة أولاً", Toast.LENGTH_LONG).show();
+            if (clipboardShortcutLaunch) finish();
             return;
         }
 
@@ -1441,7 +1442,7 @@ private void showManualIpDialog() {
                 }
             });
         } catch (Exception ignored) {
-            finish();
+            if (clipboardShortcutLaunch) finish();
         }
     }
 
