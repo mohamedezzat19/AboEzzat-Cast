@@ -158,6 +158,22 @@ public class BrowserActivity extends Activity {
         return System.currentTimeMillis() <= genericAutoSniffUntilMs;
     }
 
+    // Threads and Instagram keep their own dedicated capture pipelines.
+    // The generic web-player network sniffer must never collect their requests.
+    private boolean isThreadsOrInstagramPage(String url) {
+        if (url == null || url.isEmpty()) return false;
+        try {
+            String host = Uri.parse(url).getHost();
+            if (host == null) return false;
+            host = host.toLowerCase(Locale.ROOT);
+            return host.equals("instagram.com") || host.endsWith(".instagram.com")
+                    || host.equals("threads.net") || host.endsWith(".threads.net")
+                    || host.equals("threads.com") || host.endsWith(".threads.com");
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
     private boolean shouldAutoCaptureGenericPage(String url) {
         if (url == null || !url.startsWith("http")) return false;
         try {
@@ -737,9 +753,14 @@ public class BrowserActivity extends Activity {
                     return new WebResourceResponse("text/plain", "UTF-8", new ByteArrayInputStream(new byte[0]));
                 }
 
+                // Threads and Instagram are handled only by their existing dedicated
+                // sniffers. Never let the generic network capture path touch their requests.
+                boolean dedicatedSocialPage = isThreadsOrInstagramPage(requestPageUrl);
+
                 // Ignore every page/list/thumbnail request until a specific visible
                 // player has been activated by the user in the browser.
-                if (view == activeWebView && (!activePlaybackKey.isEmpty() || isManualSniffActive() || isGenericAutoSniffActive())) {
+                if (!dedicatedSocialPage && view == activeWebView
+                        && (!activePlaybackKey.isEmpty() || isManualSniffActive() || isGenericAutoSniffActive())) {
                     boolean isJunk = lowerUrl.matches(".*\\.(jpg|jpeg|png|webp|gif|bmp|svg|ts|m4s|js|css)(?:[?#].*)?$")
                             || lowerUrl.contains("preview") || lowerUrl.contains("thumbnail")
                             || lowerUrl.contains("google_ads") || lowerUrl.contains("ad-interrupting");
