@@ -205,9 +205,7 @@ public class ShareActivity extends Activity {
             String host = uri.getHost();
             String path = uri.getPath();
             return host != null && path != null
-                    && host.toLowerCase().contains("swiftdatahost.")
-                    && path.toLowerCase().startsWith("/fk/")
-                    && path.toLowerCase().endsWith("/index.html");
+                    && path.toLowerCase(Locale.ROOT).matches("^/fk/[^/]+/index\\.html$");
         } catch (Exception e) {
             return false;
         }
