@@ -51,16 +51,24 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
         CharSequence description = event.getContentDescription();
         if (description != null) payload.append(description);
         int type = event.getEventType();
+        // MIUI/HyperOS may announce clipboard confirmation from the app that
+        // performed the copy, not from Android SystemUI. Accept these event
+        // types from any package, but require an explicit completed-copy phrase.
         if (type != AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED
-                && type != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) return false;
+                && type != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+                && type != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
+                && type != AccessibilityEvent.TYPE_ANNOUNCEMENT) return false;
+
         String text = payload.toString().trim().toLowerCase(java.util.Locale.ROOT);
-        boolean systemUiEvent = event.getPackageName() != null
-                && (event.getPackageName().toString().contains("systemui")
-                    || event.getPackageName().toString().equals("android"));
-        if (type == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED && !systemUiEvent) return false;
-        return text.equals("copied") || text.contains("copied to clipboard")
-                || text.contains("تم النسخ") || text.contains("تم نسخ")
-                || text.contains("نسخ إلى الحافظة") || text.contains("تم نسخ الرابط");
+        return text.contains("copied to clipboard")
+                || text.contains("link copied")
+                || text.contains("copied")
+                || text.contains("تم النسخ")
+                || text.contains("تم نسخ")
+                || text.contains("نسخ إلى الحافظة")
+                || text.contains("نسخ الرابط")
+                || text.contains("تم نسخ الرابط")
+                || text.contains("تم النسخ إلى الحافظة");
     }
 
     private void showBubble() {
