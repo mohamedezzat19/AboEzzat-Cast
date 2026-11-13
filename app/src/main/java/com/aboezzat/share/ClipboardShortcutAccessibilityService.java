@@ -39,6 +39,16 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
                 .putInt("diag_clipboard_count", 0)
                 .putString("diag_last_clipboard_mime", "لم يصل حدث نسخ بعد")
                 .putString("diag_last_bubble_result", "لم تتم محاولة عرض الفقاعة بعد")
+                .putInt("diag_accessibility_copy_count", 0)
+                .putString("diag_last_copy_package", "لم يتم رصد أمر نسخ بعد")
+                .putBoolean("diag_last_systemui_url_match", false)
+                .putString("diag_last_clipboard_host", "لم يتم فحص نافذة النظام بعد")
+                .putInt("diag_source_event_count", 0)
+                .putInt("diag_source_click_count", 0)
+                .putString("diag_last_source_package", "لم يصل حدث من تطبيق مصدر بعد")
+                .putString("diag_last_source_text", "لا توجد بيانات")
+                .putString("diag_last_click_package", "لم يصل حدث ضغط بعد")
+                .putString("diag_last_click_text", "لا توجد بيانات")
                 .apply();
         clipboardManager = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
         if (clipboardManager != null) {
@@ -107,6 +117,30 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
                     .putString("diag_last_ignored_copy_package", eventPackage)
                     .apply();
             return;
+        }
+
+        // Diagnostic-only capture: record source-app events and clicked labels.
+        // This does not change bubble detection or read clipboard contents.
+        boolean systemClipboardHost = "com.android.systemui".equals(eventPackage)
+                || "com.mi.android.globallauncher".equals(eventPackage);
+        if (!systemClipboardHost) {
+            android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+            android.content.SharedPreferences.Editor eventEditor = prefs.edit()
+                    .putInt("diag_source_event_count",
+                            prefs.getInt("diag_source_event_count", 0) + 1)
+                    .putString("diag_last_source_package", eventPackage)
+                    .putString("diag_last_source_text", describeEvent(event));
+            int type = event.getEventType();
+            if (type == AccessibilityEvent.TYPE_VIEW_CLICKED
+                    || type == AccessibilityEvent.TYPE_VIEW_LONG_CLICKED
+                    || (Build.VERSION.SDK_INT >= 23
+                    && type == AccessibilityEvent.TYPE_VIEW_CONTEXT_CLICKED)) {
+                eventEditor.putInt("diag_source_click_count",
+                                prefs.getInt("diag_source_click_count", 0) + 1)
+                        .putString("diag_last_click_package", eventPackage)
+                        .putString("diag_last_click_text", describeEvent(event));
+            }
+            eventEditor.apply();
         }
 
         // First detect an explicit "Copy link/URL" action in the source app.
@@ -229,6 +263,22 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
             } catch (Exception ignored) {}
         }
         return false;
+    }
+
+    private String describeEvent(AccessibilityEvent event) {
+        StringBuilder out = new StringBuilder();
+        if (event.getText() != null) {
+            for (CharSequence item : event.getText()) {
+                if (item != null && item.length() > 0) out.append(item).append(" | ");
+            }
+        }
+        CharSequence description = event.getContentDescription();
+        if (description != null) out.append(description).append(" | ");
+        CharSequence className = event.getClassName();
+        if (className != null) out.append("class=").append(className);
+        String value = out.toString().trim();
+        if (value.isEmpty()) value = "حدث بلا نص ظاهر";
+        return value.length() > 180 ? value.substring(0, 180) : value;
     }
 
     private boolean isCopyLinkAction(AccessibilityEvent event) {
