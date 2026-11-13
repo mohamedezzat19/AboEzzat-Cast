@@ -189,9 +189,11 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
     private void launchCastFromClipboard() {
         removeBubble();
         Intent launch = new Intent(this, MainActivity.class);
+        // Use a separate translucent task so tapping the bubble does not
+        // bring the normal AboEzzat Cast home screen to the foreground.
         launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
-                | Intent.FLAG_ACTIVITY_SINGLE_TOP
-                | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+                | Intent.FLAG_ACTIVITY_MULTIPLE_TASK
+                | Intent.FLAG_ACTIVITY_NO_ANIMATION);
         launch.putExtra("clipboard_cast_shortcut", true);
         try { startActivity(launch); } catch (Exception ignored) {}
     }
