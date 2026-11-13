@@ -403,6 +403,8 @@ public class MainActivity extends Activity {
         int eventType = diagnosticPrefs.getInt("diag_last_accessibility_type", 0);
         int copyEventCount = diagnosticPrefs.getInt("diag_accessibility_copy_count", 0);
         String lastCopyPackage = diagnosticPrefs.getString("diag_last_copy_package", "لم يتم رصد أمر نسخ");
+        String clipboardHost = diagnosticPrefs.getString("diag_last_clipboard_host", "لم يتم فحص نافذة النظام بعد");
+        boolean systemClipboardMatch = diagnosticPrefs.getBoolean("diag_last_systemui_copy_match", false);
         String bubbleResult = diagnosticPrefs.getString("diag_last_bubble_result", "لا توجد بيانات");
         boolean overlay = android.provider.Settings.canDrawOverlays(this);
         String report = "تشخيص اختصار AboEzzat Cast\n"
@@ -414,6 +416,8 @@ public class MainActivity extends Activity {
                 + "نوع آخر حدث: " + eventType + "\n"
                 + "مرات اكتشاف أمر نسخ: " + copyEventCount + "\n"
                 + "آخر تطبيق ظهر فيه أمر نسخ: " + lastCopyPackage + "\n"
+                + "آخر نافذة نظام تم فحصها: " + clipboardHost + "\n"
+                + "هل عُثر على رسالة تأكيد النسخ في نافذة النظام؟ " + (systemClipboardMatch ? "نعم" : "لا") + "\n"
                 + "نتيجة عرض الفقاعة: " + bubbleResult;
         new AlertDialog.Builder(this)
                 .setTitle("تشخيص مشكلة الفقاعة")
