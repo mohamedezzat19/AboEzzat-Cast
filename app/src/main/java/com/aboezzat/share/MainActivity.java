@@ -401,17 +401,19 @@ public class MainActivity extends Activity {
         String mime = diagnosticPrefs.getString("diag_last_clipboard_mime", "لا توجد بيانات");
         String lastPackage = diagnosticPrefs.getString("diag_last_accessibility_package", "لا توجد أحداث");
         int eventType = diagnosticPrefs.getInt("diag_last_accessibility_type", 0);
-        boolean copyMatched = diagnosticPrefs.getBoolean("diag_last_accessibility_copy", false);
+        int copyEventCount = diagnosticPrefs.getInt("diag_accessibility_copy_count", 0);
+        String lastCopyPackage = diagnosticPrefs.getString("diag_last_copy_package", "لم يتم رصد أمر نسخ");
         String bubbleResult = diagnosticPrefs.getString("diag_last_bubble_result", "لا توجد بيانات");
         boolean overlay = android.provider.Settings.canDrawOverlays(this);
-        String report = "تشخيص اختصار AboEzzat Cast\\n"
-                + "خدمة إمكانية الوصول متصلة: " + (serviceConnected ? "نعم" : "لا") + "\\n"
-                + "إذن الظهور فوق التطبيقات: " + (overlay ? "مفعّل" : "غير مفعّل") + "\\n"
-                + "مرات وصول حدث الحافظة: " + clipboardCount + "\\n"
-                + "آخر أنواع MIME: " + mime + "\\n"
-                + "آخر تطبيق أرسل حدث إمكانية الوصول: " + lastPackage + "\\n"
-                + "نوع آخر حدث: " + eventType + "\\n"
-                + "هل تعرّف على أمر نسخ؟ " + (copyMatched ? "نعم" : "لا") + "\\n"
+        String report = "تشخيص اختصار AboEzzat Cast\n"
+                + "خدمة إمكانية الوصول متصلة: " + (serviceConnected ? "نعم" : "لا") + "\n"
+                + "إذن الظهور فوق التطبيقات: " + (overlay ? "مفعّل" : "غير مفعّل") + "\n"
+                + "مرات وصول حدث الحافظة: " + clipboardCount + "\n"
+                + "آخر أنواع MIME: " + mime + "\n"
+                + "آخر تطبيق أرسل حدث إمكانية الوصول: " + lastPackage + "\n"
+                + "نوع آخر حدث: " + eventType + "\n"
+                + "مرات اكتشاف أمر نسخ: " + copyEventCount + "\n"
+                + "آخر تطبيق ظهر فيه أمر نسخ: " + lastCopyPackage + "\n"
                 + "نتيجة عرض الفقاعة: " + bubbleResult;
         new AlertDialog.Builder(this)
                 .setTitle("تشخيص مشكلة الفقاعة")
@@ -978,7 +980,7 @@ public class MainActivity extends Activity {
             String entry = entries.get(position);
             new AlertDialog.Builder(MainActivity.this)
                     .setTitle("حذف العلامة المرجعية؟")
-                    .setMessage(names.get(position) + "\\n" + urls.get(position))
+                    .setMessage(names.get(position) + "\n" + urls.get(position))
                     .setPositiveButton("حذف", (confirm, which) -> {
                         Set<String> updated = new HashSet<>(bookmarkPrefs.getStringSet("custom_sites", new HashSet<String>()));
                         updated.remove(entry);
@@ -1110,7 +1112,7 @@ public class MainActivity extends Activity {
                 state = "فشل: " + item.optString("error", "تعذر تنزيل الملف");
             }
             labels.add(item.optString("title", "تنزيل") + " — " + item.optString("file", "")
-                    + "\\n" + state);
+                    + "\n" + state);
         }
 
         if (records.isEmpty()) {
