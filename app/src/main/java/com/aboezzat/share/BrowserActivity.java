@@ -1766,6 +1766,20 @@ public class BrowserActivity extends Activity {
 
         main.addView(dlRow);
 
+        Button btnMergeDownload = new Button(this);
+        btnMergeDownload.setText("🎬🎵 تنزيل الفيديو مع الصوت ودمجهما");
+        btnMergeDownload.setAllCaps(false);
+        btnMergeDownload.setTextColor(Color.WHITE);
+        btnMergeDownload.setBackgroundColor(Color.parseColor("#1565C0"));
+        btnMergeDownload.setOnClickListener(v -> {
+            dialog.dismiss();
+            mergeSelectedMediaForDownload();
+        });
+        LinearLayout.LayoutParams mergeParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        mergeParams.setMargins(0, dp(5), 0, dp(5));
+        main.addView(btnMergeDownload, mergeParams);
+
         Button btnClear = new Button(this);
         btnClear.setText("مسح القائمة");
         btnClear.setTextColor(Color.LTGRAY);
@@ -1793,7 +1807,6 @@ public class BrowserActivity extends Activity {
     private void downloadSelectedMedia(boolean audioOnly) {
         CapturedMedia bestVideo = null;
         CapturedMedia selectedAudio = null;
-        CapturedMedia bestAvailableAudio = null;
         int audioTrackCount = 0;
         CapturedMedia onlyAudioTrack = null;
 
@@ -1802,18 +1815,11 @@ public class BrowserActivity extends Activity {
                 if (isCapturedAudioTrack(item)) {
                     audioTrackCount++;
                     onlyAudioTrack = item;
-                    if (bestAvailableAudio == null || capturedUrlConfidence(item.url, 2)
-                            > capturedUrlConfidence(bestAvailableAudio.url, 2)) {
-                        bestAvailableAudio = item;
-                    }
                 }
                 if (!item.isSelected) continue;
-
                 if (isCapturedAudioTrack(item)) {
                     if (selectedAudio == null || capturedUrlConfidence(item.url, 2)
-                            > capturedUrlConfidence(selectedAudio.url, 2)) {
-                        selectedAudio = item;
-                    }
+                            > capturedUrlConfidence(selectedAudio.url, 2)) selectedAudio = item;
                 } else if (item.mediaType == 1 && (bestVideo == null
                         || capturedVideoQualityScore(item.url) > capturedVideoQualityScore(bestVideo.url))) {
                     bestVideo = item;
@@ -1821,38 +1827,46 @@ public class BrowserActivity extends Activity {
             }
         }
 
-        // A single captured audio rendition is unambiguous: allow the audio button
-        // to use it even if a checkbox state was lost while the dialog was refreshed.
-        if (audioOnly && selectedAudio == null && audioTrackCount == 1) {
-            selectedAudio = onlyAudioTrack;
-        }
-
         if (audioOnly) {
+            if (selectedAudio == null && audioTrackCount == 1) selectedAudio = onlyAudioTrack;
             if (selectedAudio == null) {
-                Toast.makeText(this, "لم يتم العثور على مسار صوت صالح في القائمة. افتح قائمة المسارات وتأكد من ظهور مسار الصوت.", Toast.LENGTH_LONG).show();
+                Toast.makeText(this, "حدد مسار الصوت فقط من القائمة أولاً", Toast.LENGTH_LONG).show();
                 return;
             }
             downloadMedia(selectedAudio.url, true, "audio/mp4");
             return;
         }
 
+        // Video-only must never silently switch to a mux operation.
         if (bestVideo == null) {
-            Toast.makeText(this, "حدد مسار فيديو من مربعات الاختيار أولاً", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "حدد مسار الفيديو فقط من القائمة أولاً", Toast.LENGTH_LONG).show();
             return;
         }
+        downloadMedia(bestVideo.url, false, "video/mp4");
+    }
 
-        // The video-download action means a complete video: if the page exposed
-        // a separate audio rendition, prefer it even if its checkbox was toggled off.
-        if (selectedAudio == null) selectedAudio = bestAvailableAudio;
-
+    private void mergeSelectedMediaForDownload() {
+        CapturedMedia bestVideo = null;
+        CapturedMedia bestAudio = null;
+        synchronized (capturedList) {
+            for (CapturedMedia item : capturedList) {
+                if (!item.isSelected) continue;
+                if (isCapturedAudioTrack(item)) {
+                    if (bestAudio == null || capturedUrlConfidence(item.url, 2)
+                            > capturedUrlConfidence(bestAudio.url, 2)) bestAudio = item;
+                } else if (item.mediaType == 1 && (bestVideo == null
+                        || capturedVideoQualityScore(item.url) > capturedVideoQualityScore(bestVideo.url))) {
+                    bestVideo = item;
+                }
+            }
+        }
+        if (bestVideo == null || bestAudio == null) {
+            Toast.makeText(this, "حدد مسار فيديو ومسار صوت منفصلين لعملية الدمج", Toast.LENGTH_LONG).show();
+            return;
+        }
         WebView current = getCurrentWebView();
         String referer = current == null || current.getUrl() == null ? "" : current.getUrl();
-        if (selectedAudio != null) {
-            Toast.makeText(this, "تم تحديد الفيديو والصوت — جاري تنزيلهما ودمجهما", Toast.LENGTH_SHORT).show();
-            BrowserFileDownloader.startMux(this, bestVideo.url, selectedAudio.url, referer, bestVideo.title);
-        } else {
-            downloadMedia(bestVideo.url, false);
-        }
+        BrowserFileDownloader.startMux(this, bestVideo.url, bestAudio.url, referer, bestVideo.title);
     }
 
     private void castSelectedTracksManually() {
@@ -2266,7 +2280,12 @@ public class BrowserActivity extends Activity {
                     state = bytes > 0 ? "اكتمل التنزيل • " + formatBrowserDownloadSize(bytes) : "ملف غير صالح";
                 } else if ("downloading".equals(status)) {
                     int progress = item.optInt("progress", -1);
-                    state = progress >= 0 ? "جارٍ التنزيل • " + progress + "%" : "جارٍ الاتصال...";
+                    long received = item.optLong("bytes", 0L);
+                    state = progress >= 0
+                            ? "جارٍ التنزيل • " + progress + "% • " + formatBrowserDownloadSize(received)
+                            : received > 0
+                                    ? "جارٍ التنزيل • تم استلام " + formatBrowserDownloadSize(received)
+                                    : "تم الاتصال • في انتظار البيانات";
                 } else {
                     state = "فشل التنزيل • " + item.optString("error", "تعذر التنزيل");
                 }
