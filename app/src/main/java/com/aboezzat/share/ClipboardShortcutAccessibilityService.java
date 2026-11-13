@@ -27,10 +27,31 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
     private int downX, downY;
     private boolean dragged;
 
+    private android.content.ClipboardManager clipboardManager;
+    private android.content.ClipboardManager.OnPrimaryClipChangedListener clipboardListener;
+
     @Override
     protected void onServiceConnected() {
         super.onServiceConnected();
         windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
+        clipboardManager = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+        if (clipboardManager != null) {
+            clipboardListener = () -> {
+                // Android restricts reading clipboard contents in the background.
+                // Detect text clipboard changes here; inspect the URL only after
+                // the user taps the bubble and the app is foregrounded.
+                try {
+                    if (clipboardManager.hasPrimaryClip()
+                            && clipboardManager.getPrimaryClipDescription() != null
+                            && (clipboardManager.getPrimaryClipDescription().hasMimeType("text/plain")
+                            || clipboardManager.getPrimaryClipDescription().hasMimeType("text/uri-list"))) {
+                        showBubble();
+                    }
+                } catch (Exception ignored) {}
+            };
+            try { clipboardManager.addPrimaryClipChangedListener(clipboardListener); }
+            catch (Exception ignored) {}
+        }
     }
 
     @Override
@@ -209,6 +230,10 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
     @Override
     public void onDestroy() {
         removeBubble();
+        if (clipboardManager != null && clipboardListener != null) {
+            try { clipboardManager.removePrimaryClipChangedListener(clipboardListener); }
+            catch (Exception ignored) {}
+        }
         super.onDestroy();
     }
 }
