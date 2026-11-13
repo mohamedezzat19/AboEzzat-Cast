@@ -109,6 +109,9 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
         }
 
         String text = payload.toString().trim().toLowerCase(java.util.Locale.ROOT);
+        boolean isCopyMenuAction = type == AccessibilityEvent.TYPE_VIEW_CLICKED
+                || type == AccessibilityEvent.TYPE_VIEW_LONG_CLICKED
+                || (Build.VERSION.SDK_INT >= 23 && type == AccessibilityEvent.TYPE_VIEW_CONTEXT_CLICKED);
         boolean copyConfirmed = text.contains("copied to clipboard")
                 || text.contains("link copied")
                 || text.contains("copied")
@@ -117,8 +120,7 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
                 || text.contains("copy url")
                 || text.contains("copy video url")
                 || text.contains("copy address")
-                || text.contains("copy")
-                || text.contains("نسخ")
+                || (isCopyMenuAction && (text.contains("copy") || text.contains("نسخ"))) 
                 || text.contains("تم النسخ")
                 || text.contains("تم نسخ")
                 || text.contains("تم النسخ إلى الحافظة")
