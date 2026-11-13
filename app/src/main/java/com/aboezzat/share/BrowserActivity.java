@@ -391,6 +391,10 @@ public class BrowserActivity extends Activity {
             }
         }
         addNewTab(startUrl);
+        if (getIntent() != null && getIntent().getBooleanExtra("open_iptv_hub", false)) {
+            getIntent().removeExtra("open_iptv_hub");
+            showIptvHubDialog();
+        }
     }
 
     @Override
@@ -399,6 +403,10 @@ public class BrowserActivity extends Activity {
         setIntent(intent);
 
         if (intent == null) return;
+        if (intent.getBooleanExtra("open_iptv_hub", false)) {
+            intent.removeExtra("open_iptv_hub");
+            showIptvHubDialog();
+        }
         String targetUrl = intent.getStringExtra("url");
         if ((targetUrl == null || targetUrl.trim().isEmpty()) && intent.getData() != null) {
             targetUrl = intent.getData().toString();
@@ -448,7 +456,6 @@ public class BrowserActivity extends Activity {
         });
         menu.getMenu().add("مسح الكوكيز وبيانات المواقع").setOnMenuItemClickListener(item -> { clearBrowserSiteData(); return true; });
         // FG Code must be added to the actual browser overflow menu used by the top-right button.
-        menu.getMenu().add("📺 FG Code / قائمة IPTV").setOnMenuItemClickListener(item -> { showFgCodeDialog(); return true; });
         menu.show();
     }
 
@@ -569,22 +576,6 @@ public class BrowserActivity extends Activity {
             return true;
         });
         dialog.show();
-    }
-
-    private void showBrowserSettingsDialog() {
-        String[] options = {"إعادة تحميل الصفحة", "مسح ذاكرة التخزين المؤقت", "القائمة والإعدادات العامة"};
-        new AlertDialog.Builder(this).setTitle("إعدادات المتصفح")
-                .setItems(options, (dialog, which) -> {
-                    WebView current = getCurrentWebView();
-                    if (which == 0) {
-                        if (current != null) current.reload();
-                    } else if (which == 1) {
-                        if (current != null) current.clearCache(true);
-                        Toast.makeText(this, "تم مسح ذاكرة المتصفح", Toast.LENGTH_SHORT).show();
-                    } else {
-                        showSideMenu();
-                    }
-                }).setNegativeButton("إغلاق", null).show();
     }
 
     private int dp(float value) {
@@ -2315,6 +2306,40 @@ public class BrowserActivity extends Activity {
         Toast.makeText(this, "تم مسح الكوكيز وبيانات المواقع وذاكرة المتصفح", Toast.LENGTH_SHORT).show();
     }
 
+
+    // One IPTV entry point: choose between an FG Code playlist and a direct stream URL.
+    private void showIptvHubDialog() {
+        new AlertDialog.Builder(this)
+                .setTitle("📺 IPTV")
+                .setItems(new String[]{"🔑 إدخال FG Code", "🔗 لصق رابط بث M3U8 أو FLV"}, (dialog, which) -> {
+                    if (which == 0) {
+                        showFgCodeDialog();
+                    } else {
+                        showDirectIptvDialog();
+                    }
+                })
+                .setNegativeButton("إغلاق", null)
+                .show();
+    }
+
+    private void showDirectIptvDialog() {
+        EditText input = new EditText(this);
+        input.setSingleLine(true);
+        input.setHint("الصق رابط بث M3U8 أو FLV");
+        input.setTextColor(Color.WHITE);
+        input.setHintTextColor(Color.GRAY);
+        new AlertDialog.Builder(this)
+                .setTitle("تشغيل رابط IPTV")
+                .setView(input)
+                .setPositiveButton("بث إلى الشاشة", (dialog, which) -> {
+                    String url = input.getText().toString().trim();
+                    if (url.startsWith("http://") || url.startsWith("https://")) castToTv(url);
+                    else Toast.makeText(this, "أدخل رابط بث صحيحاً", Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton("إلغاء", null)
+                .show();
+    }
+
     // FG Code is an M3U playlist shortcut. This feature is independent from
     // social-site capture and never changes Instagram/Threads sniffers.
     private void showFgCodeDialog() {
@@ -2430,33 +2455,6 @@ public class BrowserActivity extends Activity {
                                     }).show();
                 })
                 .setNegativeButton("إغلاق", null)
-                .show();
-    }
-
-    private void showSideMenu() {
-        String[] menuItems = {
-                "🔄 تحديث الصفحة الحالية",
-                "📂 مجلد التنزيلات (Downloads)",
-                "➕ فتح علامة تبويب جديدة",
-                "🧹 مسح الكوكيز والبيانات المسجلة",
-                "📺 تشغيل FG Code / قائمة IPTV"
-        };
-        new AlertDialog.Builder(this)
-                .setTitle("القائمة الجانبية")
-                .setItems(menuItems, (dialog, which) -> {
-                    if (which == 0) {
-                        WebView current = getCurrentWebView();
-                        if (current != null) current.reload();
-                    } else if (which == 1) {
-                        openDownloadsFolder();
-                    } else if (which == 2) {
-                        addNewTab("about:home");
-                    } else if (which == 3) {
-                        clearBrowserSiteData();
-                    } else if (which == 4) {
-                        showFgCodeDialog();
-                    }
-                })
                 .show();
     }
 
