@@ -144,6 +144,16 @@ public class ShareActivity extends Activity {
             return;
         }
 
+        // Drama Live's SwiftData URL is itself a live playlist endpoint.
+        // Do not wait for WebView media sniffing: forward this known URL to Receiver,
+        // which will hand it to VLC (and use ExoPlayer if VLC is unavailable).
+        if (isSwiftDataDramaLiveUrl(url)) {
+            Toast.makeText(this, "تم التعرف على رابط Drama Live، جاري إرساله للشاشة…",
+                    Toast.LENGTH_LONG).show();
+            sendToTv(targetTvIp, url, false, url);
+            return;
+        }
+
         if (lowerUrl.contains("youtube.com") || lowerUrl.contains("youtu.be")
                 || lowerUrl.contains("youtube-nocookie.com")) {
             Toast.makeText(this, "جاري استخراج رابط YouTube المباشر على الهاتف...", Toast.LENGTH_SHORT).show();
@@ -186,6 +196,21 @@ public class ShareActivity extends Activity {
 
         Toast.makeText(this, "جاري قنص الفيديو للشاشة...", Toast.LENGTH_SHORT).show();
         startPlatformSniffer(url, "generic");
+    }
+
+    private boolean isSwiftDataDramaLiveUrl(String value) {
+        if (value == null) return false;
+        try {
+            Uri uri = Uri.parse(value.trim());
+            String host = uri.getHost();
+            String path = uri.getPath();
+            return host != null && path != null
+                    && host.toLowerCase(Locale.ROOT).contains("swiftdatahost.")
+                    && path.toLowerCase(Locale.ROOT).startsWith("/fk/")
+                    && path.toLowerCase(Locale.ROOT).endsWith("/index.html");
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     private boolean isTikTokLiveUrl(String value) {
