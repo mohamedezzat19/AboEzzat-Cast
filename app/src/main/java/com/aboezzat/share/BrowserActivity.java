@@ -2132,11 +2132,13 @@ public class BrowserActivity extends Activity {
             }
 
             @Override public void onError(String reason) {
+                boolean shouldReport;
                 synchronized (BrowserActivity.this) {
                     youtubeExtractionInProgressFor = "";
+                    shouldReport = castAfterExtraction || pageUrl.equals(youtubeCastPendingFor);
                     youtubeCastPendingFor = "";
                 }
-                if (castAfterExtraction) runOnUiThread(() -> Toast.makeText(BrowserActivity.this,
+                if (shouldReport) runOnUiThread(() -> Toast.makeText(BrowserActivity.this,
                         "تعذر استخراج رابط مباشر من YouTube: " + reason, Toast.LENGTH_LONG).show());
             }
         });
