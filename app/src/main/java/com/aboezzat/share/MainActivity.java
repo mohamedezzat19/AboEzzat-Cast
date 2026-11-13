@@ -1345,16 +1345,15 @@ private void showManualIpDialog() {
                     if (clipboardShortcutLaunch) finish();
                     return;
                 }
-                // Re-enter through the exact same ACTION_SEND handler used by
-                // Android's Sharesheet when the user selects AboEzzat Cast.
-                // This keeps URL parsing and direct-vs-browser routing identical.
+                // Launch the exact same exported share target that Android's
+                // Sharesheet invokes. This preserves ShareActivity's platform-specific
+                // extraction (including YouTube) instead of MainActivity's URL shortcut.
                 Intent shareIntent = new Intent(Intent.ACTION_SEND);
+                shareIntent.setClass(this, ShareActivity.class);
                 shareIntent.setType("text/plain");
                 shareIntent.putExtra(Intent.EXTRA_TEXT, text.toString());
-                if (!handleIncomingShareIntent(shareIntent)) {
-                    Toast.makeText(this, "لم يتم العثور على رابط قابل للمشاركة", Toast.LENGTH_SHORT).show();
-                    if (clipboardShortcutLaunch) finish();
-                }
+                startActivity(shareIntent);
+                if (clipboardShortcutLaunch) finish();
             } catch (Exception e) {
                 Toast.makeText(this, "تعذر قراءة الرابط من الحافظة", Toast.LENGTH_SHORT).show();
                 if (clipboardShortcutLaunch) finish();
