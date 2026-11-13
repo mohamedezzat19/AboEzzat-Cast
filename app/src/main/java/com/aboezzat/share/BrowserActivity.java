@@ -1466,6 +1466,19 @@ public class BrowserActivity extends Activity {
         return ua.replace("; wv", "").replace(" Version/4.0", "");
     }
 
+    private boolean isFkLivePageUrl(String value) {
+        if (value == null) return false;
+        try {
+            Uri uri = Uri.parse(value.trim());
+            String path = uri.getPath();
+            return ("http".equalsIgnoreCase(uri.getScheme()) || "https".equalsIgnoreCase(uri.getScheme()))
+                    && uri.getHost() != null && path != null
+                    && path.toLowerCase(Locale.ROOT).matches("^/fk/[^/]+/index\\.html$");
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
     private void loadTargetUrl(String target) {
         WebView current = getCurrentWebView();
         if (current == null || target.isEmpty()) return;
@@ -1483,6 +1496,14 @@ public class BrowserActivity extends Activity {
                 target = "https://www.google.com.eg/search?q=" + target + "&gl=eg&hl=ar";
             }
         }
+        // Recognize live playlist pages by their stable path, regardless of provider hostname.
+        // These URLs must be sent to Receiver/VLC instead of being loaded as ordinary web pages.
+        if (isFkLivePageUrl(target)) {
+            Toast.makeText(this, "تم التعرف على رابط البث، جاري إرساله إلى VLC…", Toast.LENGTH_SHORT).show();
+            castToTv(target);
+            return;
+        }
+
         etUrl.setText(target);
         // Apply compatibility before the first document script runs. This is scoped
         // to QFilm only so existing Facebook/Instagram/TikTok behavior is unchanged.
