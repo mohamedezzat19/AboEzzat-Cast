@@ -1434,7 +1434,7 @@ private void showManualIpDialog() {
                     response.close();
                     runOnUiThread(() -> {
                         String message = accepted
-                                ? "تم الإرسال والتشغيل فوراً ✓"
+                                ? "تم الإرسال ✅"
                                 : "الشاشة رفضت الطلب (HTTP)";
                         Toast.makeText(MainActivity.this, message, Toast.LENGTH_SHORT).show();
                         finish();
