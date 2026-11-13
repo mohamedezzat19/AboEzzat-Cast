@@ -49,6 +49,10 @@ final class BrowserFileDownloader {
     private BrowserFileDownloader() {}
 
     static void start(Activity activity, String url, String type, String hintedMime, String referer) {
+        start(activity, url, type, hintedMime, referer, null, null);
+    }
+
+    static void start(Activity activity, String url, String type, String hintedMime, String referer, String contentTitle, String posterUrl) {
         if (activity == null || url == null || url.trim().isEmpty()) {
             if (activity != null) Toast.makeText(activity, "رابط التنزيل غير صالح", Toast.LENGTH_LONG).show();
             return;
@@ -75,9 +79,10 @@ final class BrowserFileDownloader {
             mime = normalizeMime(hintedMime, extension, type);
             if (extension.isEmpty()) extension = extensionForMime(mime, type);
         }
-        String fileName = "AboEzzat_" + System.currentTimeMillis() + extension;
         long id = System.currentTimeMillis();
-        String title = "image".equals(type) ? "صورة" : "audio".equals(type) ? "ملف صوتي" : "فيديو";
+        String fallbackTitle = "image".equals(type) ? "صورة" : "audio".equals(type) ? "ملف صوتي" : "فيديو";
+        String title = contentTitle == null || contentTitle.trim().isEmpty() ? fallbackTitle : contentTitle.trim();
+        String fileName = safeFileBase(title) + "_" + id + extension;
         JSONObject item = new JSONObject();
         try {
             item.put("id", id);
@@ -86,6 +91,7 @@ final class BrowserFileDownloader {
             item.put("type", type);
             item.put("mime", mime);
             item.put("url", target);
+            if (posterUrl != null && (posterUrl.startsWith("http://") || posterUrl.startsWith("https://"))) item.put("poster", posterUrl);
             item.put("status", "downloading");
             item.put("bytes", 0L);
             item.put("total", -1L);
@@ -188,6 +194,10 @@ final class BrowserFileDownloader {
      * into one MP4 without re-encoding. Unsupported codecs/containers fail clearly.
      */
     static void startMux(Activity activity, String videoUrl, String audioUrl, String referer, String title) {
+        startMux(activity, videoUrl, audioUrl, referer, title, null);
+    }
+
+    static void startMux(Activity activity, String videoUrl, String audioUrl, String referer, String title, String posterUrl) {
         if (activity == null || videoUrl == null || videoUrl.trim().isEmpty()
                 || audioUrl == null || audioUrl.trim().isEmpty()) {
             if (activity != null) Toast.makeText(activity, "حدد مسار فيديو ومسار صوت أولاً", Toast.LENGTH_LONG).show();
@@ -205,8 +215,8 @@ final class BrowserFileDownloader {
         }
 
         final long recordId = System.currentTimeMillis();
-        final String fileName = "AboEzzat_" + recordId + "_merged.mp4";
         final String safeTitle = title == null || title.trim().isEmpty() ? "فيديو بصوت وصورة" : title.trim();
+        final String fileName = safeFileBase(safeTitle) + "_" + recordId + "_merged.mp4";
         JSONObject record = new JSONObject();
         try {
             record.put("id", recordId);
@@ -222,6 +232,7 @@ final class BrowserFileDownloader {
             record.put("progress", 0);
             record.put("created", System.currentTimeMillis());
             record.put("operation", "mux");
+            if (posterUrl != null && (posterUrl.startsWith("http://") || posterUrl.startsWith("https://"))) record.put("poster", posterUrl);
             saveItem(activity, record);
         } catch (Exception ignored) {}
 
@@ -581,6 +592,15 @@ final class BrowserFileDownloader {
         if (!value.isEmpty()) {
             try { context.getContentResolver().delete(Uri.parse(value), null, null); } catch (Exception ignored) {}
         }
+    }
+
+    private static String safeFileBase(String value) {
+        String name = value == null ? "" : value.trim();
+        name = name.replaceAll("[\\\\/:*?\"<>|\\p{Cntrl}]", "_");
+        name = name.replaceAll("\\s+", " ").trim();
+        if (name.isEmpty()) name = "AboEzzat_Download";
+        if (name.length() > 90) name = name.substring(0, 90).trim();
+        return name;
     }
 
     private static String extensionFromUrl(String url) {
