@@ -109,13 +109,13 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
             return;
         }
 
-        // Do not depend on a localized "Copied" toast. On Android/MIUI,
-        // inspect only the SystemUI clipboard-preview window and trigger only
-        // when that system-owned window actually exposes an HTTP(S) URL.
-        boolean copyConfirmed = false;
+        // First detect an explicit "Copy link/URL" action in the source app.
+        // If the app does not expose that action, fall back to a URL shown by
+        // Android/MIUI's own clipboard preview window.
+        boolean copyConfirmed = isCopyLinkAction(event);
         boolean systemClipboardHost = "com.android.systemui".equals(eventPackage)
                 || "com.mi.android.globallauncher".equals(eventPackage);
-        if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+        if (!copyConfirmed && event.getEventType() == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
                 && systemClipboardHost) {
             copyConfirmed = hasSystemClipboardUrl();
             getSharedPreferences(PREFS, MODE_PRIVATE).edit()
@@ -231,9 +231,15 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
         return false;
     }
 
-    private boolean isCopyConfirmation(AccessibilityEvent event) {
-        // Inspect only the clicked control label and event text for copy actions.
-        // Do not traverse the screen, inspect page contents, or read the clipboard here.
+    private boolean isCopyLinkAction(AccessibilityEvent event) {
+        if (event == null) return false;
+        int type = event.getEventType();
+        boolean clickEvent = type == AccessibilityEvent.TYPE_VIEW_CLICKED
+                || type == AccessibilityEvent.TYPE_VIEW_LONG_CLICKED
+                || (Build.VERSION.SDK_INT >= 23
+                && type == AccessibilityEvent.TYPE_VIEW_CONTEXT_CLICKED);
+        if (!clickEvent) return false;
+
         StringBuilder payload = new StringBuilder();
         if (event.getText() != null) {
             for (CharSequence item : event.getText()) {
@@ -242,81 +248,32 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
         }
         CharSequence description = event.getContentDescription();
         if (description != null) payload.append(description).append(' ');
-        // Some apps expose the clicked context-menu item ("Copy link") only
-        // through the event source node, not through event.getText().
-        int type = event.getEventType();
-        // Read the clicked item and a few parent labels. Some apps (including
-        // video apps) expose the copy action on a menu row's parent rather than
-        // on the row itself. This is label inspection only, not screen scraping.
-        if (type == AccessibilityEvent.TYPE_VIEW_CLICKED
-                || type == AccessibilityEvent.TYPE_VIEW_LONG_CLICKED
-                || (Build.VERSION.SDK_INT >= 23 && type == AccessibilityEvent.TYPE_VIEW_CONTEXT_CLICKED)) {
-            android.view.accessibility.AccessibilityNodeInfo node = event.getSource();
-            for (int depth = 0; node != null && depth < 4; depth++) {
-                CharSequence nodeText = node.getText();
-                CharSequence nodeDescription = node.getContentDescription();
-                if (nodeText != null) payload.append(nodeText).append(' ');
-                if (nodeDescription != null) payload.append(nodeDescription).append(' ');
-                if (Build.VERSION.SDK_INT >= 26) {
-                    CharSequence hint = node.getHintText();
-                    if (hint != null) payload.append(hint).append(' ');
-                }
-                android.view.accessibility.AccessibilityNodeInfo parent = node.getParent();
-                node.recycle();
-                node = parent;
+
+        // Inspect only the clicked menu item and up to three parent labels.
+        android.view.accessibility.AccessibilityNodeInfo node = event.getSource();
+        for (int depth = 0; node != null && depth < 4; depth++) {
+            CharSequence text = node.getText();
+            CharSequence desc = node.getContentDescription();
+            if (text != null) payload.append(text).append(' ');
+            if (desc != null) payload.append(desc).append(' ');
+            if (Build.VERSION.SDK_INT >= 26) {
+                CharSequence hint = node.getHintText();
+                if (hint != null) payload.append(hint).append(' ');
             }
+            android.view.accessibility.AccessibilityNodeInfo parent = node.getParent();
+            node.recycle();
+            node = parent;
         }
 
-        // Some Android/OEM clipboard overlays announce the action using a
-        // notification or announcement event instead of a view click.
-        if (type != AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED
-                && type != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
-                && type != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
-                && type != AccessibilityEvent.TYPE_ANNOUNCEMENT
-                && type != AccessibilityEvent.TYPE_VIEW_CLICKED
-                && type != AccessibilityEvent.TYPE_VIEW_LONG_CLICKED
-                && !(Build.VERSION.SDK_INT >= 23 && type == AccessibilityEvent.TYPE_VIEW_CONTEXT_CLICKED)) {
-            return false;
-        }
-
-        String text = payload.toString().trim().toLowerCase(java.util.Locale.ROOT);
-        boolean isCopyMenuAction = type == AccessibilityEvent.TYPE_VIEW_CLICKED
-                || type == AccessibilityEvent.TYPE_VIEW_LONG_CLICKED
-                || (Build.VERSION.SDK_INT >= 23 && type == AccessibilityEvent.TYPE_VIEW_CONTEXT_CLICKED);
-        boolean copyConfirmed = text.contains("copied to clipboard")
-                || text.contains("link copied")
-                || text.contains("copied")
-                || text.contains("copy link")
-                || text.contains("copy video link")
-                || text.contains("copy url")
-                || text.contains("copy video url")
-                || text.contains("copy address")
-                || (isCopyMenuAction && (text.contains("copy") || text.contains("نسخ"))) 
-                || text.contains("تم النسخ")
-                || text.contains("تم نسخ")
-                || text.contains("تم النسخ إلى الحافظة")
-                || text.contains("تم نسخ الرابط")
-                || text.contains("نسخ إلى الحافظة")
-                || text.contains("نسخ الرابط")
-                || text.contains("نسخ رابط الفيديو")
-                || text.contains("نسخ عنوان الرابط")
-                || text.contains("copiado")
-                || text.contains("enlace copiado")
-                || text.contains("copié")
-                || text.contains("lien copié")
-                || text.contains("kopiert")
-                || text.contains("link kopieren")
-                || text.contains("リンクをコピー")
-                || text.contains("リンクをコピーしました")
-                || text.contains("复制链接")
-                || text.contains("已复制");
-        if (!copyConfirmed) return false;
-
-        // Many apps expose only a short "Copied" toast through Accessibility
-        // and omit the copied URL. Do not require the URL in this event: Android
-        // restricts background clipboard reads. The URL is checked only after
-        // the user taps the bubble and MainActivity is brought to the foreground.
-        return true;
+        String text = payload.toString().toLowerCase(java.util.Locale.ROOT);
+        // Deliberately require an explicit link/URL copy action. A generic
+        // "Copy" could copy ordinary text, so it must not show the bubble.
+        return text.contains("copy link") || text.contains("copy url")
+                || text.contains("copy video link") || text.contains("copy video url")
+                || text.contains("copy address") || text.contains("link kopieren")
+                || text.contains("リンクをコピー") || text.contains("复制链接")
+                || text.contains("نسخ الرابط") || text.contains("نسخ رابط")
+                || text.contains("نسخ عنوان الرابط");
     }
 
     private void showBubble() {
