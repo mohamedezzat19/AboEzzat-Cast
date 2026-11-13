@@ -391,9 +391,9 @@ public class BrowserActivity extends Activity {
             }
         }
         addNewTab(startUrl);
-        if (getIntent() != null && getIntent().getBooleanExtra("open_iptv_hub", false)) {
-            getIntent().removeExtra("open_iptv_hub");
-            showIptvHubDialog();
+        if (getIntent() != null && getIntent().getBooleanExtra("open_fg_code_dialog", false)) {
+            getIntent().removeExtra("open_fg_code_dialog");
+            showFgCodeDialog();
         }
     }
 
@@ -403,9 +403,9 @@ public class BrowserActivity extends Activity {
         setIntent(intent);
 
         if (intent == null) return;
-        if (intent.getBooleanExtra("open_iptv_hub", false)) {
-            intent.removeExtra("open_iptv_hub");
-            showIptvHubDialog();
+        if (intent.getBooleanExtra("open_fg_code_dialog", false)) {
+            intent.removeExtra("open_fg_code_dialog");
+            showFgCodeDialog();
         }
         String targetUrl = intent.getStringExtra("url");
         if ((targetUrl == null || targetUrl.trim().isEmpty()) && intent.getData() != null) {
@@ -2303,22 +2303,6 @@ public class BrowserActivity extends Activity {
         Toast.makeText(this, "تم مسح الكوكيز وبيانات المواقع وذاكرة المتصفح", Toast.LENGTH_SHORT).show();
     }
 
-
-    // One IPTV entry point: choose between an FG Code playlist and a direct stream URL.
-    private void showIptvHubDialog() {
-        new AlertDialog.Builder(this)
-                .setTitle("📺 IPTV")
-                .setItems(new String[]{"🔑 إدخال FG Code", "🔗 لصق رابط بث M3U8 أو FLV"}, (dialog, which) -> {
-                    if (which == 0) {
-                        showFgCodeDialog();
-                    } else {
-                        showDirectIptvDialog();
-                    }
-                })
-                .setNegativeButton("إغلاق", null)
-                .show();
-    }
-
     private void showDirectIptvDialog() {
         EditText input = new EditText(this);
         input.setSingleLine(true);
@@ -2363,15 +2347,20 @@ public class BrowserActivity extends Activity {
             Toast.makeText(this, "أدخل كود FG أولاً", Toast.LENGTH_SHORT).show();
             return;
         }
-        String playlistUrl;
+
+        String code = value;
         try {
-            if (value.matches("(?i)^https?://(www\\.)?fgcode\\.org/[a-z0-9]+/?$")) {
-                Uri uri = Uri.parse(value);
-                playlistUrl = "https://fgcode.org/" + uri.getLastPathSegment();
-            } else if (value.matches("(?i)^[a-z0-9]+$")) {
-                playlistUrl = "https://fgcode.org/" + value;
-            } else {
-                Toast.makeText(this, "اكتب الكود فقط أو رابط fgcode.org صحيح", Toast.LENGTH_LONG).show();
+            // Accept a bare code, fgcode.org/ID, or a complete HTTP(S) URL.
+            String candidate = value;
+            if (candidate.matches("(?i)^fgcode\\.org/.*$")) candidate = "https://" + candidate;
+            if (candidate.matches("(?i)^https?://(www\\.)?fgcode\\.org/.*$")) {
+                Uri parsed = Uri.parse(candidate);
+                code = parsed.getLastPathSegment();
+            }
+            if (code == null) code = "";
+            code = code.trim();
+            if (!code.matches("(?i)^[a-z0-9]+$")) {
+                Toast.makeText(this, "اكتب كود FG أو رابط fgcode.org/الكود", Toast.LENGTH_LONG).show();
                 return;
             }
         } catch (Exception e) {
@@ -2379,32 +2368,49 @@ public class BrowserActivity extends Activity {
             return;
         }
 
+        final String requestedCode = code;
+        final String playlistUrl = "https://fgcode.org/" + requestedCode;
         getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE).edit()
                 .putString("last_fg_code", value).apply();
-        Toast.makeText(this, "جاري تحميل قائمة FG...", Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, "جاري الاتصال بخدمة FG Code...", Toast.LENGTH_SHORT).show();
         Request request = new Request.Builder()
                 .url(playlistUrl)
                 .header("User-Agent", WebSettings.getDefaultUserAgent(this))
-                .header("Accept", "audio/x-mpegurl, application/vnd.apple.mpegurl, */*")
+                .header("Accept", "audio/x-mpegurl, application/vnd.apple.mpegurl, text/plain, */*")
+                .header("Cache-Control", "no-cache")
                 .get().build();
         client.newCall(request).enqueue(new Callback() {
             @Override public void onFailure(Call call, IOException e) {
-                runOnUiThread(() -> Toast.makeText(BrowserActivity.this,
-                        "تعذر الاتصال بخدمة FG Code: " + e.getMessage(), Toast.LENGTH_LONG).show());
+                String reason = e.getClass().getSimpleName() + ": " + e.getMessage();
+                runOnUiThread(() -> new AlertDialog.Builder(BrowserActivity.this)
+                        .setTitle("تعذر الاتصال بـ FG Code")
+                        .setMessage("لم نتمكن من الوصول إلى fgcode.org.\nالتفصيل: " + reason
+                                + "\n\nتأكد من اتصال الإنترنت أو جرّب فتح الرابط في المتصفح.")
+                        .setPositiveButton("حسنًا", null).show());
             }
             @Override public void onResponse(Call call, Response response) throws IOException {
                 String body = response.body() == null ? "" : response.body().string();
                 int status = response.code();
+                String finalUrl = response.request().url().toString();
+                String contentType = response.header("Content-Type", "");
                 response.close();
                 List<CapturedMedia> channels = parseFgM3u(body);
                 runOnUiThread(() -> {
                     if (status < 200 || status >= 300) {
-                        Toast.makeText(BrowserActivity.this, "خدمة FG ردت برمز " + status, Toast.LENGTH_LONG).show();
+                        new AlertDialog.Builder(BrowserActivity.this)
+                                .setTitle("خدمة FG Code رفضت الطلب")
+                                .setMessage("رمز الاستجابة: " + status + "\nالرابط: " + finalUrl)
+                                .setPositiveButton("إغلاق", null).show();
                     } else if (channels.isEmpty()) {
-                        Toast.makeText(BrowserActivity.this,
-                                "الكود لم يُرجع قنوات M3U. قد يكون فارغاً أو غير صالح.", Toast.LENGTH_LONG).show();
+                        String preview = body.length() > 350 ? body.substring(0, 350) : body;
+                        new AlertDialog.Builder(BrowserActivity.this)
+                                .setTitle("لم يتم العثور على قنوات في هذا الكود")
+                                .setMessage("استجابة الخدمة ليست قائمة M3U تحتوي على قنوات.\nنوع المحتوى: "
+                                        + contentType + "\nالرابط النهائي: " + finalUrl
+                                        + "\nبداية الرد: " + preview)
+                                .setPositiveButton("إغلاق", null).show();
                     } else {
-                        showFgChannelsDialog(channels, value);
+                        showFgChannelsDialog(channels, requestedCode);
                     }
                 });
             }
