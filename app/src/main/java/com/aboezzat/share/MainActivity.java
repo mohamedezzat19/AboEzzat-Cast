@@ -283,10 +283,16 @@ public class MainActivity extends Activity {
         // 3. IPTV
         findViewById(R.id.menu_iptv).setOnClickListener(v -> {
             closeDrawer();
-            Intent iptvIntent = new Intent(MainActivity.this, BrowserActivity.class);
-            iptvIntent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
-            iptvIntent.putExtra("open_iptv_hub", true);
-            startActivity(iptvIntent);
+            showIptvDialog();
+        });
+
+        // FG Code has its own entry in the main navigation drawer.
+        findViewById(R.id.menu_fgcode).setOnClickListener(v -> {
+            closeDrawer();
+            Intent fgIntent = new Intent(MainActivity.this, BrowserActivity.class);
+            fgIntent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+            fgIntent.putExtra("open_fg_code_dialog", true);
+            startActivity(fgIntent);
         });
 
         // 4. الوسائط الأخيرة
