@@ -946,10 +946,7 @@ public class BrowserActivity extends Activity {
                 "var isThreadsHost=/(?:threads\\.net|threads\\.com)$/i.test(location.hostname||'');" +
                 "var isYouTubeHost=/(?:^|\\.)youtube\\.com$/i.test(location.hostname||'')||/(?:^|\\.)youtube-nocookie\\.com$/i.test(location.hostname||'')||/^youtu\\.be$/i.test(location.hostname||'');" +
                 "var isTikTokLivePage=/(?:^|\\.)tiktok\\.com$/i.test(location.hostname||'')&&/\\/live(?:[/?#]|$)/i.test(location.pathname||'');" +
-                // YouTube's player is detected automatically as soon as its video element starts.
-                // This mirrors the share-sheet flow: extract the stream, then expose it in Cast's list.
-                "if(isYouTubeHost){armed=true;activeSince=performance.now()-4000;}" +
-                "if(isThreadsHost||isTikTokLivePage||isYouTubeHost){try{if(performance.setResourceTimingBufferSize)performance.setResourceTimingBufferSize(1500);}catch(e){}}" +
+                "if(isThreadsHost||isTikTokLivePage){try{if(performance.setResourceTimingBufferSize)performance.setResourceTimingBufferSize(1500);}catch(e){}}" +
                 "if(!isYouTubeHost){var style=document.getElementById('abo-ezzat-adblock');if(!style){style=document.createElement('style');style.id='abo-ezzat-adblock';" +
                 "style.innerHTML='.ytp-ad-overlay-container,.ytp-ad-message-container,ytd-promoted-sparkles-web-renderer,ytd-banner-promo-renderer,ytd-ad-slot-renderer,.ad-container,.ad-div,ytd-in-feed-ad-layout-renderer,ytm-promoted-sparkles-web-renderer,.ytp-ad-action-interstitial,[id^=\\\"google_ads_\\\"],iframe[src*=\\\"doubleclick\\\"]{display:none!important;width:0!important;height:0!important}';if(document.head)document.head.appendChild(style);}}" +
                 "if(!isYouTubeHost&&!window.AboEzzatKillerLoop){window.AboEzzatKillerLoop=setInterval(function(){try{" +
