@@ -121,9 +121,9 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
 
         // Diagnostic-only capture: record source-app events and clicked labels.
         // This does not change bubble detection or read clipboard contents.
-        boolean systemClipboardHost = "com.android.systemui".equals(eventPackage)
+        boolean isSystemClipboardHost = "com.android.systemui".equals(eventPackage)
                 || "com.mi.android.globallauncher".equals(eventPackage);
-        if (!systemClipboardHost) {
+        if (!isSystemClipboardHost) {
             android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
             android.content.SharedPreferences.Editor eventEditor = prefs.edit()
                     .putInt("diag_source_event_count",
