@@ -141,7 +141,9 @@ public class ShareActivity extends Activity {
         }
 
         if (lowerUrl.contains("youtube.com") || lowerUrl.contains("youtu.be")) {
-            sendToTv(targetTvIp, url, false);
+            // Keep the original YouTube page URL attached even if a future sender-side
+            // extractor replaces the primary media URL with a direct stream.
+            sendToTv(targetTvIp, url, false, url);
             return;
         }
 
@@ -481,10 +483,19 @@ public class ShareActivity extends Activity {
     }
 
     private void sendToTv(String tvIp, String mediaUrl, boolean isQueue) {
-        sendToTv(tvIp, mediaUrl, null, isQueue);
+        sendToTv(tvIp, mediaUrl, null, isQueue, null);
+    }
+
+    private void sendToTv(String tvIp, String mediaUrl, boolean isQueue, String sourceUrl) {
+        sendToTv(tvIp, mediaUrl, null, isQueue, sourceUrl);
     }
 
     private void sendToTv(String tvIp, String mediaUrl, String audioUrl, boolean isQueue) {
+        sendToTv(tvIp, mediaUrl, audioUrl, isQueue, null);
+    }
+
+    private void sendToTv(String tvIp, String mediaUrl, String audioUrl,
+                          boolean isQueue, String sourceUrl) {
         try {
             if (!tvIp.startsWith("http://") && !tvIp.startsWith("https://")) {
                 tvIp = "http://" + tvIp;
@@ -499,6 +510,7 @@ public class ShareActivity extends Activity {
                 JSONObject payload = new JSONObject();
                 if (mediaUrl != null && !mediaUrl.trim().isEmpty()) payload.put("url", mediaUrl);
                 if (audioUrl != null && !audioUrl.trim().isEmpty()) payload.put("audio", audioUrl);
+                if (sourceUrl != null && !sourceUrl.trim().isEmpty()) payload.put("sourceUrl", sourceUrl);
                 RequestBody body = RequestBody.create(
                         MediaType.parse("application/json; charset=utf-8"), payload.toString());
                 request = new Request.Builder().url(receiverEndpoint + "/play").post(body).build();
