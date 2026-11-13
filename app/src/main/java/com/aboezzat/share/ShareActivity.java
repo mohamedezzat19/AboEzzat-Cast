@@ -140,10 +140,25 @@ public class ShareActivity extends Activity {
             return;
         }
 
-        if (lowerUrl.contains("youtube.com") || lowerUrl.contains("youtu.be")) {
-            // Keep the original YouTube page URL attached even if a future sender-side
-            // extractor replaces the primary media URL with a direct stream.
-            sendToTv(targetTvIp, url, false, url);
+        if (lowerUrl.contains("youtube.com") || lowerUrl.contains("youtu.be")
+                || lowerUrl.contains("youtube-nocookie.com")) {
+            Toast.makeText(this, "جاري استخراج رابط YouTube المباشر على الهاتف...", Toast.LENGTH_SHORT).show();
+            YoutubeDirectExtractor.extract(url, new YoutubeDirectExtractor.Callback() {
+                @Override public void onSuccess(String streamUrl, String title, String quality) {
+                    if (isFinishing() || streamUrl == null || streamUrl.trim().isEmpty()) return;
+                    // Send only the extracted media URL. Never send the YouTube watch page
+                    // or sourceUrl to Receiver; Receiver is a player, not an extractor.
+                    sendToTv(targetTvIp, streamUrl, false);
+                }
+
+                @Override public void onError(String reason) {
+                    if (isFinishing()) return;
+                    Toast.makeText(ShareActivity.this,
+                            "تعذر استخراج فيديو YouTube على الهاتف: " + reason,
+                            Toast.LENGTH_LONG).show();
+                    finish();
+                }
+            });
             return;
         }
 
