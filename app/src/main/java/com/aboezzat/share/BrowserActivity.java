@@ -143,6 +143,9 @@ public class BrowserActivity extends Activity {
     private volatile long manualSniffUntilMs = 0L;
     // Automatic generic capture is armed only for ordinary web players and TikTok LIVE.
     private volatile long genericAutoSniffUntilMs = 0L;
+    private volatile String youtubeExtractionInProgressFor = "";
+    private volatile String youtubeExtractedFor = "";
+    private volatile String youtubeCastPendingFor = "";
 
     private boolean isManualSniffActive() {
         return System.currentTimeMillis() <= manualSniffUntilMs;
@@ -710,7 +713,7 @@ public class BrowserActivity extends Activity {
                 String lower = targetUrl.toLowerCase();
 
                 // Stop known ad/redirect destinations before they replace the page.
-                if (isBlockedAdUrl(targetUrl)) return true;
+                if (!isYouTubePageUrl(view.getUrl()) && isBlockedAdUrl(targetUrl)) return true;
 
                 // Play Store / app schemes and other non-web links require consent.
                 if (isPlayStoreRedirect(targetUrl)
@@ -726,7 +729,7 @@ public class BrowserActivity extends Activity {
                 String reqUrl = request.getUrl().toString();
                 String lowerUrl = reqUrl.toLowerCase();
 
-                if (isBlockedAdUrl(reqUrl)) {
+                if (!isYouTubePageUrl(view.getUrl()) && isBlockedAdUrl(reqUrl)) {
                     return new WebResourceResponse("text/plain", "UTF-8", new ByteArrayInputStream(new byte[0]));
                 }
 
@@ -762,7 +765,11 @@ public class BrowserActivity extends Activity {
             public void onPageStarted(WebView view, String loadedUrl, android.graphics.Bitmap favicon) {
                 super.onPageStarted(view, loadedUrl, favicon);
                 navigationStartedAt.put(view, System.currentTimeMillis());
-                if (loadedUrl != null && isQFilmUrl(loadedUrl)) {
+                if (loadedUrl != null && isYouTubePageUrl(loadedUrl)) {
+                    // Use the actual system WebView Chromium version on YouTube;
+                    // the old hard-coded Chrome 126 UA can trigger unsupported-player behavior.
+                    view.getSettings().setUserAgentString(getYouTubeCompatibleUserAgent());
+                } else if (loadedUrl != null && isQFilmUrl(loadedUrl)) {
                     // QFilm server buttons commonly use target=_blank/window.open for
                     // their player endpoints. Keep those destinations in this WebView.
                     view.getSettings().setSupportMultipleWindows(false);
@@ -937,11 +944,12 @@ public class BrowserActivity extends Activity {
                 "var armed=false,activeKey='',activeSince=0,seenResources={};" +
                 // Keep extended preload history only for Threads; preserve Instagram behavior.
                 "var isThreadsHost=/(?:threads\\.net|threads\\.com)$/i.test(location.hostname||'');" +
+                "var isYouTubeHost=/(?:^|\\.)youtube\\.com$/i.test(location.hostname||'')||/(?:^|\\.)youtube-nocookie\\.com$/i.test(location.hostname||'')||/^youtu\\.be$/i.test(location.hostname||'');" +
                 "var isTikTokLivePage=/(?:^|\\.)tiktok\\.com$/i.test(location.hostname||'')&&/\\/live(?:[/?#]|$)/i.test(location.pathname||'');" +
                 "if(isThreadsHost||isTikTokLivePage){try{if(performance.setResourceTimingBufferSize)performance.setResourceTimingBufferSize(1500);}catch(e){}}" +
-                "var style=document.getElementById('abo-ezzat-adblock');if(!style){style=document.createElement('style');style.id='abo-ezzat-adblock';" +
-                "style.innerHTML='.ytp-ad-overlay-container,.ytp-ad-message-container,ytd-promoted-sparkles-web-renderer,ytd-banner-promo-renderer,ytd-ad-slot-renderer,.ad-container,.ad-div,ytd-in-feed-ad-layout-renderer,ytm-promoted-sparkles-web-renderer,.ytp-ad-action-interstitial,[id^=\\\"google_ads_\\\"],iframe[src*=\\\"doubleclick\\\"]{display:none!important;width:0!important;height:0!important}';if(document.head)document.head.appendChild(style);}" +
-                "if(!window.AboEzzatKillerLoop){window.AboEzzatKillerLoop=setInterval(function(){try{" +
+                "if(!isYouTubeHost){var style=document.getElementById('abo-ezzat-adblock');if(!style){style=document.createElement('style');style.id='abo-ezzat-adblock';" +
+                "style.innerHTML='.ytp-ad-overlay-container,.ytp-ad-message-container,ytd-promoted-sparkles-web-renderer,ytd-banner-promo-renderer,ytd-ad-slot-renderer,.ad-container,.ad-div,ytd-in-feed-ad-layout-renderer,ytm-promoted-sparkles-web-renderer,.ytp-ad-action-interstitial,[id^=\\\"google_ads_\\\"],iframe[src*=\\\"doubleclick\\\"]{display:none!important;width:0!important;height:0!important}';if(document.head)document.head.appendChild(style);}}" +
+                "if(!isYouTubeHost&&!window.AboEzzatKillerLoop){window.AboEzzatKillerLoop=setInterval(function(){try{" +
                 "var b=document.querySelector('.ytp-ad-skip-button,.ytp-ad-skip-button-modern,.ytp-skip-ad-button,.videoAdUiSkipButton');if(b)b.click();" +
                 "var av=document.querySelectorAll('video');for(var ai=0;ai<av.length;ai++){var x=av[ai];if(document.querySelector('.ad-interrupting,.ad-showing')||x.classList.contains('ad-interrupting')){" +
                 "x.muted=true;if(!isNaN(x.duration)&&x.duration>0)x.currentTime=x.duration+1;}}}catch(e){}},200);}" +
@@ -1053,6 +1061,8 @@ public class BrowserActivity extends Activity {
                 if (title != null && !title.trim().isEmpty()) lastDiscoveredTitle = title.trim();
                 if (posterUrl != null && !posterUrl.trim().isEmpty()) lastDiscoveredPoster = posterUrl;
             }
+            String youtubePage = getCurrentYouTubePageUrl();
+            if (youtubePage != null) extractYouTubeForPage(youtubePage, false);
         }
 
         @JavascriptInterface
@@ -1614,7 +1624,13 @@ public class BrowserActivity extends Activity {
 
     private void showMediaListDialog() {
         if (capturedList.isEmpty()) {
-            Toast.makeText(this, "لا توجد فيديوهات مكتشفة، شغل الفيديو أولاً ثم اضغط 🎯", Toast.LENGTH_SHORT).show();
+            String youtubePage = getCurrentYouTubePageUrl();
+            if (youtubePage != null) {
+                extractYouTubeForPage(youtubePage, false);
+                Toast.makeText(this, "جاري استخراج رابط الفيديو المباشر من YouTube...", Toast.LENGTH_SHORT).show();
+            } else {
+                Toast.makeText(this, "لا توجد فيديوهات مكتشفة، شغل الفيديو أولاً ثم اضغط 🎯", Toast.LENGTH_SHORT).show();
+            }
             return;
         }
 
@@ -1837,9 +1853,17 @@ public class BrowserActivity extends Activity {
             return;
         }
 
-        // Video-only must never silently switch to a mux operation.
+        // YouTube's highest-quality rendition is often video-only; combine it
+        // with the separately extracted audio instead of saving a silent MP4.
         if (bestVideo == null) {
             Toast.makeText(this, "حدد مسار الفيديو فقط من القائمة أولاً", Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (getCurrentYouTubePageUrl() != null && selectedAudio != null) {
+            WebView current = getCurrentWebView();
+            String referer = current == null ? "https://www.youtube.com/" : current.getUrl();
+            BrowserFileDownloader.startMux(this, bestVideo.url, selectedAudio.url,
+                    referer, bestVideo.title, lastDiscoveredPoster);
             return;
         }
         downloadMedia(bestVideo.url, false, "video/mp4");
@@ -1905,6 +1929,17 @@ public class BrowserActivity extends Activity {
         JSONObject payload = new JSONObject();
         if (videoUrl != null && !videoUrl.trim().isEmpty()) payload.put("url", videoUrl);
         if (audioUrl != null && !audioUrl.trim().isEmpty()) payload.put("audio", audioUrl);
+        JSONObject headers = new JSONObject();
+        headers.put("user-agent", WebSettings.getDefaultUserAgent(this));
+        WebView current = getCurrentWebView();
+        String referer = getCurrentYouTubePageUrl();
+        if (referer == null && current != null) referer = current.getUrl();
+        if (referer != null && (referer.startsWith("http://") || referer.startsWith("https://"))) {
+            headers.put("referer", referer);
+            try { Uri refUri = Uri.parse(referer); headers.put("origin", refUri.getScheme() + "://" + refUri.getHost()); }
+            catch (Exception ignored) {}
+        }
+        payload.put("headers", headers);
         RequestBody body = RequestBody.create(
                 MediaType.parse("application/json; charset=utf-8"), payload.toString());
         return new Request.Builder().url(endpoint + "/play").post(body).build();
@@ -1913,7 +1948,7 @@ public class BrowserActivity extends Activity {
     private void mergeAndCastToTv() {
         String youtubePage = getCurrentYouTubePageUrl();
         if (youtubePage != null) {
-            castToTv(youtubePage);
+            extractYouTubeForPage(youtubePage, true);
             return;
         }
         String videoTrackUrl = "";
@@ -2029,26 +2064,87 @@ public class BrowserActivity extends Activity {
         }
     }
 
+    private boolean isYouTubePageUrl(String page) {
+        if (page == null || page.trim().isEmpty()) return false;
+        try {
+            String host = Uri.parse(page.trim()).getHost();
+            if (host == null) return false;
+            host = host.toLowerCase(Locale.ROOT);
+            return host.equals("youtu.be") || host.endsWith(".youtu.be")
+                    || host.equals("youtube.com") || host.endsWith(".youtube.com")
+                    || host.equals("youtube-nocookie.com") || host.endsWith(".youtube-nocookie.com");
+        } catch (Exception ignored) { return false; }
+    }
+
+    private String getYouTubeCompatibleUserAgent() {
+        String ua = WebSettings.getDefaultUserAgent(this);
+        if (ua == null) return "";
+        return ua.replace("; wv)", ")").replace(" Version/4.0", "");
+    }
+
     private String getCurrentYouTubePageUrl() {
         WebView current = getCurrentWebView();
         if (current == null) return null;
         String page = current.getUrl();
-        if (page == null || page.trim().isEmpty()) return null;
-        try {
-            Uri uri = Uri.parse(page.trim());
-            String host = uri.getHost();
-            if (host == null) return null;
-            host = host.toLowerCase(Locale.ROOT);
-            if (host.equals("youtu.be") || host.equals("youtube.com")
-                    || host.endsWith(".youtube.com") || host.equals("youtube-nocookie.com")
-                    || host.endsWith(".youtube-nocookie.com")) return page.trim();
-        } catch (Exception ignored) { }
-        return null;
+        return isYouTubePageUrl(page) ? page.trim() : null;
     }
 
-    private void castToTv(String mediaUrl) {
-        String youtubePage = getCurrentYouTubePageUrl();
-        if (youtubePage != null) mediaUrl = youtubePage;
+    private void extractYouTubeForPage(String pageUrl, boolean castAfterExtraction) {
+        if (!isYouTubePageUrl(pageUrl)) return;
+        synchronized (this) {
+            if (castAfterExtraction) youtubeCastPendingFor = pageUrl;
+            if (pageUrl.equals(youtubeExtractedFor)) {
+                if (castAfterExtraction) {
+                    String video = null, audio = null;
+                    synchronized (capturedList) {
+                        for (CapturedMedia item : capturedList) {
+                            if (item.mediaType == 1) video = item.url;
+                            else if (item.mediaType == 2) audio = item.url;
+                        }
+                    }
+                    if (video != null) castToTv(video, audio);
+                }
+                return;
+            }
+            if (pageUrl.equals(youtubeExtractionInProgressFor)) return;
+            youtubeExtractionInProgressFor = pageUrl;
+        }
+        YoutubeDirectExtractor.extract(pageUrl, new YoutubeDirectExtractor.Callback() {
+            @Override public void onSuccess(String videoUrl, String audioUrl, String title, String quality) {
+                boolean shouldCast;
+                synchronized (BrowserActivity.this) {
+                    youtubeExtractionInProgressFor = "";
+                    youtubeExtractedFor = pageUrl;
+                    shouldCast = pageUrl.equals(youtubeCastPendingFor);
+                    if (shouldCast) youtubeCastPendingFor = "";
+                    activePlaybackKey = "youtube:" + pageUrl;
+                }
+                String poster = lastDiscoveredPoster;
+                clearCapturedMedia();
+                String safeTitle = title == null || title.trim().isEmpty() ? "YouTube video" : title.trim();
+                addCapturedMedia(videoUrl, safeTitle, "🎬 YouTube فيديو " + quality, poster, 1);
+                if (audioUrl != null && !audioUrl.trim().isEmpty()) {
+                    addCapturedMedia(audioUrl, safeTitle, "🎵 YouTube صوت منفصل", poster, 2);
+                }
+                if (shouldCast) castToTv(videoUrl, audioUrl);
+                runOnUiThread(() -> Toast.makeText(BrowserActivity.this,
+                        "تم استخراج رابط YouTube المباشر " + quality, Toast.LENGTH_SHORT).show());
+            }
+
+            @Override public void onError(String reason) {
+                synchronized (BrowserActivity.this) {
+                    youtubeExtractionInProgressFor = "";
+                    youtubeCastPendingFor = "";
+                }
+                if (castAfterExtraction) runOnUiThread(() -> Toast.makeText(BrowserActivity.this,
+                        "تعذر استخراج رابط مباشر من YouTube: " + reason, Toast.LENGTH_LONG).show());
+            }
+        });
+    }
+
+    private void castToTv(String mediaUrl) { castToTv(mediaUrl, null); }
+
+    private void castToTv(String mediaUrl, String audioUrl) {
         if (tvIp.isEmpty()) {
             Toast.makeText(this, "يرجى تعيين IP الشاشة أولاً", Toast.LENGTH_SHORT).show();
             return;
@@ -2062,7 +2158,7 @@ public class BrowserActivity extends Activity {
                 endpoint = endpoint + ":8081";
             }
 
-            Request req = buildReceiverPlayRequest(endpoint, mediaUrl, null);
+            Request req = buildReceiverPlayRequest(endpoint, mediaUrl, audioUrl);
             final String receiverEndpoint = endpoint;
             AtomicBoolean requestHeadersSent = new AtomicBoolean(false);
             OkHttpClient trackedClient = client.newBuilder()
