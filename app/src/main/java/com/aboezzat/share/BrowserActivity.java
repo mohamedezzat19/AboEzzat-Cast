@@ -84,6 +84,9 @@ public class BrowserActivity extends Activity {
     private final List<String> tabTitles = new ArrayList<>();
     private final Map<WebView, Long> navigationStartedAt = new HashMap<>();
     private int currentTabIndex = -1;
+    // Volatile snapshots shared with WebView worker / JavaScript bridge threads.
+    private volatile WebView activeWebView;
+    private volatile String activePageUrl = "";
 
     private LinearLayout rootLayout;
     private LinearLayout topBar;
@@ -729,13 +732,14 @@ public class BrowserActivity extends Activity {
                 String reqUrl = request.getUrl().toString();
                 String lowerUrl = reqUrl.toLowerCase();
 
-                if (!isYouTubePageUrl(view.getUrl()) && isBlockedAdUrl(reqUrl)) {
+                String requestPageUrl = view == activeWebView ? activePageUrl : "";
+                if (!isYouTubePageUrl(requestPageUrl) && isBlockedAdUrl(reqUrl)) {
                     return new WebResourceResponse("text/plain", "UTF-8", new ByteArrayInputStream(new byte[0]));
                 }
 
                 // Ignore every page/list/thumbnail request until a specific visible
                 // player has been activated by the user in the browser.
-                if (view == getCurrentWebView() && (!activePlaybackKey.isEmpty() || isManualSniffActive() || isGenericAutoSniffActive())) {
+                if (view == activeWebView && (!activePlaybackKey.isEmpty() || isManualSniffActive() || isGenericAutoSniffActive())) {
                     boolean isJunk = lowerUrl.matches(".*\\.(jpg|jpeg|png|webp|gif|bmp|svg|ts|m4s|js|css)(?:[?#].*)?$")
                             || lowerUrl.contains("preview") || lowerUrl.contains("thumbnail")
                             || lowerUrl.contains("google_ads") || lowerUrl.contains("ad-interrupting");
@@ -765,6 +769,7 @@ public class BrowserActivity extends Activity {
             public void onPageStarted(WebView view, String loadedUrl, android.graphics.Bitmap favicon) {
                 super.onPageStarted(view, loadedUrl, favicon);
                 navigationStartedAt.put(view, System.currentTimeMillis());
+                if (view == activeWebView) activePageUrl = loadedUrl == null ? "" : loadedUrl;
                 if (loadedUrl != null && isYouTubePageUrl(loadedUrl)) {
                     // Use the actual system WebView Chromium version on YouTube;
                     // the old hard-coded Chrome 126 UA can trigger unsupported-player behavior.
@@ -793,12 +798,15 @@ public class BrowserActivity extends Activity {
             public void onPageFinished(final WebView view, String loadedUrl) {
                 super.onPageFinished(view, loadedUrl);
                 if (getCurrentWebView() == view) {
+                    activePageUrl = loadedUrl == null ? "" : loadedUrl;
                     etUrl.setText(loadedUrl.equals("about:home") ? "" : loadedUrl);
                     tabTitles.set(currentTabIndex, view.getTitle() != null ? view.getTitle() : "علامة تبويب");
                 }
                 injectPopupAndOverlayBlocker(view);
                 injectAdKiller(view);
                 injectTikTokLiveSniffer(view);
+                // YouTube extraction starts only after the player reports actual playback
+                // through JsBridge; keep page URL snapshots on the UI thread.
                 if (isGenericAutoSniffActive() && shouldAutoCaptureGenericPage(loadedUrl)) {
                     injectGenericAutoCapture(view);
                 }
@@ -1004,7 +1012,7 @@ public class BrowserActivity extends Activity {
                 "if(v){armed=true;setTimeout(pick,80);setTimeout(pick,500);}}catch(e){}}" +
                 "window.__aboArmActiveCapture=function(){armed=true;pick();};" +
                 "document.addEventListener('click',armFromTap,true);document.addEventListener('touchend',armFromTap,true);" +
-                "document.addEventListener('playing',function(e){if(isThreadsHost&&e.target&&e.target.tagName==='VIDEO'&&visible(e.target)){armed=true;activeSince=performance.now()-4000;seenResources={};}" +
+                "document.addEventListener('playing',function(e){if((isThreadsHost||isYouTubeHost)&&e.target&&e.target.tagName==='VIDEO'&&visible(e.target)){armed=true;activeSince=performance.now()-4000;seenResources={};}" +
                 "if(armed)setTimeout(pick,80);},true);" +
                 "document.addEventListener('pause',function(){setTimeout(pick,250);},true);" +
                 "window.addEventListener('scroll',function(){if(isThreadsHost||armed)setTimeout(pick,250);},true);" +
@@ -1368,6 +1376,9 @@ public class BrowserActivity extends Activity {
             clearCapturedMedia();
         }
         currentTabIndex = index;
+        activeWebView = tabList.get(index);
+        String activeUrl = activeWebView.getUrl();
+        activePageUrl = activeUrl == null ? "" : activeUrl;
         for (int i = 0; i < tabList.size(); i++) {
             tabList.get(i).setVisibility(i == index ? View.VISIBLE : View.GONE);
         }
@@ -2083,9 +2094,7 @@ public class BrowserActivity extends Activity {
     }
 
     private String getCurrentYouTubePageUrl() {
-        WebView current = getCurrentWebView();
-        if (current == null) return null;
-        String page = current.getUrl();
+        String page = activePageUrl;
         return isYouTubePageUrl(page) ? page.trim() : null;
     }
 
@@ -2417,6 +2426,7 @@ public class BrowserActivity extends Activity {
         WebView removed = tabList.remove(index);
         tabTitles.remove(index);
         navigationStartedAt.remove(removed);
+        if (activeWebView == removed) { activeWebView = null; activePageUrl = ""; }
         webContainer.removeView(removed);
         removed.stopLoading();
         removed.destroy();
