@@ -54,7 +54,7 @@ final class DownloadManagerDialog {
 
     private final Activity activity;
     private final String referer;
-    private final AlertDialog dialog;
+    private AlertDialog dialog;
     private final LinearLayout rows;
     private final TextView summary;
     private final TextView stats;
@@ -393,7 +393,6 @@ final class DownloadManagerDialog {
             options.add("عرض التفاصيل");
         } else if (active) {
             options.add("عرض التفاصيل");
-            options.add("إزالة من القائمة");
         } else {
             options.add("إعادة المحاولة");
             options.add("عرض التفاصيل");
@@ -442,7 +441,8 @@ final class DownloadManagerDialog {
         }
         removeRecord(item.optLong("id", -1));
         BrowserFileDownloader.start(activity, url, item.optString("type", "video"),
-                item.optString("mime", "video/mp4"), referer);
+                item.optString("mime", "video/mp4"), referer,
+                item.optString("title", ""), item.optString("poster", item.optString("thumbnail", "")));
         render();
     }
 
