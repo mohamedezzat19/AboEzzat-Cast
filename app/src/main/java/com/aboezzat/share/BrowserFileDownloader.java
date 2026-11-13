@@ -38,8 +38,8 @@ final class BrowserFileDownloader {
     private static final String PREFS = "AboEzzatSharePrefs";
     private static final String KEY = "in_app_download_items";
     private static final OkHttpClient CLIENT = new OkHttpClient.Builder()
-            .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(90, TimeUnit.SECONDS)
+            .connectTimeout(60, TimeUnit.SECONDS)
+            .readTimeout(300, TimeUnit.SECONDS)
             .callTimeout(2, TimeUnit.HOURS)
             .writeTimeout(30, TimeUnit.SECONDS)
             .followRedirects(true)
@@ -244,8 +244,10 @@ final class BrowserFileDownloader {
 
                 long videoBytes = downloadToTemp(video, videoTemp, pageReferer, userAgent);
                 updateProgress(app, recordId, videoBytes, -1L);
+                verifySourceTrack(videoTemp, "video/", "رابط الفيديو");
                 long audioBytes = downloadToTemp(audio, audioTemp, pageReferer, userAgent);
                 updateProgress(app, recordId, videoBytes + audioBytes, -1L);
+                verifySourceTrack(audioTemp, "audio/", "رابط الصوت");
 
                 muxTracks(videoTemp, audioTemp, mergedTemp);
                 verifyMuxedOutput(mergedTemp);
@@ -455,6 +457,18 @@ final class BrowserFileDownloader {
         if (!folder.exists() && !folder.mkdirs()) throw new java.io.IOException("تعذر إنشاء مجلد التنزيلات");
         java.io.File file = new java.io.File(folder, name);
         return Uri.fromFile(file);
+    }
+
+    private static void verifySourceTrack(File sourceFile, String prefix, String label) throws Exception {
+        MediaExtractor extractor = new MediaExtractor();
+        try {
+            extractor.setDataSource(sourceFile.getAbsolutePath());
+            if (findTrack(extractor, prefix) < 0) {
+                throw new java.io.IOException(label + " الذي أرسله الموقع لا يحتوي على مسار وسائط صالح؛ نوع الملف أو الرابط غير صحيح");
+            }
+        } finally {
+            try { extractor.release(); } catch (Exception ignored) {}
+        }
     }
 
     private static void verifyMuxedOutput(File outputFile) throws Exception {
