@@ -86,6 +86,7 @@ public class MainActivity extends Activity {
     };
 
     private boolean clipboardShortcutLaunch;
+    private boolean accessibilityReminderShown;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -1184,6 +1185,41 @@ private void showManualIpDialog() {
             etHomeSearch.clearFocus();
             hideHomeSearchKeyboard();
         }
+        remindIfAccessibilityDisabled();
+    }
+
+    private boolean isClipboardAccessibilityEnabled() {
+        try {
+            String enabled = android.provider.Settings.Secure.getString(
+                    getContentResolver(),
+                    android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
+            if (enabled == null || enabled.isEmpty()) return false;
+            String target = new android.content.ComponentName(
+                    this, ClipboardShortcutAccessibilityService.class).flattenToString();
+            for (String service : enabled.split(":")) {
+                if (target.equalsIgnoreCase(service)) return true;
+            }
+        } catch (Exception ignored) {}
+        return false;
+    }
+
+    private void remindIfAccessibilityDisabled() {
+        if (clipboardShortcutLaunch || accessibilityReminderShown || isFinishing()
+                || isClipboardAccessibilityEnabled()) return;
+        accessibilityReminderShown = true;
+
+        new AlertDialog.Builder(this)
+                .setTitle("زر النسخ العائم غير مفعّل")
+                .setMessage("يبدو أن أندرويد أوقف خدمة إمكانية الوصول بعد تحديث التطبيق. فعّل خدمة «اختصار AboEzzat Cast عند النسخ» من القائمة التي ستفتح الآن. إذا كان الخيار مقفولًا، افتح معلومات التطبيق من إعدادات الهاتف واختر «السماح بالإعدادات المقيّدة» ثم ارجع وفعّل الخدمة.")
+                .setPositiveButton("فتح إعدادات إمكانية الوصول", (dialog, which) -> {
+                    try {
+                        startActivity(new Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS));
+                    } catch (Exception e) {
+                        Toast.makeText(this, "افتح إعدادات إمكانية الوصول يدويًا", Toast.LENGTH_LONG).show();
+                    }
+                })
+                .setNegativeButton("لاحقًا", null)
+                .show();
     }
 
     private void openSearchResult() {
