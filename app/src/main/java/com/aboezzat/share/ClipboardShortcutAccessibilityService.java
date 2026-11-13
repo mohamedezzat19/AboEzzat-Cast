@@ -73,29 +73,40 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
         if (description != null) payload.append(description).append(' ');
         // Some apps expose the clicked context-menu item ("Copy link") only
         // through the event source node, not through event.getText().
-        if (event.getEventType() == AccessibilityEvent.TYPE_VIEW_CLICKED) {
-            android.view.accessibility.AccessibilityNodeInfo source = event.getSource();
-            if (source != null) {
-                CharSequence sourceText = source.getText();
-                CharSequence sourceDescription = source.getContentDescription();
-                if (sourceText != null) payload.append(sourceText).append(' ');
-                if (sourceDescription != null) payload.append(sourceDescription).append(' ');
+        int type = event.getEventType();
+        // Read the clicked item and a few parent labels. Some apps (including
+        // video apps) expose the copy action on a menu row's parent rather than
+        // on the row itself. This is label inspection only, not screen scraping.
+        if (type == AccessibilityEvent.TYPE_VIEW_CLICKED
+                || type == AccessibilityEvent.TYPE_VIEW_LONG_CLICKED
+                || (Build.VERSION.SDK_INT >= 23 && type == AccessibilityEvent.TYPE_VIEW_CONTEXT_CLICKED)) {
+            android.view.accessibility.AccessibilityNodeInfo node = event.getSource();
+            for (int depth = 0; node != null && depth < 4; depth++) {
+                CharSequence nodeText = node.getText();
+                CharSequence nodeDescription = node.getContentDescription();
+                if (nodeText != null) payload.append(nodeText).append(' ');
+                if (nodeDescription != null) payload.append(nodeDescription).append(' ');
                 if (Build.VERSION.SDK_INT >= 26) {
-                    CharSequence hint = source.getHintText();
+                    CharSequence hint = node.getHintText();
                     if (hint != null) payload.append(hint).append(' ');
                 }
-                source.recycle();
+                android.view.accessibility.AccessibilityNodeInfo parent = node.getParent();
+                node.recycle();
+                node = parent;
             }
         }
-        int type = event.getEventType();
-        // MIUI/HyperOS may announce clipboard confirmation from the app that
-        // performed the copy, not from Android SystemUI. Accept these event
-        // types from any package, but require an explicit completed-copy phrase.
+
+        // Some Android/OEM clipboard overlays announce the action using a
+        // notification or announcement event instead of a view click.
         if (type != AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED
                 && type != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
                 && type != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
                 && type != AccessibilityEvent.TYPE_ANNOUNCEMENT
-                && type != AccessibilityEvent.TYPE_VIEW_CLICKED) return false;
+                && type != AccessibilityEvent.TYPE_VIEW_CLICKED
+                && type != AccessibilityEvent.TYPE_VIEW_LONG_CLICKED
+                && !(Build.VERSION.SDK_INT >= 23 && type == AccessibilityEvent.TYPE_VIEW_CONTEXT_CLICKED)) {
+            return false;
+        }
 
         String text = payload.toString().trim().toLowerCase(java.util.Locale.ROOT);
         boolean copyConfirmed = text.contains("copied to clipboard")
@@ -106,14 +117,26 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
                 || text.contains("copy url")
                 || text.contains("copy video url")
                 || text.contains("copy address")
+                || text.contains("copy")
+                || text.contains("نسخ")
                 || text.contains("تم النسخ")
                 || text.contains("تم نسخ")
+                || text.contains("تم النسخ إلى الحافظة")
+                || text.contains("تم نسخ الرابط")
                 || text.contains("نسخ إلى الحافظة")
                 || text.contains("نسخ الرابط")
                 || text.contains("نسخ رابط الفيديو")
                 || text.contains("نسخ عنوان الرابط")
-                || text.contains("تم نسخ الرابط")
-                || text.contains("تم النسخ إلى الحافظة");
+                || text.contains("copiado")
+                || text.contains("enlace copiado")
+                || text.contains("copié")
+                || text.contains("lien copié")
+                || text.contains("kopiert")
+                || text.contains("link kopieren")
+                || text.contains("リンクをコピー")
+                || text.contains("リンクをコピーしました")
+                || text.contains("复制链接")
+                || text.contains("已复制");
         if (!copyConfirmed) return false;
 
         // Many apps expose only a short "Copied" toast through Accessibility
