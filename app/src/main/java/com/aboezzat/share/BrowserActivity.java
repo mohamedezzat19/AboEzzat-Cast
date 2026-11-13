@@ -423,10 +423,7 @@ public class BrowserActivity extends Activity {
 
     private void showBrowserMoreMenu() {
         View anchor = browserMenuButton;
-        if (anchor == null) {
-            showSideMenu();
-            return;
-        }
+        if (anchor == null) return;
         // Keep one flat menu: each browser action appears once and opens its
         // destination directly instead of chaining into another menu.
         android.widget.PopupMenu menu = new android.widget.PopupMenu(this, anchor);
