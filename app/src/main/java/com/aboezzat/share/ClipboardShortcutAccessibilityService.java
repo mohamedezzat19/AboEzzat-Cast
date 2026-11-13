@@ -97,6 +97,20 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
         if (event == null) return;
         boolean copyConfirmed = isCopyConfirmation(event);
         CharSequence packageName = event.getPackageName();
+
+        // Threads/X may trigger only a SystemUI window-content event when
+        // Android displays its clipboard confirmation. Inspect only that
+        // SystemUI accessibility tree for an explicit "copied" message.
+        if (!copyConfirmed
+                && event.getEventType() == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+                && packageName != null
+                && "com.android.systemui".contentEquals(packageName)) {
+            copyConfirmed = hasSystemClipboardCopyConfirmation();
+            getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                    .putBoolean("diag_last_systemui_copy_match", copyConfirmed)
+                    .apply();
+        }
+
         android.content.SharedPreferences.Editor diagnosticEditor =
                 getSharedPreferences(PREFS, MODE_PRIVATE).edit()
                         .putString("diag_last_accessibility_package",
@@ -111,6 +125,54 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
         }
         diagnosticEditor.apply();
         if (copyConfirmed && android.provider.Settings.canDrawOverlays(this)) showBubble();
+    }
+
+    private boolean hasSystemClipboardCopyConfirmation() {
+        android.view.accessibility.AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root == null) return false;
+        java.util.ArrayDeque<android.view.accessibility.AccessibilityNodeInfo> queue =
+                new java.util.ArrayDeque<>();
+        queue.add(root);
+        int inspected = 0;
+        try {
+            while (!queue.isEmpty() && inspected < 40) {
+                android.view.accessibility.AccessibilityNodeInfo node = queue.removeFirst();
+                inspected++;
+                CharSequence text = node.getText();
+                CharSequence description = node.getContentDescription();
+                if (isExplicitClipboardConfirmation(text)
+                        || isExplicitClipboardConfirmation(description)) {
+                    node.recycle();
+                    return true;
+                }
+                for (int i = 0; i < node.getChildCount() && inspected + queue.size() < 40; i++) {
+                    android.view.accessibility.AccessibilityNodeInfo child = node.getChild(i);
+                    if (child != null) queue.addLast(child);
+                }
+                node.recycle();
+            }
+        } catch (Exception ignored) {
+        } finally {
+            while (!queue.isEmpty()) {
+                try { queue.removeFirst().recycle(); } catch (Exception ignored) {}
+            }
+        }
+        return false;
+    }
+
+    private boolean isExplicitClipboardConfirmation(CharSequence value) {
+        if (value == null) return false;
+        String text = value.toString().trim().toLowerCase(java.util.Locale.ROOT);
+        return text.equals("copied")
+                || text.contains("copied to clipboard")
+                || text.contains("link copied")
+                || text.contains("copied")
+                || text.contains("تم النسخ")
+                || text.contains("تم نسخ")
+                || text.contains("تم النسخ إلى الحافظة")
+                || text.contains("تم نسخ الرابط")
+                || text.contains("نسخ إلى الحافظة")
+                || text.contains("تم النسخ إلى الحافظة");
     }
 
     private boolean isCopyConfirmation(AccessibilityEvent event) {
