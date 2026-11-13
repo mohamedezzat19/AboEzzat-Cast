@@ -148,11 +148,11 @@ public class ShareActivity extends Activity {
                 || lowerUrl.contains("youtube-nocookie.com")) {
             Toast.makeText(this, "جاري استخراج رابط YouTube المباشر على الهاتف...", Toast.LENGTH_SHORT).show();
             YoutubeDirectExtractor.extract(url, new YoutubeDirectExtractor.Callback() {
-                @Override public void onSuccess(String streamUrl, String title, String quality) {
-                    if (isFinishing() || streamUrl == null || streamUrl.trim().isEmpty()) return;
-                    // Send only the extracted media URL. Never send the YouTube watch page
-                    // or sourceUrl to Receiver; Receiver is a player, not an extractor.
-                    sendToTv(targetTvIp, streamUrl, false);
+                @Override public void onSuccess(String videoUrl, String audioUrl, String title, String quality) {
+                    if (isFinishing() || videoUrl == null || videoUrl.trim().isEmpty()) return;
+                    // Send extracted media renditions only. A separate audio URL is
+                    // included when YouTube's highest-quality video is video-only.
+                    sendToTv(targetTvIp, videoUrl, audioUrl, false);
                 }
 
                 @Override public void onError(String reason) {
@@ -530,6 +530,14 @@ public class ShareActivity extends Activity {
                 if (mediaUrl != null && !mediaUrl.trim().isEmpty()) payload.put("url", mediaUrl);
                 if (audioUrl != null && !audioUrl.trim().isEmpty()) payload.put("audio", audioUrl);
                 if (sourceUrl != null && !sourceUrl.trim().isEmpty()) payload.put("sourceUrl", sourceUrl);
+                if ((mediaUrl != null && mediaUrl.contains("googlevideo.com"))
+                        || (audioUrl != null && audioUrl.contains("googlevideo.com"))) {
+                    JSONObject headers = new JSONObject();
+                    headers.put("user-agent", WebSettings.getDefaultUserAgent(this));
+                    headers.put("referer", "https://www.youtube.com/");
+                    headers.put("origin", "https://www.youtube.com");
+                    payload.put("headers", headers);
+                }
                 RequestBody body = RequestBody.create(
                         MediaType.parse("application/json; charset=utf-8"), payload.toString());
                 request = new Request.Builder().url(receiverEndpoint + "/play").post(body).build();
