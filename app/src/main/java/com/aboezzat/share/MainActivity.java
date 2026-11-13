@@ -1312,7 +1312,12 @@ private void showManualIpDialog() {
                 Matcher matcher = Pattern.compile("https?://\\S+").matcher(text);
                 if (matcher.find()) {
                     String url = matcher.group(0).replaceAll("[),.؛،]+$", "");
-                    processSharedLink(url);
+                    if (isLikelyVideoClipboardUrl(url)) {
+                        processSharedLink(url);
+                    } else {
+                        Toast.makeText(this, "الرابط المنسوخ ليس رابط فيديو مدعومًا", Toast.LENGTH_SHORT).show();
+                        if (clipboardShortcutLaunch) finish();
+                    }
                 } else {
                     Toast.makeText(this, "لم يتم العثور على رابط فيديو في الحافظة", Toast.LENGTH_SHORT).show();
                     if (clipboardShortcutLaunch) finish();
@@ -1323,6 +1328,32 @@ private void showManualIpDialog() {
             }
         }, 300L);
         return true;
+    }
+
+    private boolean isLikelyVideoClipboardUrl(String rawUrl) {
+        try {
+            Uri uri = Uri.parse(rawUrl);
+            String host = uri.getHost();
+            String path = uri.getPath() == null ? "" : uri.getPath().toLowerCase(java.util.Locale.ROOT);
+            if (host == null) return false;
+            host = host.toLowerCase(java.util.Locale.ROOT);
+            if (host.startsWith("www.")) host = host.substring(4);
+            if (path.matches(".*\\.(mp4|m3u8|webm|mov|mkv|avi)$")) return true;
+            if (host.equals("youtu.be") || host.endsWith("youtube.com")
+                    || host.endsWith("youtube-nocookie.com") || host.equals("fb.watch")) return true;
+            if (host.endsWith("facebook.com") || host.equals("fb.com"))
+                return path.contains("/watch") || path.contains("/reel")
+                        || path.contains("/videos/") || path.contains("/share/v/");
+            if (host.endsWith("tiktok.com")) return path.contains("/video/") || path.contains("/live");
+            if (host.endsWith("instagram.com"))
+                return path.contains("/reel/") || path.contains("/tv/") || path.matches("/p/[^/]+/?");
+            if (host.endsWith("threads.net")) return path.contains("/post/");
+            if (host.equals("x.com") || host.endsWith("twitter.com")) return path.contains("/status/");
+            return host.endsWith("vimeo.com") || host.endsWith("dailymotion.com")
+                    || host.endsWith("twitch.tv") || host.endsWith("streamable.com");
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 
     private boolean handleIncomingShareIntent(Intent intent) {
