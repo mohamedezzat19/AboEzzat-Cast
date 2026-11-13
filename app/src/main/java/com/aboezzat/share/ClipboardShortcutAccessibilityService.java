@@ -13,7 +13,7 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
 import android.view.accessibility.AccessibilityEvent;
-import android.widget.TextView;
+import android.widget.ImageView;
 
 public class ClipboardShortcutAccessibilityService extends AccessibilityService {
     private static final String PREFS = "AboEzzatSharePrefs";
@@ -50,10 +50,17 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
         }
         CharSequence description = event.getContentDescription();
         if (description != null) payload.append(description);
-        String text = payload.toString().toLowerCase(java.util.Locale.ROOT);
-        return text.contains("copied") || text.contains("تم النسخ")
-                || text.contains("تم نسخ") || text.contains("نسخ إلى الحافظة")
-                || text.contains("تم نسخ الرابط");
+        int type = event.getEventType();
+        if (type != AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED
+                && type != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) return false;
+        String text = payload.toString().trim().toLowerCase(java.util.Locale.ROOT);
+        boolean systemUiEvent = event.getPackageName() != null
+                && (event.getPackageName().toString().contains("systemui")
+                    || event.getPackageName().toString().equals("android"));
+        if (type == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED && !systemUiEvent) return false;
+        return text.equals("copied") || text.contains("copied to clipboard")
+                || text.contains("تم النسخ") || text.contains("تم نسخ")
+                || text.contains("نسخ إلى الحافظة") || text.contains("تم نسخ الرابط");
     }
 
     private void showBubble() {
@@ -62,11 +69,10 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
         removeBubble();
 
         int size = dp(48);
-        TextView icon = new TextView(this);
-        icon.setText("C");
-        icon.setTextColor(Color.WHITE);
-        icon.setTextSize(19);
-        icon.setGravity(Gravity.CENTER);
+        ImageView icon = new ImageView(this);
+        icon.setImageResource(R.drawable.ic_launcher);
+        icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        icon.setPadding(dp(7), dp(7), dp(7), dp(7));
         icon.setElevation(dp(8));
         GradientDrawable background = new GradientDrawable();
         background.setShape(GradientDrawable.OVAL);
