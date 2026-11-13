@@ -39,7 +39,7 @@ final class BrowserFileDownloader {
     private static final String KEY = "in_app_download_items";
     private static final OkHttpClient CLIENT = new OkHttpClient.Builder()
             .connectTimeout(60, TimeUnit.SECONDS)
-            .readTimeout(300, TimeUnit.SECONDS)
+            .readTimeout(90, TimeUnit.SECONDS)
             .callTimeout(2, TimeUnit.HOURS)
             .writeTimeout(30, TimeUnit.SECONDS)
             .followRedirects(true)
@@ -242,18 +242,20 @@ final class BrowserFileDownloader {
                 audioTemp = File.createTempFile("audio_", ".bin", work);
                 mergedTemp = File.createTempFile("merged_", ".mp4", work);
 
-                long videoBytes = downloadToTemp(video, videoTemp, pageReferer, userAgent);
-                updateProgress(app, recordId, videoBytes, -1L);
+                updateProgressStage(app, recordId, 0L, "تنزيل مسار الفيديو");
+                long videoBytes = downloadToTemp(video, videoTemp, pageReferer, userAgent, app, recordId, 0L, "تنزيل مسار الفيديو");
                 verifySourceTrack(videoTemp, "video/", "رابط الفيديو");
-                long audioBytes = downloadToTemp(audio, audioTemp, pageReferer, userAgent);
-                updateProgress(app, recordId, videoBytes + audioBytes, -1L);
+                updateProgressStage(app, recordId, videoBytes, "تنزيل مسار الصوت");
+                long audioBytes = downloadToTemp(audio, audioTemp, pageReferer, userAgent, app, recordId, videoBytes, "تنزيل مسار الصوت");
                 verifySourceTrack(audioTemp, "audio/", "رابط الصوت");
 
+                updateProgressStage(app, recordId, videoBytes + audioBytes, "دمج مساري الفيديو والصوت");
                 muxTracks(videoTemp, audioTemp, mergedTemp);
                 verifyMuxedOutput(mergedTemp);
                 long mergedBytes = mergedTemp.length();
                 if (mergedBytes <= 0) throw new java.io.IOException("ملف الدمج الناتج فارغ");
 
+                updateProgressStage(app, recordId, videoBytes + audioBytes, "حفظ ملف الفيديو النهائي");
                 destination = createDestination(app, fileName, "video/mp4");
                 if (destination == null) throw new java.io.IOException("تعذر إنشاء ملف MP4 في التنزيلات");
                 try (InputStream input = new FileInputStream(mergedTemp);
@@ -311,7 +313,8 @@ final class BrowserFileDownloader {
         return lower.contains(".m3u8") || lower.contains(".mpd") || lower.contains(".flv") || lower.contains("pull-");
     }
 
-    private static long downloadToTemp(String url, File target, String referer, String userAgent) throws Exception {
+    private static long downloadToTemp(String url, File target, String referer, String userAgent,
+                                       Context app, long recordId, long baseBytes, String stage) throws Exception {
         String cookie = CookieManager.getInstance().getCookie(url);
         Request.Builder builder = new Request.Builder().url(url).get()
                 .header("User-Agent", userAgent).header("Accept", "*/*")
@@ -331,11 +334,18 @@ final class BrowserFileDownloader {
             try (InputStream input = body.byteStream(); OutputStream output = new FileOutputStream(target)) {
                 byte[] buffer = new byte[64 * 1024];
                 int count;
+                long lastUpdate = 0L;
                 while ((count = input.read(buffer)) != -1) {
                     output.write(buffer, 0, count);
                     received += count;
+                    long now = System.currentTimeMillis();
+                    if (now - lastUpdate >= 500) {
+                        updateProgressStage(app, recordId, baseBytes + received, stage);
+                        lastUpdate = now;
+                    }
                 }
                 output.flush();
+                updateProgressStage(app, recordId, baseBytes + received, stage);
             }
             if (received <= 0) throw new java.io.IOException("أحد مسارات الوسائط وصل فارغاً");
             if (body.contentLength() > 0 && received != body.contentLength()) {
@@ -494,6 +504,19 @@ final class BrowserFileDownloader {
             item.put("bytes", bytes);
             item.put("total", total);
             item.put("progress", total > 0 ? (int) Math.min(99, bytes * 100L / total) : -1);
+            item.put("status", "downloading");
+            saveItem(context, item);
+        } catch (Exception ignored) {}
+    }
+
+    private static void updateProgressStage(Context context, long id, long bytes, String stage) {
+        JSONObject item = findItem(context, id);
+        if (item == null) return;
+        try {
+            item.put("bytes", bytes);
+            item.put("total", -1L);
+            item.put("progress", -1);
+            item.put("stage", stage == null ? "جارٍ العمل" : stage);
             item.put("status", "downloading");
             saveItem(context, item);
         } catch (Exception ignored) {}
