@@ -560,6 +560,27 @@
                     android:textSize="15sp" />
             </LinearLayout>
 
+            <!-- FG Code: separate main-drawer entry, not inside the browser menu -->
+            <LinearLayout
+                android:id="@+id/menu_fgcode"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:gravity="center_vertical"
+                android:clickable="true"
+                android:focusable="true">
+                <TextView
+                    android:layout_width="35dp"
+                    android:layout_height="wrap_content"
+                    android:text="🔑"
+                    android:textSize="18sp" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="FG Code"
+                    android:textColor="#FFFFFF"
+                    android:textSize="15sp" />
+            </LinearLayout>
+
             <!-- 4. الوسائط الأخيرة -->
             <LinearLayout
                 android:id="@+id/menu_recent_media"
