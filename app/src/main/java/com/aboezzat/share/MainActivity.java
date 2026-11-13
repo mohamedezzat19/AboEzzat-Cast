@@ -345,13 +345,15 @@ public class MainActivity extends Activity {
             closeDrawer();
             new AlertDialog.Builder(MainActivity.this)
                     .setTitle("إعدادات Abo Ezzat Share")
-                    .setItems(new String[]{"التحقق من التحديثات", "إعداد عنوان IP الشاشة", "تفعيل الاختصار العائم عند نسخ رابط", "إعدادات أندرويد وأذونات التطبيق"}, (dialog, which) -> {
+                    .setItems(new String[]{"التحقق من التحديثات", "إعداد عنوان IP الشاشة", "تفعيل الاختصار العائم عند نسخ رابط", "تشخيص مشكلة الفقاعة", "إعدادات أندرويد وأذونات التطبيق"}, (dialog, which) -> {
                         if (which == 0) {
                             new AppUpdater(MainActivity.this).checkForUpdate(true);
                         } else if (which == 1) {
                             showManualIpDialog();
                         } else if (which == 2) {
                             openClipboardShortcutSetup();
+                        } else if (which == 3) {
+                            showClipboardShortcutDiagnostics();
                         } else {
                             openAppPermissionSettings();
                         }
@@ -386,6 +388,40 @@ public class MainActivity extends Activity {
                         startActivity(new Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS));
                     } catch (Exception e) {
                         Toast.makeText(this, "افتح إعدادات إمكانية الوصول وفعّل خدمة AboEzzat Cast", Toast.LENGTH_LONG).show();
+                    }
+                })
+                .setNegativeButton("إغلاق", null)
+                .show();
+    }
+
+    private void showClipboardShortcutDiagnostics() {
+        SharedPreferences diagnosticPrefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
+        boolean serviceConnected = diagnosticPrefs.getBoolean("diag_service_connected", false);
+        int clipboardCount = diagnosticPrefs.getInt("diag_clipboard_count", 0);
+        String mime = diagnosticPrefs.getString("diag_last_clipboard_mime", "لا توجد بيانات");
+        String lastPackage = diagnosticPrefs.getString("diag_last_accessibility_package", "لا توجد أحداث");
+        int eventType = diagnosticPrefs.getInt("diag_last_accessibility_type", 0);
+        boolean copyMatched = diagnosticPrefs.getBoolean("diag_last_accessibility_copy", false);
+        String bubbleResult = diagnosticPrefs.getString("diag_last_bubble_result", "لا توجد بيانات");
+        boolean overlay = android.provider.Settings.canDrawOverlays(this);
+        String report = "تشخيص اختصار AboEzzat Cast\\n"
+                + "خدمة إمكانية الوصول متصلة: " + (serviceConnected ? "نعم" : "لا") + "\\n"
+                + "إذن الظهور فوق التطبيقات: " + (overlay ? "مفعّل" : "غير مفعّل") + "\\n"
+                + "مرات وصول حدث الحافظة: " + clipboardCount + "\\n"
+                + "آخر أنواع MIME: " + mime + "\\n"
+                + "آخر تطبيق أرسل حدث إمكانية الوصول: " + lastPackage + "\\n"
+                + "نوع آخر حدث: " + eventType + "\\n"
+                + "هل تعرّف على أمر نسخ؟ " + (copyMatched ? "نعم" : "لا") + "\\n"
+                + "نتيجة عرض الفقاعة: " + bubbleResult;
+        new AlertDialog.Builder(this)
+                .setTitle("تشخيص مشكلة الفقاعة")
+                .setMessage(report)
+                .setPositiveButton("نسخ التقرير", (d, w) -> {
+                    android.content.ClipboardManager cm =
+                            (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                    if (cm != null) {
+                        cm.setPrimaryClip(ClipData.newPlainText("AboEzzat Cast diagnostics", report));
+                        Toast.makeText(this, "تم نسخ تقرير التشخيص", Toast.LENGTH_SHORT).show();
                     }
                 })
                 .setNegativeButton("إغلاق", null)
