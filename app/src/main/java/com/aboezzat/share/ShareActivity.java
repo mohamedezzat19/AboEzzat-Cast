@@ -24,6 +24,7 @@ import android.widget.Toast;
 
 import java.io.IOException;
 import java.net.URLEncoder;
+import java.util.Locale;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Set;
