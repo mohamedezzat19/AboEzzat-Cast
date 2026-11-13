@@ -85,18 +85,24 @@ public class MainActivity extends Activity {
         }
     };
 
+    private boolean clipboardShortcutLaunch;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        clipboardShortcutLaunch = getIntent() != null
+                && getIntent().getBooleanExtra("clipboard_cast_shortcut", false);
+        if (clipboardShortcutLaunch) setTheme(android.R.style.Theme_Translucent_NoTitleBar);
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_main);
 
         prefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
         restoreMediaQueues();
         startLocalServer();
 
-        // Read clipboard only after the user taps the floating shortcut and
-        // this Activity has been brought to the foreground.
+        // The shortcut uses a separate translucent task: process the copied link
+        // without showing the normal Cast home screen.
         if (handleClipboardCastShortcut(getIntent())) return;
+
+        setContentView(R.layout.activity_main);
 
         // Silently check the Classic app's own release channel on launch.
         new AppUpdater(this).checkForUpdate(false);
@@ -1288,7 +1294,8 @@ private void showManualIpDialog() {
                 android.content.ClipboardManager clipboard =
                         (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
                 if (clipboard == null || !clipboard.hasPrimaryClip()) {
-                    Toast.makeText(this, "لا يوجد رابط في الحافظة", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, "لا يوجد رابط فيديو في الحافظة", Toast.LENGTH_SHORT).show();
+                    if (clipboardShortcutLaunch) finish();
                     return;
                 }
                 ClipData clip = clipboard.getPrimaryClip();
@@ -1298,7 +1305,8 @@ private void showManualIpDialog() {
                 }
                 CharSequence text = clip.getItemAt(0).coerceToText(this);
                 if (text == null) {
-                    Toast.makeText(this, "الحافظة لا تحتوي على رابط نصي", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, "الحافظة لا تحتوي على رابط فيديو", Toast.LENGTH_SHORT).show();
+                    if (clipboardShortcutLaunch) finish();
                     return;
                 }
                 Matcher matcher = Pattern.compile("https?://\\S+").matcher(text);
@@ -1307,9 +1315,11 @@ private void showManualIpDialog() {
                     processSharedLink(url);
                 } else {
                     Toast.makeText(this, "لم يتم العثور على رابط فيديو في الحافظة", Toast.LENGTH_SHORT).show();
+                    if (clipboardShortcutLaunch) finish();
                 }
             } catch (Exception e) {
                 Toast.makeText(this, "تعذر قراءة الرابط من الحافظة", Toast.LENGTH_SHORT).show();
+                if (clipboardShortcutLaunch) finish();
             }
         }, 300L);
         return true;
@@ -1333,9 +1343,15 @@ private void showManualIpDialog() {
     }
 
     private void processSharedLink(String url) {
-        String lowerUrl = url.toLowerCase();
-        boolean isBrowserRequired = lowerUrl.contains("facebook.com") || lowerUrl.contains("fb.watch") || 
-                                    lowerUrl.contains("fb.com") || lowerUrl.contains("instagram.com");
+        String lowerUrl = url.toLowerCase(java.util.Locale.ROOT);
+        boolean isInstagram = lowerUrl.contains("instagram.com");
+        boolean isThreads = lowerUrl.contains("threads.net");
+        boolean isTikTokLive = lowerUrl.contains("tiktok.com/live")
+                || lowerUrl.matches(".*tiktok\\.com/@[^/]+/live.*")
+                || lowerUrl.contains("live.tiktok.com");
+        // Facebook, YouTube and regular TikTok links go straight to Receiver.
+        // Keep browser handling only for sites/links that need page-side extraction.
+        boolean isBrowserRequired = isInstagram || isThreads || isTikTokLive;
 
         if (isBrowserRequired) {
             Intent browserIntent = new Intent(this, BrowserActivity.class);
@@ -1381,27 +1397,30 @@ private void showManualIpDialog() {
                             .url(receiverEndpoint + "/?command=ping")
                             .get()
                             .build();
+                    // Once the request headers reached Receiver, the receiver may
+                    // have accepted playback and closed the socket before replying.
+                    // Report the send instead of showing a misleading acknowledgement error.
+                    if (requestHeadersSent.get()) {
+                        runOnUiThread(() -> {
+                            Toast.makeText(MainActivity.this, "تم الإرسال ✅", Toast.LENGTH_SHORT).show();
+                            finish();
+                        });
+                        return;
+                    }
                     client.newCall(ping).enqueue(new Callback() {
                         @Override
                         public void onFailure(Call pingCall, IOException pingError) {
                             runOnUiThread(() -> {
-                                String message = requestHeadersSent.get()
-                                        ? "تم إرسال الطلب، لكن تعذر تأكيد رد الشاشة"
-                                        : "تعذر الاتصال بالشاشة";
-                                Toast.makeText(MainActivity.this, message, Toast.LENGTH_SHORT).show();
+                                Toast.makeText(MainActivity.this, "تعذر الاتصال بالشاشة", Toast.LENGTH_SHORT).show();
                                 finish();
                             });
                         }
 
                         @Override
                         public void onResponse(Call pingCall, Response pingResponse) {
-                            boolean receiverAlive = pingResponse.isSuccessful();
                             pingResponse.close();
                             runOnUiThread(() -> {
-                                String message = receiverAlive
-                                        ? "تم إرسال الطلب للشاشة ✓"
-                                        : "تعذر تأكيد استقبال الطلب";
-                                Toast.makeText(MainActivity.this, message, Toast.LENGTH_SHORT).show();
+                                Toast.makeText(MainActivity.this, "الشاشة متصلة، لكن لم يصل طلب الوسائط", Toast.LENGTH_SHORT).show();
                                 finish();
                             });
                         }
