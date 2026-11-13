@@ -1866,7 +1866,7 @@ public class BrowserActivity extends Activity {
         }
         WebView current = getCurrentWebView();
         String referer = current == null || current.getUrl() == null ? "" : current.getUrl();
-        BrowserFileDownloader.startMux(this, bestVideo.url, bestAudio.url, referer, bestVideo.title);
+        BrowserFileDownloader.startMux(this, bestVideo.url, bestAudio.url, referer, bestVideo.title, lastDiscoveredPoster);
     }
 
     private void castSelectedTracksManually() {
@@ -2166,7 +2166,11 @@ public class BrowserActivity extends Activity {
 
         WebView current = getCurrentWebView();
         String referer = current == null || current.getUrl() == null ? "" : current.getUrl();
-        BrowserFileDownloader.start(this, cleanUrl, type, hintedMime, referer);
+        String downloadTitle = lastDiscoveredTitle == null ? "" : lastDiscoveredTitle.trim();
+        if (downloadTitle.isEmpty() && current != null) downloadTitle = current.getTitle();
+        String downloadPoster = lastDiscoveredPoster == null ? "" : lastDiscoveredPoster.trim();
+        if ("image".equals(type) && downloadPoster.isEmpty()) downloadPoster = cleanUrl;
+        BrowserFileDownloader.start(this, cleanUrl, type, hintedMime, referer, downloadTitle, downloadPoster);
     }
 
     private void clearBrowserSiteData() {
