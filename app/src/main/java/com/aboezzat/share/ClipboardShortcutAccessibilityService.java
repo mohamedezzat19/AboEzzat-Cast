@@ -41,11 +41,29 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
                 // Detect text clipboard changes here; inspect the URL only after
                 // the user taps the bubble and the app is foregrounded.
                 try {
-                    if (clipboardManager.hasPrimaryClip()
-                            && clipboardManager.getPrimaryClipDescription() != null
-                            && (clipboardManager.getPrimaryClipDescription().hasMimeType("text/plain")
-                            || clipboardManager.getPrimaryClipDescription().hasMimeType("text/uri-list"))) {
-                        showBubble();
+                    if (clipboardManager.hasPrimaryClip()) {
+                        android.content.ClipDescription description =
+                                clipboardManager.getPrimaryClipDescription();
+                        if (description != null) {
+                            // Apps do not all copy links as text/plain. YouTube and
+                            // browser share menus may publish text/html or vendor
+                            // text MIME types, so accept every textual/URL clipboard
+                            // representation and validate the actual URL only on tap.
+                            boolean containsTextOrUrl = false;
+                            for (int i = 0; i < description.getMimeTypeCount(); i++) {
+                                String mime = description.getMimeType(i);
+                                if (mime != null) {
+                                    String lowerMime = mime.toLowerCase(java.util.Locale.ROOT);
+                                    if (lowerMime.startsWith("text/")
+                                            || lowerMime.contains("uri-list")
+                                            || lowerMime.contains("url")) {
+                                        containsTextOrUrl = true;
+                                        break;
+                                    }
+                                }
+                            }
+                            if (containsTextOrUrl) showBubble();
+                        }
                     }
                 } catch (Exception ignored) {}
             };
