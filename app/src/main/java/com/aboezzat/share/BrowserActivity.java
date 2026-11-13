@@ -2313,12 +2313,133 @@ public class BrowserActivity extends Activity {
         Toast.makeText(this, "تم مسح الكوكيز وبيانات المواقع وذاكرة المتصفح", Toast.LENGTH_SHORT).show();
     }
 
+    // FG Code is an M3U playlist shortcut. This feature is independent from
+    // social-site capture and never changes Instagram/Threads sniffers.
+    private void showFgCodeDialog() {
+        EditText input = new EditText(this);
+        input.setSingleLine(true);
+        input.setHint("أدخل FG Code أو رابط fgcode.org");
+        input.setTextColor(Color.WHITE);
+        input.setHintTextColor(Color.GRAY);
+        input.setPadding(dp(14), dp(12), dp(14), dp(12));
+        input.setText(getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE)
+                .getString("last_fg_code", ""));
+        new AlertDialog.Builder(this)
+                .setTitle("📺 تشغيل FG Code")
+                .setMessage("أدخل الكود الخاص بك لتحميل قائمة القنوات بصيغة M3U.")
+                .setView(input)
+                .setNegativeButton("إلغاء", null)
+                .setPositiveButton("تحميل القنوات", (d, w) -> resolveFgCode(input.getText().toString()))
+                .show();
+    }
+
+    private void resolveFgCode(String rawCode) {
+        String value = rawCode == null ? "" : rawCode.trim();
+        if (value.isEmpty()) {
+            Toast.makeText(this, "أدخل كود FG أولاً", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        String playlistUrl;
+        try {
+            if (value.matches("(?i)^https?://(www\\\\.)?fgcode\\\\.org/[a-z0-9]+/?$")) {
+                Uri uri = Uri.parse(value);
+                playlistUrl = "https://fgcode.org/" + uri.getLastPathSegment();
+            } else if (value.matches("(?i)^[a-z0-9]+$")) {
+                playlistUrl = "https://fgcode.org/" + value;
+            } else {
+                Toast.makeText(this, "اكتب الكود فقط أو رابط fgcode.org صحيح", Toast.LENGTH_LONG).show();
+                return;
+            }
+        } catch (Exception e) {
+            Toast.makeText(this, "صيغة كود FG غير صحيحة", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE).edit()
+                .putString("last_fg_code", value).apply();
+        Toast.makeText(this, "جاري تحميل قائمة FG...", Toast.LENGTH_SHORT).show();
+        Request request = new Request.Builder()
+                .url(playlistUrl)
+                .header("User-Agent", WebSettings.getDefaultUserAgent(this))
+                .header("Accept", "audio/x-mpegurl, application/vnd.apple.mpegurl, */*")
+                .get().build();
+        client.newCall(request).enqueue(new Callback() {
+            @Override public void onFailure(Call call, IOException e) {
+                runOnUiThread(() -> Toast.makeText(BrowserActivity.this,
+                        "تعذر الاتصال بخدمة FG Code: " + e.getMessage(), Toast.LENGTH_LONG).show());
+            }
+            @Override public void onResponse(Call call, Response response) throws IOException {
+                String body = response.body() == null ? "" : response.body().string();
+                int status = response.code();
+                response.close();
+                List<CapturedMedia> channels = parseFgM3u(body);
+                runOnUiThread(() -> {
+                    if (status < 200 || status >= 300) {
+                        Toast.makeText(BrowserActivity.this, "خدمة FG ردت برمز " + status, Toast.LENGTH_LONG).show();
+                    } else if (channels.isEmpty()) {
+                        Toast.makeText(BrowserActivity.this,
+                                "الكود لم يُرجع قنوات M3U. قد يكون فارغاً أو غير صالح.", Toast.LENGTH_LONG).show();
+                    } else {
+                        showFgChannelsDialog(channels, value);
+                    }
+                });
+            }
+        });
+    }
+
+    private List<CapturedMedia> parseFgM3u(String content) {
+        List<CapturedMedia> result = new ArrayList<>();
+        if (content == null || !content.trim().startsWith("#EXTM3U")) return result;
+        String[] lines = content.replace("\\r", "").split("\\n");
+        String title = "قناة FG";
+        String poster = "";
+        for (int i = 0; i < lines.length; i++) {
+            String line = lines[i].trim();
+            if (line.startsWith("#EXTINF")) {
+                int comma = line.lastIndexOf(',');
+                title = comma >= 0 && comma + 1 < line.length() ? line.substring(comma + 1).trim() : "قناة FG";
+                java.util.regex.Matcher logo = java.util.regex.Pattern
+                        .compile("(?i)tvg-logo\\\\s*=\\\\s*[\\"']([^\\"']+)[\\"']").matcher(line);
+                poster = logo.find() ? logo.group(1) : "";
+            } else if (!line.isEmpty() && !line.startsWith("#")
+                    && (line.startsWith("http://") || line.startsWith("https://"))) {
+                result.add(new CapturedMedia(line, title, "FG / M3U", poster, 1));
+                title = "قناة FG";
+                poster = "";
+            }
+        }
+        return result;
+    }
+
+    private void showFgChannelsDialog(List<CapturedMedia> channels, String code) {
+        String[] names = new String[channels.size()];
+        for (int i = 0; i < channels.size(); i++) names[i] = channels.get(i).title;
+        new AlertDialog.Builder(this)
+                .setTitle("قنوات FG • " + channels.size() + " قناة")
+                .setItems(names, (dialog, which) -> {
+                    CapturedMedia selected = channels.get(which);
+                    new AlertDialog.Builder(this).setTitle(selected.title)
+                            .setItems(new String[]{"📺 بث القناة إلى AboEzzat Receiver", "▶️ تشغيل الرابط في المتصفح"},
+                                    (d, action) -> {
+                                        if (action == 0) {
+                                            castToTv(selected.url);
+                                        } else {
+                                            WebView current = getCurrentWebView();
+                                            if (current != null) current.loadUrl(selected.url);
+                                        }
+                                    }).show();
+                })
+                .setNegativeButton("إغلاق", null)
+                .show();
+    }
+
     private void showSideMenu() {
         String[] menuItems = {
                 "🔄 تحديث الصفحة الحالية",
                 "📂 مجلد التنزيلات (Downloads)",
                 "➕ فتح علامة تبويب جديدة",
-                "🧹 مسح الكوكيز والبيانات المسجلة"
+                "🧹 مسح الكوكيز والبيانات المسجلة",
+                "📺 تشغيل FG Code / قائمة IPTV"
         };
         new AlertDialog.Builder(this)
                 .setTitle("القائمة الجانبية")
@@ -2332,6 +2453,8 @@ public class BrowserActivity extends Activity {
                         addNewTab("about:home");
                     } else if (which == 3) {
                         clearBrowserSiteData();
+                    } else if (which == 4) {
+                        showFgCodeDialog();
                     }
                 })
                 .show();
