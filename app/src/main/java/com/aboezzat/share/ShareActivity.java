@@ -145,11 +145,11 @@ public class ShareActivity extends Activity {
             return;
         }
 
-        // Drama Live's SwiftData URL is itself a live playlist endpoint.
+        // This three-segment index.html URL is itself a live playlist endpoint.
         // Do not wait for WebView media sniffing: forward this known URL to Receiver,
         // which will hand it to VLC (and use ExoPlayer if VLC is unavailable).
         if (isSwiftDataDramaLiveUrl(url)) {
-            Toast.makeText(this, "تم التعرف على رابط Drama Live، جاري إرساله للشاشة…",
+            Toast.makeText(this, "تم التعرف على رابط البث، جاري إرساله للشاشة…",
                     Toast.LENGTH_LONG).show();
             sendToTv(targetTvIp, url, false, url);
             return;
@@ -206,7 +206,7 @@ public class ShareActivity extends Activity {
             String host = uri.getHost();
             String path = uri.getPath();
             return host != null && path != null
-                    && path.toLowerCase(Locale.ROOT).matches("^/fk/[^/]+/index\\.html$");
+                    && path.toLowerCase(Locale.ROOT).matches("^/[^/]+/[^/]+/index\\.html$");
         } catch (Exception e) {
             return false;
         }
