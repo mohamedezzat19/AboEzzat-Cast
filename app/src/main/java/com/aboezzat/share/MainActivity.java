@@ -1260,11 +1260,27 @@ private void showManualIpDialog() {
     private void remindIfAccessibilityDisabled() {
         if (clipboardShortcutLaunch || accessibilityReminderShown || isFinishing()
                 || isClipboardAccessibilityEnabled()) return;
+
+        // Ask at most once for each installed app version. Returning to Home,
+        // reopening the app, or resuming it must not repeat the same prompt.
+        final long currentVersion;
+        try {
+            android.content.pm.PackageInfo info = getPackageManager().getPackageInfo(getPackageName(), 0);
+            currentVersion = android.os.Build.VERSION.SDK_INT >= 28
+                    ? info.getLongVersionCode() : info.versionCode;
+        } catch (Exception ignored) {
+            return;
+        }
+        android.content.SharedPreferences reminderPrefs =
+                getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
+        if (reminderPrefs.getLong("accessibility_reminder_version", -1L) == currentVersion) return;
+
         accessibilityReminderShown = true;
+        reminderPrefs.edit().putLong("accessibility_reminder_version", currentVersion).apply();
 
         new AlertDialog.Builder(this)
                 .setTitle("زر النسخ العائم غير مفعّل")
-                .setMessage("يبدو أن أندرويد أوقف خدمة إمكانية الوصول بعد تحديث التطبيق. فعّل خدمة «اختصار AboEzzat Cast عند النسخ» من القائمة التي ستفتح الآن. إذا كان الخيار مقفولًا، افتح معلومات التطبيق من إعدادات الهاتف واختر «السماح بالإعدادات المقيّدة» ثم ارجع وفعّل الخدمة.")
+                .setMessage("لتفعيل اختصار النسخ العائم، فعّل خدمة «اختصار AboEzzat Cast عند النسخ» من إعدادات إمكانية الوصول. لن نكرر هذا التنبيه خلال نفس إصدار التطبيق.")
                 .setPositiveButton("فتح إعدادات إمكانية الوصول", (dialog, which) -> {
                     try {
                         startActivity(new Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS));
