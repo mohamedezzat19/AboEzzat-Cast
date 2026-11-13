@@ -2281,11 +2281,13 @@ public class BrowserActivity extends Activity {
                 } else if ("downloading".equals(status)) {
                     int progress = item.optInt("progress", -1);
                     long received = item.optLong("bytes", 0L);
-                    state = progress >= 0
+                    String stage = item.optString("stage", "");
+                    String progressText = progress >= 0
                             ? "جارٍ التنزيل • " + progress + "% • " + formatBrowserDownloadSize(received)
                             : received > 0
-                                    ? "جارٍ التنزيل • تم استلام " + formatBrowserDownloadSize(received)
+                                    ? "جارٍ العمل • تم استلام " + formatBrowserDownloadSize(received)
                                     : "تم الاتصال • في انتظار البيانات";
+                    state = stage.isEmpty() ? progressText : stage + " • " + formatBrowserDownloadSize(received);
                 } else {
                     state = "فشل التنزيل • " + item.optString("error", "تعذر التنزيل");
                 }
