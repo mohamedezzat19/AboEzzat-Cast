@@ -338,11 +338,13 @@ public class MainActivity extends Activity {
             closeDrawer();
             new AlertDialog.Builder(MainActivity.this)
                     .setTitle("إعدادات Abo Ezzat Share")
-                    .setItems(new String[]{"التحقق من التحديثات", "إعداد عنوان IP الشاشة", "إعدادات أندرويد وأذونات التطبيق"}, (dialog, which) -> {
+                    .setItems(new String[]{"التحقق من التحديثات", "إعداد عنوان IP الشاشة", "تفعيل الاختصار العائم عند نسخ رابط", "إعدادات أندرويد وأذونات التطبيق"}, (dialog, which) -> {
                         if (which == 0) {
                             new AppUpdater(MainActivity.this).checkForUpdate(true);
                         } else if (which == 1) {
                             showManualIpDialog();
+                        } else if (which == 2) {
+                            openClipboardShortcutSetup();
                         } else {
                             openAppPermissionSettings();
                         }
@@ -358,6 +360,30 @@ public class MainActivity extends Activity {
         });
     }
 
+
+    private void openClipboardShortcutSetup() {
+        new AlertDialog.Builder(this)
+                .setTitle("اختصار AboEzzat Cast العائم")
+                .setMessage("لتشغيل الاختصار عند نسخ رابط من أي تطبيق، فعّل الإذنين التاليين مرة واحدة:\n\n1) السماح بالظهور فوق التطبيقات الأخرى.\n2) تفعيل خدمة إمكانية الوصول باسم «اختصار AboEzzat Cast عند النسخ».\n\nالخدمة تراقب رسائل تأكيد النسخ فقط، ولا تقرأ محتوى الحافظة إلا بعد ضغطك على الأيقونة. تظهر الأيقونة 3 ثوانٍ ويمكنك سحبها لمكان مناسب.")
+                .setPositiveButton("إذن الظهور فوق التطبيقات", (d, w) -> {
+                    try {
+                        Intent overlay = new Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                Uri.parse("package:" + getPackageName()));
+                        startActivity(overlay);
+                    } catch (Exception e) {
+                        Toast.makeText(this, "افتح إعدادات التطبيق وفعّل الظهور فوق التطبيقات", Toast.LENGTH_LONG).show();
+                    }
+                })
+                .setNeutralButton("إعداد إمكانية الوصول", (d, w) -> {
+                    try {
+                        startActivity(new Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS));
+                    } catch (Exception e) {
+                        Toast.makeText(this, "افتح إعدادات إمكانية الوصول وفعّل خدمة AboEzzat Cast", Toast.LENGTH_LONG).show();
+                    }
+                })
+                .setNegativeButton("إغلاق", null)
+                .show();
+    }
 
     private void openAppPermissionSettings() {
         try {
