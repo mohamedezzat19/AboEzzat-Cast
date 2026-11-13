@@ -92,8 +92,17 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
                                     }
                                 }
                             }
-                            // MIME type alone does not prove that the copied text is a URL.
-                            // The SystemUI clipboard preview is checked below instead.
+                            // Clipboard access is restricted while the app is in the background.
+                            // Show the short-lived shortcut for textual clips; the URL itself is
+                            // validated only after the user taps and AboEzzat Cast is foregrounded.
+                            CharSequence clipLabel = description.getLabel();
+                            boolean isOurDiagnosticCopy = clipLabel != null
+                                    && clipLabel.toString().toLowerCase(java.util.Locale.ROOT)
+                                    .contains("aboezzat cast diagnostics");
+                            if (containsTextOrUrl && !isOurDiagnosticCopy
+                                    && android.provider.Settings.canDrawOverlays(this)) {
+                                handler.post(this::showBubble);
+                            }
                         }
                     }
                 } catch (Exception ignored) {}
