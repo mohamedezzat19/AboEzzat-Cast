@@ -40,8 +40,8 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
     }
 
     private boolean isCopyConfirmation(AccessibilityEvent event) {
-        // Inspect only the small accessibility event payload for copy confirmations.
-        // No screen hierarchy, browsing content, or clipboard contents are collected.
+        // Inspect only the clicked control label and event text for copy actions.
+        // Do not traverse the screen, inspect page contents, or read the clipboard here.
         StringBuilder payload = new StringBuilder();
         if (event.getText() != null) {
             for (CharSequence item : event.getText()) {
@@ -49,7 +49,23 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
             }
         }
         CharSequence description = event.getContentDescription();
-        if (description != null) payload.append(description);
+        if (description != null) payload.append(description).append(' ');
+        // Some apps expose the clicked context-menu item ("Copy link") only
+        // through the event source node, not through event.getText().
+        if (event.getEventType() == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+            android.view.accessibility.AccessibilityNodeInfo source = event.getSource();
+            if (source != null) {
+                CharSequence sourceText = source.getText();
+                CharSequence sourceDescription = source.getContentDescription();
+                if (sourceText != null) payload.append(sourceText).append(' ');
+                if (sourceDescription != null) payload.append(sourceDescription).append(' ');
+                if (Build.VERSION.SDK_INT >= 26) {
+                    CharSequence hint = source.getHintText();
+                    if (hint != null) payload.append(hint).append(' ');
+                }
+                source.recycle();
+            }
+        }
         int type = event.getEventType();
         // MIUI/HyperOS may announce clipboard confirmation from the app that
         // performed the copy, not from Android SystemUI. Accept these event
@@ -64,10 +80,17 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
         boolean copyConfirmed = text.contains("copied to clipboard")
                 || text.contains("link copied")
                 || text.contains("copied")
+                || text.contains("copy link")
+                || text.contains("copy video link")
+                || text.contains("copy url")
+                || text.contains("copy video url")
+                || text.contains("copy address")
                 || text.contains("تم النسخ")
                 || text.contains("تم نسخ")
                 || text.contains("نسخ إلى الحافظة")
                 || text.contains("نسخ الرابط")
+                || text.contains("نسخ رابط الفيديو")
+                || text.contains("نسخ عنوان الرابط")
                 || text.contains("تم نسخ الرابط")
                 || text.contains("تم النسخ إلى الحافظة");
         if (!copyConfirmed) return false;
