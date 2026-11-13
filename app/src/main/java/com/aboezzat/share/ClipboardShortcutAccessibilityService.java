@@ -38,6 +38,10 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
                 .putBoolean("diag_service_connected", true)
                 .putInt("diag_clipboard_count", 0)
                 .putString("diag_last_clipboard_mime", "لم يصل حدث نسخ بعد")
+                .putBoolean("diag_clipboard_listener_registered", false)
+                .putString("diag_clipboard_listener_status", "لم يتم تسجيل المستمع بعد")
+                .putInt("diag_systemui_event_count", 0)
+                .putString("diag_last_systemui_event", "لم يصل حدث من SystemUI بعد")
                 .putString("diag_last_bubble_result", "لم تتم محاولة عرض الفقاعة بعد")
                 .putInt("diag_accessibility_copy_count", 0)
                 .putString("diag_last_copy_package", "لم يتم رصد أمر نسخ بعد")
@@ -107,8 +111,19 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
                     }
                 } catch (Exception ignored) {}
             };
-            try { clipboardManager.addPrimaryClipChangedListener(clipboardListener); }
-            catch (Exception ignored) {}
+            try {
+                clipboardManager.addPrimaryClipChangedListener(clipboardListener);
+                getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                        .putBoolean("diag_clipboard_listener_registered", true)
+                        .putString("diag_clipboard_listener_status", "تم تسجيل مستمع الحافظة بنجاح")
+                        .apply();
+            } catch (Exception registrationError) {
+                getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                        .putBoolean("diag_clipboard_listener_registered", false)
+                        .putString("diag_clipboard_listener_status",
+                                "فشل التسجيل: " + registrationError.getClass().getSimpleName())
+                        .apply();
+            }
         }
     }
 
@@ -132,6 +147,15 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
         // This does not change bubble detection or read clipboard contents.
         boolean isSystemClipboardHost = "com.android.systemui".equals(eventPackage)
                 || "com.mi.android.globallauncher".equals(eventPackage);
+        if (isSystemClipboardHost) {
+            android.content.SharedPreferences systemPrefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+            systemPrefs.edit()
+                    .putInt("diag_systemui_event_count",
+                            systemPrefs.getInt("diag_systemui_event_count", 0) + 1)
+                    .putString("diag_last_systemui_event",
+                            "type=" + event.getEventType() + " | " + describeEvent(event))
+                    .apply();
+        }
         if (!isSystemClipboardHost) {
             android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
             android.content.SharedPreferences.Editor eventEditor = prefs.edit()
