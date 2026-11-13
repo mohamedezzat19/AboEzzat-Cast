@@ -3,6 +3,6 @@
     android:accessibilityEventTypes="typeWindowContentChanged|typeNotificationStateChanged|typeWindowStateChanged|typeViewClicked|typeAnnouncement"
     android:accessibilityFeedbackType="feedbackGeneric"
     android:notificationTimeout="100"
-    android:canRetrieveWindowContent="false"
+    android:canRetrieveWindowContent="true"
     android:description="@string/clipboard_shortcut_accessibility_description"
     android:accessibilityFlags="flagDefault" />
