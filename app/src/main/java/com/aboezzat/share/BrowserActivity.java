@@ -447,6 +447,8 @@ public class BrowserActivity extends Activity {
             return true;
         });
         menu.getMenu().add("مسح الكوكيز وبيانات المواقع").setOnMenuItemClickListener(item -> { clearBrowserSiteData(); return true; });
+        // FG Code must be added to the actual browser overflow menu used by the top-right button.
+        menu.getMenu().add("📺 FG Code / قائمة IPTV").setOnMenuItemClickListener(item -> { showFgCodeDialog(); return true; });
         menu.show();
     }
 
