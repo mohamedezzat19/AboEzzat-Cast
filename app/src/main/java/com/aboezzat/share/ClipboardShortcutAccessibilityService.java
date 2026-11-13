@@ -60,7 +60,7 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
                 && type != AccessibilityEvent.TYPE_ANNOUNCEMENT) return false;
 
         String text = payload.toString().trim().toLowerCase(java.util.Locale.ROOT);
-        return text.contains("copied to clipboard")
+        boolean copyConfirmed = text.contains("copied to clipboard")
                 || text.contains("link copied")
                 || text.contains("copied")
                 || text.contains("تم النسخ")
@@ -69,6 +69,46 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
                 || text.contains("نسخ الرابط")
                 || text.contains("تم نسخ الرابط")
                 || text.contains("تم النسخ إلى الحافظة");
+        if (!copyConfirmed) return false;
+
+        // Do not show the bubble for ordinary copied text or ordinary web links.
+        // The URL must be present in the accessibility event itself; never read
+        // clipboard contents in the background to classify a copy operation.
+        java.util.regex.Matcher matcher = java.util.regex.Pattern
+                .compile("https?://[^\\s]+", java.util.regex.Pattern.CASE_INSENSITIVE)
+                .matcher(text);
+        if (!matcher.find()) return false;
+        String url = matcher.group().replaceAll("[),.؛،]+$", "");
+        return isLikelyVideoUrl(url);
+    }
+
+    private boolean isLikelyVideoUrl(String rawUrl) {
+        try {
+            android.net.Uri uri = android.net.Uri.parse(rawUrl);
+            String host = uri.getHost();
+            String path = uri.getPath() == null ? "" : uri.getPath().toLowerCase(java.util.Locale.ROOT);
+            if (host == null) return false;
+            host = host.toLowerCase(java.util.Locale.ROOT);
+            if (host.startsWith("www.")) host = host.substring(4);
+            if (path.matches(".*\\\\.(mp4|m3u8|webm|mov|mkv|avi)$")) return true;
+
+            if (host.equals("youtu.be") || host.endsWith("youtube.com")
+                    || host.endsWith("youtube-nocookie.com")) return true;
+            if (host.equals("fb.watch")) return true;
+            if (host.endsWith("facebook.com") || host.equals("fb.com"))
+                return path.contains("/watch") || path.contains("/reel")
+                        || path.contains("/videos/") || path.contains("/share/v/");
+            if (host.endsWith("tiktok.com"))
+                return path.contains("/video/") || path.contains("/live");
+            if (host.endsWith("instagram.com"))
+                return path.contains("/reel/") || path.contains("/tv/") || path.matches("/p/[^/]+/?");
+            if (host.endsWith("threads.net")) return path.contains("/post/");
+            if (host.equals("x.com") || host.endsWith("twitter.com")) return path.contains("/status/");
+            return host.endsWith("vimeo.com") || host.endsWith("dailymotion.com")
+                    || host.endsWith("twitch.tv") || host.endsWith("streamable.com");
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 
     private void showBubble() {
