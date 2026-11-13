@@ -406,6 +406,12 @@ public class MainActivity extends Activity {
         String clipboardHost = diagnosticPrefs.getString("diag_last_clipboard_host", "لم يتم فحص نافذة النظام بعد");
         boolean systemClipboardMatch = diagnosticPrefs.getBoolean("diag_last_systemui_url_match", false);
         String bubbleResult = diagnosticPrefs.getString("diag_last_bubble_result", "لا توجد بيانات");
+        int sourceEvents = diagnosticPrefs.getInt("diag_source_event_count", 0);
+        int sourceClicks = diagnosticPrefs.getInt("diag_source_click_count", 0);
+        String sourcePackage = diagnosticPrefs.getString("diag_last_source_package", "لا توجد بيانات");
+        String sourceText = diagnosticPrefs.getString("diag_last_source_text", "لا توجد بيانات");
+        String clickPackage = diagnosticPrefs.getString("diag_last_click_package", "لا توجد بيانات");
+        String clickText = diagnosticPrefs.getString("diag_last_click_text", "لا توجد بيانات");
         boolean overlay = android.provider.Settings.canDrawOverlays(this);
         String report = "تشخيص اختصار AboEzzat Cast\n"
                 + "خدمة إمكانية الوصول متصلة: " + (serviceConnected ? "نعم" : "لا") + "\n"
@@ -414,8 +420,14 @@ public class MainActivity extends Activity {
                 + "آخر أنواع MIME: " + mime + "\n"
                 + "آخر تطبيق أرسل حدث إمكانية الوصول: " + lastPackage + "\n"
                 + "نوع آخر حدث: " + eventType + "\n"
-                + "مرات اكتشاف رابط في نافذة النظام: " + copyEventCount + "\n"
-                + "آخر تطبيق ظهرت فيه نافذة رابط: " + lastCopyPackage + "\n"
+                + "مرات رصد أمر نسخ مؤكد: " + copyEventCount + "\n"
+                + "آخر تطبيق رُصد منه أمر نسخ: " + lastCopyPackage + "\n"
+                + "عدد أحداث التطبيقات المصدر: " + sourceEvents + "\n"
+                + "عدد أحداث الضغط في التطبيقات المصدر: " + sourceClicks + "\n"
+                + "آخر تطبيق مصدر: " + sourcePackage + "\n"
+                + "نص آخر حدث مصدر: " + sourceText + "\n"
+                + "آخر تطبيق حدث فيه ضغط: " + clickPackage + "\n"
+                + "نص آخر عنصر تم ضغطه: " + clickText + "\n"
                 + "آخر نافذة نظام تم فحصها: " + clipboardHost + "\n"
                 + "هل عُثر على رابط HTTP/HTTPS في نافذة النظام؟ " + (systemClipboardMatch ? "نعم" : "لا") + "\n"
                 + "نتيجة عرض الفقاعة: " + bubbleResult;
