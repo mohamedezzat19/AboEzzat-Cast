@@ -34,6 +34,12 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
     protected void onServiceConnected() {
         super.onServiceConnected();
         windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                .putBoolean("diag_service_connected", true)
+                .putInt("diag_clipboard_count", 0)
+                .putString("diag_last_clipboard_mime", "لم يصل حدث نسخ بعد")
+                .putString("diag_last_bubble_result", "لم تتم محاولة عرض الفقاعة بعد")
+                .apply();
         clipboardManager = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
         if (clipboardManager != null) {
             clipboardListener = () -> {
@@ -41,9 +47,23 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
                 // Detect text clipboard changes here; inspect the URL only after
                 // the user taps the bubble and the app is foregrounded.
                 try {
+                    int count = getSharedPreferences(PREFS, MODE_PRIVATE)
+                            .getInt("diag_clipboard_count", 0) + 1;
+                    android.content.ClipDescription description =
+                            clipboardManager.getPrimaryClipDescription();
+                    StringBuilder seenMimeTypes = new StringBuilder();
+                    if (description != null) {
+                        for (int i = 0; i < description.getMimeTypeCount(); i++) {
+                            if (seenMimeTypes.length() > 0) seenMimeTypes.append(", ");
+                            seenMimeTypes.append(description.getMimeType(i));
+                        }
+                    }
+                    getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                            .putInt("diag_clipboard_count", count)
+                            .putString("diag_last_clipboard_mime",
+                                    seenMimeTypes.length() == 0 ? "لا يوجد MIME ظاهر" : seenMimeTypes.toString())
+                            .apply();
                     if (clipboardManager.hasPrimaryClip()) {
-                        android.content.ClipDescription description =
-                                clipboardManager.getPrimaryClipDescription();
                         if (description != null) {
                             // Apps do not all copy links as text/plain. YouTube and
                             // browser share menus may publish text/html or vendor
@@ -74,8 +94,16 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
-        if (event == null || !android.provider.Settings.canDrawOverlays(this)) return;
-        if (isCopyConfirmation(event)) showBubble();
+        if (event == null) return;
+        boolean copyConfirmed = isCopyConfirmation(event);
+        CharSequence packageName = event.getPackageName();
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                .putString("diag_last_accessibility_package",
+                        packageName == null ? "غير معروف" : packageName.toString())
+                .putInt("diag_last_accessibility_type", event.getEventType())
+                .putBoolean("diag_last_accessibility_copy", copyConfirmed)
+                .apply();
+        if (copyConfirmed && android.provider.Settings.canDrawOverlays(this)) showBubble();
     }
 
     private boolean isCopyConfirmation(AccessibilityEvent event) {
@@ -233,9 +261,16 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
         bubble = icon;
         try {
             windowManager.addView(bubble, bubbleParams);
+            getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                    .putString("diag_last_bubble_result", "نجح عرض الفقاعة")
+                    .apply();
             hideRunnable = this::removeBubble;
             handler.postDelayed(hideRunnable, VISIBLE_MS);
         } catch (Exception e) {
+            getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                    .putString("diag_last_bubble_result",
+                            "فشل عرض الفقاعة: " + e.getClass().getSimpleName())
+                    .apply();
             bubble = null;
             bubbleParams = null;
         }
@@ -272,6 +307,8 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
 
     @Override
     public void onDestroy() {
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                .putBoolean("diag_service_connected", false).apply();
         removeBubble();
         if (clipboardManager != null && clipboardListener != null) {
             try { clipboardManager.removePrimaryClipChangedListener(clipboardListener); }
