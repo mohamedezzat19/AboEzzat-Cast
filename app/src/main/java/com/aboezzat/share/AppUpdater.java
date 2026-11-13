@@ -29,7 +29,7 @@ import java.util.concurrent.Executors;
 public final class AppUpdater {
     private static final ExecutorService IO = Executors.newSingleThreadExecutor();
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
-    private static final String RELEASES_API = "https://api.github.com/repos/mohamedezzat19/AboEzzat-Cast/releases/latest";
+    private static final String RELEASES_API = "https://api.github.com/repos/mohamedezzat19/AboEzzat-Cast/releases?per_page=30";
     private final Activity activity;
 
     public AppUpdater(Activity activity) { this.activity = activity; }
@@ -42,34 +42,54 @@ public final class AppUpdater {
                 c.setReadTimeout(15000);
                 c.setRequestProperty("Accept", "application/vnd.github+json");
                 c.setRequestProperty("User-Agent", "AboEzzat-Cast-Updater");
-                JSONObject release;
+                JSONArray releases;
                 try (InputStream in = c.getInputStream();
                      java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream()) {
                     byte[] b = new byte[4096];
                     int n;
                     while ((n = in.read(b)) != -1) out.write(b, 0, n);
-                    release = new JSONObject(out.toString("UTF-8"));
+                    releases = new JSONArray(out.toString("UTF-8"));
                 } finally {
                     c.disconnect();
                 }
 
-                java.util.regex.Matcher m = java.util.regex.Pattern
-                        .compile("versionCode\\s*:\\s*(\\d+)")
-                        .matcher(release.optString("body", ""));
-                long latest = m.find() ? Long.parseLong(m.group(1)) : 0;
-                long installed = installedVersionCode();
+                // GitHub can return two releases with identical timestamps out of order.
+                // Select the greatest published versionCode instead of trusting /releases/latest.
+                long bestVersion = 0L;
                 String apkUrl = null;
-                JSONArray assets = release.optJSONArray("assets");
-                if (assets != null) {
-                    for (int i = 0; i < assets.length(); i++) {
-                        JSONObject a = assets.optJSONObject(i);
-                        if (a != null && "app-release.apk".equals(a.optString("name"))) {
-                            apkUrl = a.optString("browser_download_url", null);
-                            break;
+                for (int r = 0; r < releases.length(); r++) {
+                    JSONObject release = releases.optJSONObject(r);
+                    if (release == null || release.optBoolean("draft", true)
+                            || release.optBoolean("prerelease", false)) continue;
+
+                    java.util.regex.Matcher m = java.util.regex.Pattern
+                            .compile("versionCode\\s*:\\s*(\\d+)")
+                            .matcher(release.optString("body", ""));
+                    if (!m.find()) continue;
+                    long candidateVersion;
+                    try { candidateVersion = Long.parseLong(m.group(1)); }
+                    catch (NumberFormatException ignored) { continue; }
+                    if (candidateVersion <= bestVersion) continue;
+
+                    String candidateUrl = null;
+                    JSONArray assets = release.optJSONArray("assets");
+                    if (assets != null) {
+                        for (int i = 0; i < assets.length(); i++) {
+                            JSONObject a = assets.optJSONObject(i);
+                            if (a != null && "app-release.apk".equals(a.optString("name"))) {
+                                candidateUrl = a.optString("browser_download_url", null);
+                                break;
+                            }
                         }
                     }
+                    if (candidateUrl != null && !candidateUrl.isEmpty()) {
+                        bestVersion = candidateVersion;
+                        apkUrl = candidateUrl;
+                    }
                 }
+                final long latest = bestVersion;
                 final String downloadUrl = apkUrl;
+                long installed = installedVersionCode();
                 if (latest <= installed || downloadUrl == null || downloadUrl.isEmpty()) {
                     if (showResult) MAIN.post(() -> Toast.makeText(activity,
                             "التطبيق محدث بالفعل، أو لم تُنشر نسخة موقّعة بعد.",
