@@ -1341,17 +1341,42 @@ private void showManualIpDialog() {
                 }
                 CharSequence text = clip.getItemAt(0).coerceToText(this);
                 if (text == null) {
-                    Toast.makeText(this, "الحافظة لا تحتوي على رابط فيديو", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, "الحافظة لا تحتوي على رابط", Toast.LENGTH_SHORT).show();
                     if (clipboardShortcutLaunch) finish();
                     return;
                 }
+
+                // Accept any copied web URL (not only a hard-coded list of platforms).
+                // The share target below performs the real extraction, exactly as it
+                // does when selected from Android's Sharesheet.
+                Matcher urlMatcher = Pattern.compile("(?i)(https?://[^\\s]+|www\\.[^\\s]+)")
+                        .matcher(text.toString());
+                if (!urlMatcher.find()) {
+                    Toast.makeText(this, "النص المنسوخ لا يحتوي على رابط", Toast.LENGTH_SHORT).show();
+                    if (clipboardShortcutLaunch) finish();
+                    return;
+                }
+                String copiedUrl = urlMatcher.group(1).replaceAll("[),،.]+$", "");
+                if (copiedUrl.regionMatches(true, 0, "www.", 0, 4)) {
+                    copiedUrl = "https://" + copiedUrl;
+                }
+                try {
+                    Uri parsed = Uri.parse(copiedUrl);
+                    if (parsed.getHost() == null || !(copiedUrl.startsWith("http://")
+                            || copiedUrl.startsWith("https://"))) throw new IllegalArgumentException("Invalid URL");
+                } catch (Exception invalidUrl) {
+                    Toast.makeText(this, "الرابط المنسوخ غير صالح", Toast.LENGTH_SHORT).show();
+                    if (clipboardShortcutLaunch) finish();
+                    return;
+                }
+
                 // Launch the exact same exported share target that Android's
                 // Sharesheet invokes. This preserves ShareActivity's platform-specific
                 // extraction (including YouTube) instead of MainActivity's URL shortcut.
                 Intent shareIntent = new Intent(Intent.ACTION_SEND);
                 shareIntent.setClass(this, ShareActivity.class);
                 shareIntent.setType("text/plain");
-                shareIntent.putExtra(Intent.EXTRA_TEXT, text.toString());
+                shareIntent.putExtra(Intent.EXTRA_TEXT, copiedUrl);
                 startActivity(shareIntent);
                 if (clipboardShortcutLaunch) finish();
             } catch (Exception e) {
