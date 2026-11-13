@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="clipboard_shortcut_accessibility_description">إظهار اختصار AboEzzat Cast لفترة قصيرة عند رصد رسالة تأكيد نسخ رابط. لا يقرأ التطبيق محتوى الشاشة أو الحافظة إلا بعد الضغط على الاختصار.</string>
+</resources>
