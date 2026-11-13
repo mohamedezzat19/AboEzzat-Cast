@@ -1301,7 +1301,7 @@ private void showManualIpDialog() {
                     Toast.makeText(this, "الحافظة لا تحتوي على رابط نصي", Toast.LENGTH_SHORT).show();
                     return;
                 }
-                Matcher matcher = Pattern.compile("https?://\\\\S+").matcher(text);
+                Matcher matcher = Pattern.compile("https?://\\S+").matcher(text);
                 if (matcher.find()) {
                     String url = matcher.group(0).replaceAll("[),.؛،]+$", "");
                     processSharedLink(url);
