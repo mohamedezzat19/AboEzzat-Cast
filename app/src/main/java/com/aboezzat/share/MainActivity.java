@@ -283,7 +283,10 @@ public class MainActivity extends Activity {
         // 3. IPTV
         findViewById(R.id.menu_iptv).setOnClickListener(v -> {
             closeDrawer();
-            showIptvDialog();
+            Intent iptvIntent = new Intent(MainActivity.this, BrowserActivity.class);
+            iptvIntent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+            iptvIntent.putExtra("open_iptv_hub", true);
+            startActivity(iptvIntent);
         });
 
         // 4. الوسائط الأخيرة
@@ -708,26 +711,6 @@ public class MainActivity extends Activity {
         if (drawerLayout != null && drawerLayout.isDrawerOpen(GravityCompat.START)) {
             drawerLayout.closeDrawer(GravityCompat.START);
         }
-    }
-
-    private void showIptvDialog() {
-        EditText input = new EditText(this);
-        input.setHint("الصق رابط بث IPTV (m3u8 أو flv)");
-        input.setTextColor(0xFFFFFFFF);
-        input.setBackgroundColor(0xFF262833);
-        input.setPadding(16, 16, 16, 16);
-
-        new AlertDialog.Builder(this)
-                .setTitle("تشغيل IPTV على الشاشة")
-                .setView(input)
-                .setPositiveButton("بث مباشر 📺", (dialog, which) -> {
-                    String url = input.getText().toString().trim();
-                    if (!url.isEmpty()) {
-                        castUrlDirectlyToTv(url);
-                    }
-                })
-                .setNegativeButton("إلغاء", null)
-                .show();
     }
 
     private String getMediaDisplayName(Uri uri, int index) {
