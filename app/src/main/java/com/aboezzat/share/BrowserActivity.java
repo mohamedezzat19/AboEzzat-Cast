@@ -913,7 +913,7 @@ public class BrowserActivity extends Activity {
         try {
             Uri uri = Uri.parse(url);
             String host = uri.getHost();
-            if (host != null && !host.trim().isEmpty()) return host.replaceFirst("^www\\\\.", "");
+            if (host != null && !host.trim().isEmpty()) return host.replaceFirst("^www\\.", "");
             String scheme = uri.getScheme();
             if (scheme != null) return scheme;
         } catch (Exception ignored) {}
@@ -2341,7 +2341,7 @@ public class BrowserActivity extends Activity {
         }
         String playlistUrl;
         try {
-            if (value.matches("(?i)^https?://(www\\\\.)?fgcode\\\\.org/[a-z0-9]+/?$")) {
+            if (value.matches("(?i)^https?://(www\\.)?fgcode\\.org/[a-z0-9]+/?$")) {
                 Uri uri = Uri.parse(value);
                 playlistUrl = "https://fgcode.org/" + uri.getLastPathSegment();
             } else if (value.matches("(?i)^[a-z0-9]+$")) {
@@ -2398,9 +2398,7 @@ public class BrowserActivity extends Activity {
             if (line.startsWith("#EXTINF")) {
                 int comma = line.lastIndexOf(',');
                 title = comma >= 0 && comma + 1 < line.length() ? line.substring(comma + 1).trim() : "قناة FG";
-                java.util.regex.Matcher logo = java.util.regex.Pattern
-                        .compile("(?i)tvg-logo\\\\s*=\\\\s*[\\"']([^\\"']+)[\\"']").matcher(line);
-                poster = logo.find() ? logo.group(1) : "";
+                poster = "";
             } else if (!line.isEmpty() && !line.startsWith("#")
                     && (line.startsWith("http://") || line.startsWith("https://"))) {
                 result.add(new CapturedMedia(line, title, "FG / M3U", poster, 1));
