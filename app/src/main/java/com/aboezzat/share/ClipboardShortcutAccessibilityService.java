@@ -178,7 +178,7 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
             root.recycle();
             return false;
         }
-        return containsClipboardConfirmation(root, 120);
+        return containsClipboardUrl(root, 120);
     }
 
     // Takes ownership of root and recycles every inspected node.
@@ -194,8 +194,7 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
                 inspected++;
                 CharSequence text = node.getText();
                 CharSequence description = node.getContentDescription();
-                if (isExplicitClipboardConfirmation(text)
-                        || isExplicitClipboardConfirmation(description)) {
+                if (containsWebUrl(text) || containsWebUrl(description)) {
                     node.recycle();
                     return true;
                 }
