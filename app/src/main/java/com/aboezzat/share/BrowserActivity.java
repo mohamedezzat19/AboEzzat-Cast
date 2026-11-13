@@ -1529,12 +1529,20 @@ public class BrowserActivity extends Activity {
 
         StringBuilder customCards = new StringBuilder();
         if (customSites != null) {
+            SharedPreferences sitePrefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
             for (String entry : customSites) {
                 String[] parts = entry.split("\\|", 2);
                 if (parts.length == 2) {
-                    customCards.append("<a href='").append(parts[1]).append("' class='card'>")
-                               .append("<div class='icon-circle' style='background:#2C3E50;'>🌐</div>")
-                               .append("<span>").append(parts[0]).append("</span>")
+                    String siteName = parts[0];
+                    String siteUrl = parts[1];
+                    String fallbackIcon = "https://www.google.com/s2/favicons?domain=" +
+                            Uri.encode(Uri.parse(siteUrl).getHost() == null ? siteUrl : Uri.parse(siteUrl).getHost()) + "&sz=128";
+                    String siteImage = sitePrefs.getString("custom_site_image_" + siteUrl, fallbackIcon);
+                    customCards.append("<a href='").append(escapeHtml(siteUrl)).append("' class='card'>")
+                               .append("<img src='").append(escapeHtml(siteImage)).append("' onerror=\"this.onerror=null;this.src='")
+                               .append(escapeHtml(fallbackIcon)).append("'\" alt='")
+                               .append(escapeHtml(siteName)).append("'>")
+                               .append("<span>").append(escapeHtml(siteName)).append("</span>")
                                .append("</a>");
                 }
             }
@@ -1604,10 +1612,103 @@ public class BrowserActivity extends Activity {
     }
 
     private void saveCustomSite(String name, String url) {
+        if (name == null || url == null) return;
+        name = name.trim();
+        url = url.trim();
+        if (name.isEmpty() || !(url.startsWith("http://") || url.startsWith("https://"))) return;
+        final String siteName = name;
+        final String siteUrl = url;
         SharedPreferences prefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
         Set<String> set = new HashSet<>(prefs.getStringSet("custom_sites", new HashSet<>()));
-        set.add(name + "|" + url);
+        set.removeIf(entry -> {
+            String[] parts = entry.split("\\|", 2);
+            return parts.length == 2 && parts[1].equalsIgnoreCase(siteUrl);
+        });
+        set.add(siteName + "|" + siteUrl);
         prefs.edit().putStringSet("custom_sites", set).apply();
+        fetchCustomSitePreview(siteName, siteUrl);
+    }
+
+    private String escapeHtml(String value) {
+        if (value == null) return "";
+        return value.replace("&", "&amp;").replace("'", "&#39;")
+                .replace("\\", "&#92;").replace("<", "&lt;").replace(">", "&gt;");
+    }
+
+    private void fetchCustomSitePreview(final String siteName, final String siteUrl) {
+        AsyncTask.execute(() -> {
+            HttpURLConnection connection = null;
+            try {
+                connection = (HttpURLConnection) new URL(siteUrl).openConnection();
+                connection.setInstanceFollowRedirects(true);
+                connection.setConnectTimeout(7000);
+                connection.setReadTimeout(7000);
+                connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/126 Mobile Safari/537.36");
+                connection.setRequestProperty("Accept", "text/html,application/xhtml+xml");
+                connection.connect();
+                String contentType = connection.getContentType();
+                if (contentType != null && !contentType.toLowerCase(Locale.ROOT).contains("html")) return;
+                InputStream input = connection.getInputStream();
+                java.io.ByteArrayOutputStream output = new java.io.ByteArrayOutputStream();
+                byte[] buffer = new byte[8192];
+                int count;
+                int total = 0;
+                while ((count = input.read(buffer)) != -1 && total < 512 * 1024) {
+                    output.write(buffer, 0, count);
+                    total += count;
+                }
+                input.close();
+                String html = output.toString("UTF-8");
+                String image = extractSiteMeta(html, "og:image");
+                if (image.isEmpty()) image = extractSiteMeta(html, "twitter:image");
+                if (image.isEmpty()) image = extractSiteMeta(html, "twitter:image:src");
+                if (image.isEmpty()) {
+                    java.util.regex.Matcher poster = java.util.regex.Pattern.compile(
+                            "(?is)<video[^>]+poster\\s*=\\s*['\\\"]([^'\\\"]+)['\\\"]").matcher(html);
+                    if (poster.find()) image = poster.group(1);
+                }
+                if (image.isEmpty()) {
+                    java.util.regex.Matcher icon = java.util.regex.Pattern.compile(
+                            "(?is)<link[^>]+rel\\s*=\\s*['\\\"][^'\\\"]*icon[^'\\\"]*['\\\"][^>]+href\\s*=\\s*['\\\"]([^'\\\"]+)['\\\"]").matcher(html);
+                    if (icon.find()) image = icon.group(1);
+                }
+                if (!image.isEmpty()) image = new URL(new URL(siteUrl), image).toString();
+                else {
+                    String host = new URL(siteUrl).getHost();
+                    image = "https://www.google.com/s2/favicons?domain=" + Uri.encode(host) + "&sz=128";
+                }
+                SharedPreferences prefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
+                prefs.edit().putString("custom_site_image_" + siteUrl, image)
+                        .putString("custom_site_title_" + siteUrl, siteName).apply();
+                runOnUiThread(() -> {
+                    WebView current = getCurrentWebView();
+                    if (current != null && "about:home".equals(current.getUrl())) loadHomePage();
+                });
+            } catch (Exception ignored) {
+                try {
+                    String host = new URL(siteUrl).getHost();
+                    String fallback = "https://www.google.com/s2/favicons?domain=" + Uri.encode(host) + "&sz=128";
+                    getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE).edit()
+                            .putString("custom_site_image_" + siteUrl, fallback).apply();
+                } catch (Exception ignoredAgain) {}
+            } finally {
+                if (connection != null) connection.disconnect();
+            }
+        });
+    }
+
+    private String extractSiteMeta(String html, String key) {
+        if (html == null || key == null) return "";
+        String escaped = java.util.regex.Pattern.quote(key);
+        java.util.regex.Pattern first = java.util.regex.Pattern.compile(
+                "(?is)<meta[^>]*(?:property|name)\\s*=\\s*['\\\"]" + escaped +
+                "['\\\"][^>]*content\\s*=\\s*['\\\"]([^'\\\"]+)['\\\"][^>]*>");
+        java.util.regex.Matcher match = first.matcher(html);
+        if (match.find()) return match.group(1).replace("&amp;", "&").trim();
+        java.util.regex.Pattern second = java.util.regex.Pattern.compile(
+                "(?is)<meta[^>]*content\\s*=\\s*['\\\"]([^'\\\"]+)['\\\"][^>]*(?:property|name)\\s*=\\s*['\\\"]" + escaped + "['\\\"][^>]*>");
+        match = second.matcher(html);
+        return match.find() ? match.group(1).replace("&amp;", "&").trim() : "";
     }
 
     private void triggerManualSniff() {
