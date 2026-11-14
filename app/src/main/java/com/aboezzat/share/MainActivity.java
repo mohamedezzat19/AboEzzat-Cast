@@ -411,6 +411,8 @@ public class MainActivity extends Activity {
     private void showClipboardShortcutDiagnostics() {
         SharedPreferences diagnosticPrefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE | MODE_MULTI_PROCESS);
         boolean serviceConnected = diagnosticPrefs.getBoolean("diag_service_connected", false);
+        boolean accessibilityMasterEnabled = isAccessibilityMasterSwitchEnabled();
+        boolean accessibilityComponentEnabled = isClipboardAccessibilityComponentEnabled();
         int clipboardCount = diagnosticPrefs.getInt("diag_clipboard_count", 0);
         String mime = diagnosticPrefs.getString("diag_last_clipboard_mime", "لا توجد بيانات");
         String lastPackage = diagnosticPrefs.getString("diag_last_accessibility_package", "لا توجد أحداث");
@@ -433,7 +435,9 @@ public class MainActivity extends Activity {
         try { wvcCount = new org.json.JSONArray(wvcUrls).length(); } catch (Exception ignored) {}
         boolean overlay = android.provider.Settings.canDrawOverlays(this);
         String report = "تشخيص اختصار AboEzzat Cast\n"
-                + "خدمة إمكانية الوصول متصلة: " + (serviceConnected ? "نعم" : "لا") + "\n"
+                + "مفتاح إمكانية الوصول العام: " + (accessibilityMasterEnabled ? "مفعّل" : "متوقف") + "\n"
+                + "خدمة AboEzzat ضمن الخدمات المفعّلة: " + (accessibilityComponentEnabled ? "نعم" : "لا") + "\n"
+                + "خدمة إمكانية الوصول متصلة (آخر حالة مسجلة): " + (serviceConnected ? "نعم" : "لا") + "\n"
                 + "إذن الظهور فوق التطبيقات: " + (overlay ? "مفعّل" : "غير مفعّل") + "\n"
                 + "مرات وصول حدث الحافظة: " + clipboardCount + "\n"
                 + "آخر أنواع MIME: " + mime + "\n"
@@ -1185,7 +1189,17 @@ private void showManualIpDialog() {
         remindIfAccessibilityDisabled();
     }
 
-    private boolean isClipboardAccessibilityEnabled() {
+    private boolean isAccessibilityMasterSwitchEnabled() {
+        try {
+            return android.provider.Settings.Secure.getInt(
+                    getContentResolver(),
+                    android.provider.Settings.Secure.ACCESSIBILITY_ENABLED, 0) == 1;
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    private boolean isClipboardAccessibilityComponentEnabled() {
         try {
             String enabled = android.provider.Settings.Secure.getString(
                     getContentResolver(),
@@ -1200,26 +1214,28 @@ private void showManualIpDialog() {
         return false;
     }
 
+    private boolean isClipboardAccessibilityEnabled() {
+        // Android has two separate settings: the global accessibility switch
+        // and the enabled-service component list. Both must be on.
+        return isAccessibilityMasterSwitchEnabled()
+                && isClipboardAccessibilityComponentEnabled();
+    }
+
     private void remindIfAccessibilityDisabled() {
         if (clipboardShortcutLaunch || accessibilityReminderShown || isFinishing()
                 || isClipboardAccessibilityEnabled()) return;
 
-        // Ask at most once for each installed app version. Returning to Home,
-        // reopening the app, or resuming it must not repeat the same prompt.
-        final long currentVersion;
-        try {
-            android.content.pm.PackageInfo info = getPackageManager().getPackageInfo(getPackageName(), 0);
-            currentVersion = android.os.Build.VERSION.SDK_INT >= 28
-                    ? info.getLongVersionCode() : info.versionCode;
-        } catch (Exception ignored) {
-            return;
-        }
+        // If MIUI/Android disables the service after an earlier reminder,
+        // allow a fresh reminder on a later app visit without showing it on
+        // every resume while the user is navigating Settings.
         android.content.SharedPreferences reminderPrefs =
                 getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE | MODE_MULTI_PROCESS);
-        if (reminderPrefs.getLong("accessibility_reminder_version", -1L) == currentVersion) return;
+        long now = System.currentTimeMillis();
+        long lastReminder = reminderPrefs.getLong("accessibility_reminder_last_shown", 0L);
+        if (now - lastReminder < 24L * 60L * 60L * 1000L) return;
 
         accessibilityReminderShown = true;
-        reminderPrefs.edit().putLong("accessibility_reminder_version", currentVersion).apply();
+        reminderPrefs.edit().putLong("accessibility_reminder_last_shown", now).apply();
 
         new AlertDialog.Builder(this)
                 .setTitle("زر النسخ العائم غير مفعّل")
