@@ -128,6 +128,20 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
                         .apply();
             }
         }
+
+        // Restore the persistent Web Video Caster bubble after Android restarts
+        // this accessibility service. Existing URLs must remain visible even
+        // when the next scan finds only duplicates and therefore adds nothing.
+        if (android.provider.Settings.canDrawOverlays(this)) {
+            try {
+                org.json.JSONArray pending = new org.json.JSONArray(
+                        getSharedPreferences(PREFS, MODE_PRIVATE)
+                                .getString("wvc_captured_urls", "[]"));
+                if (pending.length() > 0) {
+                    handler.postDelayed(this::showBubble, 350L);
+                }
+            } catch (Exception ignored) {}
+        }
     }
 
     @Override
