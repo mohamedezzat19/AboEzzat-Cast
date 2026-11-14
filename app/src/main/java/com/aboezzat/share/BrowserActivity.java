@@ -687,6 +687,16 @@ public class BrowserActivity extends Activity {
 
         webView.setWebChromeClient(new WebChromeClient() {
             @Override
+            public void onShowCustomView(View view, CustomViewCallback callback) {
+                showHtml5FullScreen(view, callback);
+            }
+
+            @Override
+            public void onHideCustomView() {
+                hideHtml5FullScreen();
+            }
+
+            @Override
             public void onProgressChanged(WebView view, int newProgress) {
                 super.onProgressChanged(view, newProgress);
                 if (getCurrentWebView() == view) {
@@ -2847,6 +2857,79 @@ public class BrowserActivity extends Activity {
                 .apply();
     }
 
+    private int previousSystemUiVisibility = 0;
+    private int previousRequestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED;
+    private boolean fullScreenStateSaved = false;
+
+    private void showHtml5FullScreen(View view, WebChromeClient.CustomViewCallback callback) {
+        if (view == null) {
+            if (callback != null) callback.onCustomViewHidden();
+            return;
+        }
+        if (customView != null) {
+            if (callback != null) callback.onCustomViewHidden();
+            return;
+        }
+
+        customView = view;
+        customViewCallback = callback;
+        previousSystemUiVisibility = getWindow().getDecorView().getSystemUiVisibility();
+        previousRequestedOrientation = getRequestedOrientation();
+        fullScreenStateSaved = true;
+
+        if (view.getParent() instanceof ViewGroup) {
+            ((ViewGroup) view.getParent()).removeView(view);
+        }
+        fullScreenContainer.removeAllViews();
+        fullScreenContainer.addView(view, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        fullScreenContainer.setVisibility(View.VISIBLE);
+
+        if (topBar != null) topBar.setVisibility(View.GONE);
+        if (progressBar != null) progressBar.setVisibility(View.GONE);
+        if (bottomBar != null) bottomBar.setVisibility(View.GONE);
+        if (appNavigation != null) appNavigation.setVisibility(View.GONE);
+
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+        getWindow().getDecorView().setSystemUiVisibility(
+                View.SYSTEM_UI_FLAG_FULLSCREEN
+                        | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                        | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                        | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                        | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                        | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN);
+    }
+
+    private void hideHtml5FullScreen() {
+        if (customView == null) return;
+
+        View oldView = customView;
+        WebChromeClient.CustomViewCallback callback = customViewCallback;
+        customView = null;
+        customViewCallback = null;
+
+        if (oldView.getParent() instanceof ViewGroup) {
+            ((ViewGroup) oldView.getParent()).removeView(oldView);
+        }
+        fullScreenContainer.removeAllViews();
+        fullScreenContainer.setVisibility(View.GONE);
+
+        if (topBar != null) topBar.setVisibility(View.VISIBLE);
+        if (progressBar != null && progressBar.getProgress() < 100) progressBar.setVisibility(View.VISIBLE);
+        if (bottomBar != null) bottomBar.setVisibility(View.VISIBLE);
+        if (appNavigation != null) appNavigation.setVisibility(View.VISIBLE);
+
+        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+        if (fullScreenStateSaved) {
+            getWindow().getDecorView().setSystemUiVisibility(previousSystemUiVisibility);
+            setRequestedOrientation(previousRequestedOrientation);
+            fullScreenStateSaved = false;
+        }
+        if (callback != null) {
+            try { callback.onCustomViewHidden(); } catch (Exception ignored) {}
+        }
+    }
+
     @Override
     protected void onPause() {
         super.onPause();
@@ -2880,9 +2963,7 @@ public class BrowserActivity extends Activity {
     @Override
     public void onBackPressed() {
         if (customView != null) {
-            if (customViewCallback != null) {
-                customViewCallback.onCustomViewHidden();
-            }
+            hideHtml5FullScreen();
             return;
         }
         WebView current = getCurrentWebView();

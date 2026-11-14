@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- VPN profiles contain private WireGuard keys and must never enter Android backup. -->
+    <exclude domain="sharedpref" path="abo_vpn_profiles.xml" />
+    <exclude domain="file" path="vpn_profiles/" />
+    <exclude domain="file" path="abo_vpn.conf" />
+</full-backup-content>
