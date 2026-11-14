@@ -31,12 +31,41 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
     private long lastSystemClipboardScanAt;
     private static final String WEB_VIDEO_CASTER_PACKAGE = "com.instantbits.cast.webvideo";
 
+    private void recordLifecycle(String event) {
+        try {
+            android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+            String previous = prefs.getString("diag_lifecycle_log", "");
+            String stamp = new java.text.SimpleDateFormat(
+                    "yyyy-MM-dd HH:mm:ss.SSS", java.util.Locale.US)
+                    .format(new java.util.Date());
+            String line = stamp + " | " + event + " | pid=" + android.os.Process.myPid();
+            String[] old = previous.isEmpty() ? new String[0] : previous.split("\\n");
+            StringBuilder log = new StringBuilder();
+            int start = Math.max(0, old.length - 11);
+            for (int i = start; i < old.length; i++) {
+                if (!old[i].isEmpty()) log.append(old[i]).append("\\n");
+            }
+            log.append(line);
+            prefs.edit().putString("diag_lifecycle_log", log.toString())
+                    .putString("diag_last_lifecycle_event", event)
+                    .putLong("diag_last_lifecycle_time", System.currentTimeMillis())
+                    .apply();
+        } catch (Exception ignored) {}
+    }
+
+    @Override
+    public void onCreate() {
+        super.onCreate();
+        recordLifecycle("SERVICE onCreate");
+    }
+
     private android.content.ClipboardManager clipboardManager;
     private android.content.ClipboardManager.OnPrimaryClipChangedListener clipboardListener;
 
     @Override
     protected void onServiceConnected() {
         super.onServiceConnected();
+        recordLifecycle("SERVICE onServiceConnected");
         windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
         getSharedPreferences(PREFS, MODE_PRIVATE).edit()
                 .putBoolean("diag_service_connected", true)
@@ -940,10 +969,11 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
     }
 
     @Override
-    public void onInterrupt() { removeBubble(); removeCaptureOverlay(); }
+    public void onInterrupt() { recordLifecycle("SERVICE onInterrupt"); removeBubble(); removeCaptureOverlay(); }
 
     @Override
     public void onDestroy() {
+        recordLifecycle("SERVICE onDestroy");
         getSharedPreferences(PREFS, MODE_PRIVATE).edit()
                 .putBoolean("diag_service_connected", false).apply();
         removeBubble();
