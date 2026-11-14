@@ -565,32 +565,41 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
             pendingWvcCount = new org.json.JSONArray(
                     bubblePrefs.getString("wvc_captured_urls", "[]")).length();
         } catch (Exception ignored) {}
-        View bubbleContent;
-        GradientDrawable background = new GradientDrawable();
-        background.setShape(GradientDrawable.OVAL);
-        background.setColor(Color.rgb(28, 103, 210));
-        background.setStroke(dp(2), Color.WHITE);
+        android.widget.FrameLayout bubbleContent = new android.widget.FrameLayout(this);
+        GradientDrawable bubbleBackground = new GradientDrawable();
+        bubbleBackground.setShape(GradientDrawable.OVAL);
+        bubbleBackground.setColor(Color.rgb(19, 35, 58));
+        bubbleBackground.setStroke(dp(2), Color.rgb(92, 166, 255));
+        bubbleContent.setBackground(bubbleBackground);
+        bubbleContent.setElevation(dp(10));
+
+        ImageView appIcon = new ImageView(this);
+        appIcon.setImageResource(R.drawable.ic_launcher);
+        appIcon.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        appIcon.setPadding(dp(7), dp(7), dp(7), dp(7));
+        android.widget.FrameLayout.LayoutParams iconParams =
+                new android.widget.FrameLayout.LayoutParams(-1, -1);
+        bubbleContent.addView(appIcon, iconParams);
+
         if (pendingWvcCount > 0) {
             android.widget.TextView countBadge = new android.widget.TextView(this);
             countBadge.setText(String.valueOf(pendingWvcCount));
             countBadge.setTextColor(Color.WHITE);
-            countBadge.setTextSize(18);
+            countBadge.setTextSize(10);
             countBadge.setTypeface(null, android.graphics.Typeface.BOLD);
             countBadge.setGravity(Gravity.CENTER);
-            countBadge.setBackground(background);
-            countBadge.setElevation(dp(8));
-            countBadge.setContentDescription("AboEzzat Cast - " + pendingWvcCount + " روابط ملتقطة");
-            bubbleContent = countBadge;
-        } else {
-            ImageView icon = new ImageView(this);
-            icon.setImageResource(R.drawable.ic_launcher);
-            icon.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-            icon.setPadding(dp(7), dp(7), dp(7), dp(7));
-            icon.setElevation(dp(8));
-            icon.setBackground(background);
-            icon.setContentDescription("AboEzzat Cast - اضغط لإرسال الرابط");
-            bubbleContent = icon;
+            countBadge.setMinWidth(dp(18));
+            countBadge.setPadding(dp(4), 0, dp(4), 0);
+            GradientDrawable badgeBg = new GradientDrawable();
+            badgeBg.setColor(Color.rgb(238, 67, 83));
+            badgeBg.setCornerRadius(dp(12));
+            badgeBg.setStroke(dp(1), Color.WHITE);
+            countBadge.setBackground(badgeBg);
+            android.widget.FrameLayout.LayoutParams badgeParams =
+                    new android.widget.FrameLayout.LayoutParams(-2, dp(18), Gravity.TOP | Gravity.END);
+            bubbleContent.addView(countBadge, badgeParams);
         }
+        bubbleContent.setContentDescription("AboEzzat Cast - " + pendingWvcCount + " روابط ملتقطة");
 
         int type = Build.VERSION.SDK_INT >= 26
                 ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -699,102 +708,159 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
 
         android.widget.LinearLayout card = new android.widget.LinearLayout(this);
         card.setOrientation(android.widget.LinearLayout.VERTICAL);
-        card.setPadding(dp(14), dp(12), dp(14), dp(12));
+        card.setPadding(dp(16), dp(14), dp(16), dp(14));
         GradientDrawable cardBg = new GradientDrawable();
-        cardBg.setColor(Color.rgb(24, 29, 39));
-        cardBg.setCornerRadius(dp(18));
-        cardBg.setStroke(dp(1), Color.rgb(70, 126, 210));
+        cardBg.setColor(Color.rgb(15, 23, 38));
+        cardBg.setCornerRadius(dp(22));
+        cardBg.setStroke(dp(1), Color.rgb(55, 91, 139));
         card.setBackground(cardBg);
-        card.setElevation(dp(14));
+        card.setElevation(dp(18));
 
         android.widget.LinearLayout header = new android.widget.LinearLayout(this);
         header.setGravity(Gravity.CENTER_VERTICAL);
+        ImageView brandIcon = new ImageView(this);
+        brandIcon.setImageResource(R.drawable.ic_launcher);
+        brandIcon.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        header.addView(brandIcon, new android.widget.LinearLayout.LayoutParams(dp(42), dp(42)));
+
+        android.widget.LinearLayout heading = new android.widget.LinearLayout(this);
+        heading.setOrientation(android.widget.LinearLayout.VERTICAL);
+        heading.setPadding(dp(10), 0, dp(4), 0);
         android.widget.TextView title = new android.widget.TextView(this);
-        title.setText("روابط Web Video Caster  •  " + urls.size());
+        title.setText("AboEzzat Cast");
         title.setTextColor(Color.WHITE);
         title.setTextSize(16);
         title.setTypeface(null, android.graphics.Typeface.BOLD);
-        header.addView(title, new android.widget.LinearLayout.LayoutParams(0, dp(42), 1));
+        heading.addView(title);
+        android.widget.TextView subtitle = new android.widget.TextView(this);
+        subtitle.setText(urls.size() + " رابط ملتقط من Web Video Caster");
+        subtitle.setTextColor(Color.rgb(155, 177, 205));
+        subtitle.setTextSize(11);
+        heading.addView(subtitle);
+        header.addView(heading, new android.widget.LinearLayout.LayoutParams(0, -2, 1));
+
         android.widget.TextView close = new android.widget.TextView(this);
         close.setText("✕");
-        close.setTextColor(Color.WHITE);
-        close.setTextSize(20);
+        close.setTextColor(Color.rgb(205, 218, 236));
+        close.setTextSize(18);
         close.setGravity(Gravity.CENTER);
-        header.addView(close, new android.widget.LinearLayout.LayoutParams(dp(38), dp(42)));
+        GradientDrawable closeBg = new GradientDrawable();
+        closeBg.setColor(Color.rgb(35, 48, 68));
+        closeBg.setCornerRadius(dp(12));
+        close.setBackground(closeBg);
+        header.addView(close, new android.widget.LinearLayout.LayoutParams(dp(38), dp(38)));
         close.setOnClickListener(v -> removeCaptureOverlay());
         card.addView(header);
 
+        View separator = new View(this);
+        separator.setBackgroundColor(Color.rgb(42, 58, 80));
+        android.widget.LinearLayout.LayoutParams separatorParams =
+                new android.widget.LinearLayout.LayoutParams(-1, dp(1));
+        separatorParams.topMargin = dp(12);
+        separatorParams.bottomMargin = dp(10);
+        card.addView(separator, separatorParams);
+
         android.widget.ScrollView scroll = new android.widget.ScrollView(this);
+        scroll.setFillViewport(false);
         android.widget.LinearLayout rows = new android.widget.LinearLayout(this);
         rows.setOrientation(android.widget.LinearLayout.VERTICAL);
         for (int i = 0; i < urls.size(); i++) {
             final String selected = urls.get(i);
             android.widget.LinearLayout row = new android.widget.LinearLayout(this);
             row.setOrientation(android.widget.LinearLayout.VERTICAL);
-            row.setPadding(dp(9), dp(8), dp(9), dp(8));
+            row.setPadding(dp(12), dp(11), dp(12), dp(11));
             GradientDrawable rowBg = new GradientDrawable();
-            rowBg.setColor(Color.rgb(38, 46, 60));
-            rowBg.setCornerRadius(dp(12));
+            rowBg.setColor(Color.rgb(27, 39, 57));
+            rowBg.setCornerRadius(dp(15));
+            rowBg.setStroke(dp(1), Color.rgb(43, 61, 86));
             row.setBackground(rowBg);
+
+            android.widget.LinearLayout topLine = new android.widget.LinearLayout(this);
+            topLine.setGravity(Gravity.CENTER_VERTICAL);
+            android.widget.TextView number = new android.widget.TextView(this);
+            number.setText(String.format(java.util.Locale.ROOT, "%02d", i + 1));
+            number.setTextColor(Color.rgb(112, 177, 255));
+            number.setTextSize(13);
+            number.setTypeface(null, android.graphics.Typeface.BOLD);
+            topLine.addView(number, new android.widget.LinearLayout.LayoutParams(dp(32), -2));
             android.widget.TextView urlText = new android.widget.TextView(this);
-            urlText.setText((i + 1) + "  •  " + selected);
-            urlText.setTextColor(Color.WHITE);
-            urlText.setTextSize(12);
-            urlText.setMaxLines(3);
+            urlText.setText(selected);
+            urlText.setTextColor(Color.rgb(226, 235, 247));
+            urlText.setTextSize(11);
+            urlText.setMaxLines(2);
             urlText.setEllipsize(android.text.TextUtils.TruncateAt.MIDDLE);
-            row.addView(urlText);
-            android.widget.LinearLayout actions = new android.widget.LinearLayout(this);
-            actions.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
-            android.widget.Button send = new android.widget.Button(this);
-            send.setText("إرسال إلى Receiver");
-            send.setTextSize(11);
+            topLine.addView(urlText, new android.widget.LinearLayout.LayoutParams(0, -2, 1));
+            row.addView(topLine);
+
+            android.widget.TextView send = new android.widget.TextView(this);
+            send.setText("➤   إرسال مباشر إلى Receiver");
+            send.setTextColor(Color.WHITE);
+            send.setTextSize(12);
+            send.setTypeface(null, android.graphics.Typeface.BOLD);
+            send.setGravity(Gravity.CENTER);
+            GradientDrawable sendBg = new GradientDrawable(
+                    GradientDrawable.Orientation.LEFT_RIGHT,
+                    new int[]{Color.rgb(28, 112, 220), Color.rgb(31, 145, 204)});
+            sendBg.setCornerRadius(dp(11));
+            send.setBackground(sendBg);
+            send.setPadding(dp(10), dp(10), dp(10), dp(10));
+            android.widget.LinearLayout.LayoutParams sendParams =
+                    new android.widget.LinearLayout.LayoutParams(-1, dp(42));
+            sendParams.topMargin = dp(10);
+            row.addView(send, sendParams);
             send.setOnClickListener(v -> sendCapturedUrl(selected));
-            actions.addView(send);
-            android.widget.Button browser = new android.widget.Button(this);
-            browser.setText("المتصفح");
-            browser.setTextSize(11);
-            browser.setOnClickListener(v -> openCapturedUrlInBrowser(selected));
-            actions.addView(browser);
-            row.addView(actions);
+
             android.widget.LinearLayout.LayoutParams rowParams =
                     new android.widget.LinearLayout.LayoutParams(-1, -2);
-            rowParams.bottomMargin = dp(7);
+            rowParams.bottomMargin = dp(9);
             rows.addView(row, rowParams);
         }
         if (urls.isEmpty()) {
             android.widget.TextView empty = new android.widget.TextView(this);
-            empty.setText("لا توجد روابط ملتقطة حاليًا");
-            empty.setTextColor(Color.LTGRAY);
-            empty.setPadding(dp(8), dp(16), dp(8), dp(16));
+            empty.setText("لسه مفيش روابط ملتقطة");
+            empty.setTextColor(Color.rgb(175, 190, 210));
+            empty.setGravity(Gravity.CENTER);
+            empty.setPadding(dp(8), dp(22), dp(8), dp(22));
             rows.addView(empty);
         }
         scroll.addView(rows);
-        card.addView(scroll, new android.widget.LinearLayout.LayoutParams(-1, dp(270)));
+        card.addView(scroll, new android.widget.LinearLayout.LayoutParams(-1, dp(280)));
 
         android.widget.LinearLayout footer = new android.widget.LinearLayout(this);
-        footer.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
-        android.widget.Button clear = new android.widget.Button(this);
-        clear.setText("مسح القائمة");
+        footer.setGravity(Gravity.CENTER_VERTICAL);
+        android.widget.TextView hint = new android.widget.TextView(this);
+        hint.setText("اختر الرابط لإرساله إلى شاشة التلفزيون");
+        hint.setTextColor(Color.rgb(137, 158, 187));
+        hint.setTextSize(10);
+        footer.addView(hint, new android.widget.LinearLayout.LayoutParams(0, dp(38), 1));
+
+        android.widget.TextView clear = new android.widget.TextView(this);
+        clear.setText("مسح الكل");
+        clear.setTextColor(Color.rgb(255, 139, 145));
         clear.setTextSize(11);
+        clear.setGravity(Gravity.CENTER);
+        clear.setPadding(dp(10), 0, dp(4), 0);
+        footer.addView(clear, new android.widget.LinearLayout.LayoutParams(-2, dp(38)));
         clear.setOnClickListener(v -> {
             prefs.edit().remove("wvc_captured_urls").putInt("wvc_capture_count", 0).apply();
             removeCaptureOverlay();
             showBubble();
         });
-        footer.addView(clear);
         card.addView(footer);
 
         int overlayType = Build.VERSION.SDK_INT >= 26
                 ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
                 : WindowManager.LayoutParams.TYPE_PHONE;
+        int screenWidth = getResources().getDisplayMetrics().widthPixels;
+        int panelWidth = Math.min(dp(360), screenWidth - dp(28));
         WindowManager.LayoutParams params = new WindowManager.LayoutParams(
-                dp(320), WindowManager.LayoutParams.WRAP_CONTENT, overlayType,
+                panelWidth, WindowManager.LayoutParams.WRAP_CONTENT, overlayType,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
                         | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
                         | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
                 PixelFormat.TRANSLUCENT);
         params.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
-        params.y = dp(90);
+        params.y = dp(76);
         capturePanel = card;
         try {
             windowManager.addView(capturePanel, params);
