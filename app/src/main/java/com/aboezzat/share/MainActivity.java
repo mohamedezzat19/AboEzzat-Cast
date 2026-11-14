@@ -86,13 +86,17 @@ public class MainActivity extends Activity {
     };
 
     private boolean clipboardShortcutLaunch;
+    private boolean webVideoCasterCaptureLaunch;
     private boolean accessibilityReminderShown;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         clipboardShortcutLaunch = getIntent() != null
                 && getIntent().getBooleanExtra("clipboard_cast_shortcut", false);
-        if (clipboardShortcutLaunch) setTheme(android.R.style.Theme_Translucent_NoTitleBar);
+        webVideoCasterCaptureLaunch = getIntent() != null
+                && getIntent().getBooleanExtra("web_video_caster_capture_shortcut", false);
+        if (clipboardShortcutLaunch || webVideoCasterCaptureLaunch)
+            setTheme(android.R.style.Theme_Translucent_NoTitleBar);
         super.onCreate(savedInstanceState);
 
         prefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
@@ -102,6 +106,7 @@ public class MainActivity extends Activity {
         // The shortcut uses a separate translucent task: process the copied link
         // without showing the normal Cast home screen.
         if (handleClipboardCastShortcut(getIntent())) return;
+        if (handleWebVideoCasterCaptureShortcut(getIntent())) return;
 
         setContentView(R.layout.activity_main);
 
@@ -1384,6 +1389,81 @@ private void showManualIpDialog() {
             }
         }, 300L);
         return true;
+    }
+
+    private boolean handleWebVideoCasterCaptureShortcut(Intent intent) {
+        if (intent == null || !intent.getBooleanExtra("web_video_caster_capture_shortcut", false)) return false;
+        intent.removeExtra("web_video_caster_capture_shortcut");
+        new Handler(Looper.getMainLooper()).post(() -> {
+            SharedPreferences capturePrefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
+            java.util.ArrayList<String> urls = new java.util.ArrayList<>();
+            try {
+                org.json.JSONArray array = new org.json.JSONArray(
+                        capturePrefs.getString("wvc_captured_urls", "[]"));
+                for (int i = 0; i < array.length(); i++) {
+                    String url = array.optString(i, "");
+                    if (url.startsWith("http://") || url.startsWith("https://")) urls.add(url);
+                }
+            } catch (Exception ignored) {}
+            if (urls.isEmpty()) {
+                Toast.makeText(this, "Web Video Caster لم يعرض روابط يمكن قراءتها", Toast.LENGTH_LONG).show();
+                finish();
+                return;
+            }
+            String[] labels = new String[urls.size()];
+            for (int i = 0; i < urls.size(); i++) labels[i] = (i + 1) + ". " + urls.get(i);
+            android.widget.ListView list = new android.widget.ListView(this);
+            list.setAdapter(new android.widget.ArrayAdapter<String>(this,
+                    android.R.layout.simple_list_item_1, labels));
+            AlertDialog dialog = new AlertDialog.Builder(this)
+                    .setTitle("روابط Web Video Caster الملتقطة")
+                    .setView(list)
+                    .setNegativeButton("إغلاق", (d, w) -> finish())
+                    .setNeutralButton("مسح القائمة", (d, w) -> {
+                        capturePrefs.edit().remove("wvc_captured_urls")
+                                .putInt("wvc_capture_count", 0).apply();
+                        finish();
+                    })
+                    .create();
+            list.setOnItemClickListener((parent, view, position, id) -> {
+                String selectedUrl = urls.get(position);
+                new AlertDialog.Builder(this)
+                        .setTitle("تشغيل الرابط")
+                        .setMessage(selectedUrl)
+                        .setPositiveButton("إرسال إلى AboEzzat Receiver", (d, w) -> {
+                            removeCapturedWebVideoCasterUrl(selectedUrl);
+                            dialog.dismiss();
+                            castUrlDirectlyToTv(selectedUrl);
+                        })
+                        .setNeutralButton("فتح في متصفح Cast", (d, w) -> {
+                            removeCapturedWebVideoCasterUrl(selectedUrl);
+                            dialog.dismiss();
+                            Intent browserIntent = new Intent(this, BrowserActivity.class);
+                            browserIntent.putExtra("url", selectedUrl);
+                            startActivity(browserIntent);
+                            finish();
+                        })
+                        .setNegativeButton("رجوع", null)
+                        .show();
+            });
+            dialog.show();
+        });
+        return true;
+    }
+
+    private void removeCapturedWebVideoCasterUrl(String selectedUrl) {
+        SharedPreferences capturePrefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
+        try {
+            org.json.JSONArray old = new org.json.JSONArray(
+                    capturePrefs.getString("wvc_captured_urls", "[]"));
+            org.json.JSONArray updated = new org.json.JSONArray();
+            for (int i = 0; i < old.length(); i++) {
+                String value = old.optString(i, "");
+                if (!selectedUrl.equals(value)) updated.put(value);
+            }
+            capturePrefs.edit().putString("wvc_captured_urls", updated.toString())
+                    .putInt("wvc_capture_count", updated.length()).apply();
+        } catch (Exception ignored) {}
     }
 
     private boolean isLikelyVideoClipboardUrl(String rawUrl) {
