@@ -81,6 +81,8 @@ import org.json.JSONObject;
 
 public class BrowserActivity extends Activity {
 
+    private static final String TAG = "AboEzzatCastBrowser";
+
     private final List<WebView> tabList = new ArrayList<>();
     private final List<String> tabTitles = new ArrayList<>();
     private final Map<WebView, Long> navigationStartedAt = new HashMap<>();
