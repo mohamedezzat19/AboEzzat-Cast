@@ -143,7 +143,7 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
                     || type == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
                     || type == AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED) {
                 long now = android.os.SystemClock.uptimeMillis();
-                if (now - lastWebVideoCasterScanAt >= 350L) {
+                if (now - lastWebVideoCasterScanAt >= 500L) {
                     lastWebVideoCasterScanAt = now;
                     captureWebVideoCasterUrls();
                 }
@@ -313,14 +313,14 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
         queue.add(root);
         int inspected = 0;
         try {
-            while (!queue.isEmpty() && inspected < 180 && found.size() < 12) {
+            while (!queue.isEmpty() && inspected < 120 && found.size() < 12) {
                 android.view.accessibility.AccessibilityNodeInfo node = queue.removeFirst();
                 inspected++;
                 addUrlsFromText(found, node.getText());
                 addUrlsFromText(found, node.getContentDescription());
                 if (Build.VERSION.SDK_INT >= 26) addUrlsFromText(found, node.getHintText());
                 for (int i = 0; i < node.getChildCount()
-                        && inspected + queue.size() < 180; i++) {
+                        && inspected + queue.size() < 120; i++) {
                     android.view.accessibility.AccessibilityNodeInfo child = node.getChild(i);
                     if (child != null) queue.addLast(child);
                 }
