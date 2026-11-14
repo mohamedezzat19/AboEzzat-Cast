@@ -359,7 +359,7 @@ public class MainActivity extends Activity {
             closeDrawer();
             new AlertDialog.Builder(MainActivity.this)
                     .setTitle("إعدادات Abo Ezzat Share")
-                    .setItems(new String[]{"التحقق من التحديثات", "إعداد عنوان IP الشاشة", "تفعيل الاختصار العائم عند نسخ رابط", "تشخيص مشكلة الفقاعة", "إعدادات أندرويد وأذونات التطبيق"}, (dialog, which) -> {
+                    .setItems(new String[]{"التحقق من التحديثات", "إعداد عنوان IP الشاشة", "تفعيل الاختصار العائم عند نسخ رابط", "تشخيص مشكلة الفقاعة", "إعدادات أندرويد وأذونات التطبيق", "إعداد VPN داخل التطبيق"}, (dialog, which) -> {
                         if (which == 0) {
                             new AppUpdater(MainActivity.this).checkForUpdate(true);
                         } else if (which == 1) {
@@ -368,8 +368,10 @@ public class MainActivity extends Activity {
                             openClipboardShortcutSetup();
                         } else if (which == 3) {
                             showClipboardShortcutDiagnostics();
-                        } else {
+                        } else if (which == 4) {
                             openAppPermissionSettings();
+                        } else if (which == 5) {
+                            startActivity(new Intent(MainActivity.this, VpnActivity.class));
                         }
                     })
                     .setNegativeButton("إغلاق", null)
