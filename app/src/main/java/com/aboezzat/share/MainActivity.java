@@ -387,7 +387,7 @@ public class MainActivity extends Activity {
     private void openClipboardShortcutSetup() {
         new AlertDialog.Builder(this)
                 .setTitle("اختصار AboEzzat Cast العائم")
-                .setMessage("لتشغيل الاختصار عند نسخ رابط فيديو مدعوم، فعّل الإذنين التاليين مرة واحدة:\n\n1) السماح بالظهور فوق التطبيقات الأخرى.\n2) تفعيل خدمة إمكانية الوصول باسم «اختصار AboEzzat Cast عند النسخ».\n\nالخدمة تعرض الأيقونة فقط عندما يظهر رابط فيديو مدعوم ضمن إشعار النسخ، ولا تقرأ محتوى الحافظة في الخلفية. تظهر الأيقونة 3 ثوانٍ ويمكنك سحبها لمكان مناسب.")
+                .setMessage("لتشغيل الاختصار العائم، فعّل الإذنين التاليين مرة واحدة:\n\n1) السماح بالظهور فوق التطبيقات الأخرى.\n2) تفعيل خدمة إمكانية الوصول الخاصة بـ AboEzzat Cast.\n\nالخدمة تراقب أحداث Web Video Caster فقط، وتقرأ عناوين الروابط التي يتيحها التطبيق ضمن عناصر إمكانية الوصول؛ لا تصوّر الشاشة ولا تضغط داخل Web Video Caster ولا تقرأ ملفاته الخاصة. كما تحتفظ باختصار النسخ الحالي. تظهر الفقاعة عند العثور على رابط ويمكنك سحبها لمكان مناسب.")
                 .setPositiveButton("إذن الظهور فوق التطبيقات", (d, w) -> {
                     try {
                         Intent overlay = new Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
@@ -426,6 +426,9 @@ public class MainActivity extends Activity {
         String sourceText = diagnosticPrefs.getString("diag_last_source_text", "لا توجد بيانات");
         String clickPackage = diagnosticPrefs.getString("diag_last_click_package", "لا توجد بيانات");
         String clickText = diagnosticPrefs.getString("diag_last_click_text", "لا توجد بيانات");
+        String wvcUrls = diagnosticPrefs.getString("wvc_captured_urls", "[]");
+        int wvcCount = 0;
+        try { wvcCount = new org.json.JSONArray(wvcUrls).length(); } catch (Exception ignored) {}
         boolean overlay = android.provider.Settings.canDrawOverlays(this);
         String report = "تشخيص اختصار AboEzzat Cast\n"
                 + "خدمة إمكانية الوصول متصلة: " + (serviceConnected ? "نعم" : "لا") + "\n"
@@ -442,6 +445,8 @@ public class MainActivity extends Activity {
                 + "نص آخر حدث مصدر: " + sourceText + "\n"
                 + "آخر تطبيق حدث فيه ضغط: " + clickPackage + "\n"
                 + "نص آخر عنصر تم ضغطه: " + clickText + "\n"
+                + "عدد روابط Web Video Caster الملتقطة: " + wvcCount + "\n"
+                + "روابط Web Video Caster: " + wvcUrls + "\n"
                 + "آخر نافذة نظام تم فحصها: " + clipboardHost + "\n"
                 + "هل عُثر على رابط HTTP/HTTPS في نافذة النظام؟ " + (systemClipboardMatch ? "نعم" : "لا") + "\n"
                 + "نتيجة عرض الفقاعة: " + bubbleResult;
