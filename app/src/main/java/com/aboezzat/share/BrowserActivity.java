@@ -772,6 +772,19 @@ public class BrowserActivity extends Activity {
                             addCapturedMedia(cleanMedia, title, format, lastDiscoveredPoster, type);
                         } else if (lowerUrl.matches(".*\\.mp4(?:[?#].*)?$")) {
                             probeAndAddMp4(reqUrl, lastDiscoveredTitle, lastDiscoveredPoster);
+                        } else if (isGenericAutoSniffActive()) {
+                            // Cross-origin iframe players are opaque to page JavaScript, but
+                            // WebView still exposes their network requests here. Probe only
+                            // requests whose Accept header explicitly identifies media.
+                            try {
+                                String accept = request.getRequestHeaders().get("Accept");
+                                if (accept != null && (accept.toLowerCase(Locale.ROOT).contains("video/")
+                                        || accept.toLowerCase(Locale.ROOT).contains("application/vnd.apple.mpegurl")
+                                        || accept.toLowerCase(Locale.ROOT).contains("application/x-mpegurl")
+                                        || accept.toLowerCase(Locale.ROOT).contains("application/dash+xml"))) {
+                                    probeUnknownVideoByContentType(reqUrl, lastDiscoveredTitle, lastDiscoveredPoster);
+                                }
+                            } catch (Exception ignored) {}
                         }
                     }
                 }
@@ -1050,6 +1063,11 @@ public class BrowserActivity extends Activity {
                 "window.AboEzzatBridge.onCapturedVideoTrack(u,title,poster||'');}catch(e){}}" +
                 "function scan(w,seen){try{if(!w||seen.indexOf(w)!==-1)return;seen.push(w);var d=w.document;if(!d)return;" +
                 "var title=d.title||document.title||'فيديو قيد التشغيل';" +
+                "var metas=d.querySelectorAll('meta[property=\\\"og:title\\\"],meta[name=\\\"twitter:title\\\"],meta[property=\\\"og:image\\\"],meta[name=\\\"twitter:image\\\"]');" +
+                "var metaTitle='',metaPoster='';for(var mi=0;mi<metas.length;mi++){var mp=metas[mi],key=(mp.getAttribute('property')||mp.getAttribute('name')||'').toLowerCase(),val=mp.getAttribute('content')||'';" +
+                "if(key.indexOf('title')>=0&&!metaTitle)metaTitle=val;if(key.indexOf('image')>=0&&!metaPoster)metaPoster=val;}" +
+                "if(metaTitle)title=metaTitle.trim();if(/^https?:/i.test(metaPoster))window.AboEzzatBridge.onMetaFound(title,metaPoster);" +
+                "else window.AboEzzatBridge.onMetaFound(title,'');" +
                 "var vs=[].slice.call(d.querySelectorAll('video'));" +
                 "for(var i=0;i<vs.length;i++){var v=vs[i],poster=v.poster||'';" +
                 "var u=v.currentSrc||v.src||v.getAttribute('src')||'';" +
