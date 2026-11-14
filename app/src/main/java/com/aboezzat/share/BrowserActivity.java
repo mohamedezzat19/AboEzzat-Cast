@@ -1035,27 +1035,35 @@ public class BrowserActivity extends Activity {
     // Automatic generic player monitor. It is installed only on non-social web-player
     // pages (plus TikTok LIVE), so existing platform-specific sniffers remain isolated.
     private void injectGenericAutoCapture(WebView view) {
+        if (view == null) return;
+        // Re-scan after user interaction, player source changes, and DOM mutations.
+        // This stays isolated from the dedicated Facebook/Instagram/Threads pipelines.
         String js = "javascript:(function(){try{" +
-                "if(window.__aboGenericAutoCaptureInstalled)return;window.__aboGenericAutoCaptureInstalled=true;" +
+                "if(window.__aboGenericAutoCaptureV2)return;window.__aboGenericAutoCaptureV2=true;" +
+                "function send(u,title,poster){try{if(!u||!/^https?:/i.test(u))return;var l=u.toLowerCase();" +
+                "if(/\\.(jpg|jpeg|png|webp|gif|bmp|svg|ts|m4s|js|css|woff2?)(?:[?#]|$)/i.test(l))return;" +
+                "if(/\\.mp4(?:[?#]|$)/i.test(l))window.AboEzzatBridge.onCapturedCandidateTrack(u,title,poster||'');" +
+                "else if(/\\.(m3u8|mpd|m4v|webm|flv|mov)(?:[?#]|$)/i.test(l)||/mime(?:_|-)?type=video|mime=video|type=video|videoplayback|video\\/|pull-/i.test(l))" +
+                "window.AboEzzatBridge.onCapturedVideoTrack(u,title,poster||'');}catch(e){}}" +
                 "function scan(w,seen){try{if(!w||seen.indexOf(w)!==-1)return;seen.push(w);var d=w.document;if(!d)return;" +
                 "var title=d.title||document.title||'فيديو قيد التشغيل';" +
                 "var vs=[].slice.call(d.querySelectorAll('video'));" +
-                "for(var i=0;i<vs.length;i++){var v=vs[i],u=v.currentSrc||v.src||'';" +
-                "if(!v.paused&&!v.ended&&v.readyState>=2&&/^https?:/i.test(u))window.AboEzzatBridge.onVideoPlayingWithPoster(u,title,v.poster||'');}" +
+                "for(var i=0;i<vs.length;i++){var v=vs[i],poster=v.poster||'';" +
+                "var u=v.currentSrc||v.src||v.getAttribute('src')||'';" +
+                "if(!v.paused&&!v.ended&&v.readyState>=2)send(u,title,poster);" +
+                "var ss=v.querySelectorAll('source');for(var z=0;z<ss.length;z++)send(ss[z].src||ss[z].getAttribute('src'),title,poster);}" +
+                "var sources=d.querySelectorAll('video source, source[type*=\\\"video\\\"], link[rel=\\\"preload\\\"][as=\\\"video\\\"]');" +
+                "for(var q=0;q<sources.length;q++)send(sources[q].src||sources[q].href||sources[q].getAttribute('src'),title,'');" +
                 "var es=w.performance&&w.performance.getEntriesByType?w.performance.getEntriesByType('resource'):[];" +
                 "var now=w.performance&&w.performance.now?w.performance.now():0;" +
-                "for(var j=0;j<es.length;j++){var e=es[j],u=e.name||'',l=u.toLowerCase();if(!/^https?:/i.test(u)||now-e.startTime>120000)continue;" +
-                "if(/\\.(jpg|jpeg|png|webp|gif|bmp|svg|ts|m4s|js|css|woff2?)(?:[?#]|$)/i.test(l))continue;" +
-                "var a=/mime(?:_|-)?type=audio|mime=audio|type=audio|content[_-]?type=audio|dash_ln_heaac|audio_dash|\\.(aac|m4a|mp3|opus|ogg)(?:[?#]|$)/i.test(l);" +
-                "var v=/mime(?:_|-)?type=video|mime=video|type=video|content[_-]?type=video|video\\/|videoplayback|pull-|\\.(m3u8|mpd|mp4|m4v|webm|flv|mov)(?:[?#]|$)/i.test(l);" +
-                "if(a)window.AboEzzatBridge.onCapturedAudioTrack(u,title,'');" +
-                "else if(v){if(/\\.mp4(?:[?#]|$)/i.test(l))window.AboEzzatBridge.onCapturedCandidateTrack(u,title,'');" +
-                "else window.AboEzzatBridge.onCapturedVideoTrack(u,title,'');}}" +
+                "for(var j=0;j<es.length;j++){var e=es[j],u=e.name||'';if(now-e.startTime>180000)continue;send(u,title,'');}" +
                 "var fs=d.querySelectorAll('iframe,frame');for(var k=0;k<fs.length;k++){try{if(fs[k].contentWindow)scan(fs[k].contentWindow,seen);}catch(e){}}" +
                 "}catch(e){}}" +
                 "function tick(){scan(window,[]);}document.addEventListener('playing',tick,true);" +
-                "document.addEventListener('loadedmetadata',tick,true);window.addEventListener('load',tick,true);" +
-                "tick();setInterval(tick,1400);" +
+                "document.addEventListener('play',tick,true);document.addEventListener('loadedmetadata',tick,true);" +
+                "document.addEventListener('canplay',tick,true);document.addEventListener('click',function(){setTimeout(tick,350);setTimeout(tick,1300);},true);" +
+                "window.addEventListener('load',tick,true);try{new MutationObserver(function(){tick();}).observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['src']});}catch(e){}" +
+                "tick();setInterval(tick,1200);" +
                 "}catch(e){}})()";
         view.evaluateJavascript(js, null);
     }
