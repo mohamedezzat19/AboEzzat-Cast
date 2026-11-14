@@ -28,6 +28,7 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
     private int downX, downY;
     private boolean dragged;
     private long lastWebVideoCasterScanAt;
+    private long lastSystemClipboardScanAt;
     private static final String WEB_VIDEO_CASTER_PACKAGE = "com.instantbits.cast.webvideo";
 
     private android.content.ClipboardManager clipboardManager;
@@ -187,52 +188,47 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
             return;
         }
 
-        // Diagnostic-only capture: record source-app events and clicked labels.
-        // This does not change bubble detection or read clipboard contents.
-        boolean isSystemClipboardHost = "com.android.systemui".equals(eventPackage)
+        // Keep diagnostics lightweight: writing SharedPreferences for every
+        // accessibility event can create unnecessary disk/CPU work and may
+        // contribute to the service becoming unresponsive on busy screens.
+        boolean systemClipboardHost = "com.android.systemui".equals(eventPackage)
                 || "com.mi.android.globallauncher".equals(eventPackage);
-        if (isSystemClipboardHost) {
-            android.content.SharedPreferences systemPrefs = getSharedPreferences(PREFS, MODE_PRIVATE);
-            systemPrefs.edit()
-                    .putInt("diag_systemui_event_count",
-                            systemPrefs.getInt("diag_systemui_event_count", 0) + 1)
-                    .putString("diag_last_systemui_event",
-                            "type=" + event.getEventType() + " | " + describeEvent(event))
-                    .apply();
-        }
-        if (!isSystemClipboardHost) {
+        int eventType = event.getEventType();
+        boolean clickEvent = eventType == AccessibilityEvent.TYPE_VIEW_CLICKED
+                || eventType == AccessibilityEvent.TYPE_VIEW_LONG_CLICKED
+                || (Build.VERSION.SDK_INT >= 23
+                && eventType == AccessibilityEvent.TYPE_VIEW_CONTEXT_CLICKED);
+
+        if (clickEvent && !systemClipboardHost) {
             android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
-            android.content.SharedPreferences.Editor eventEditor = prefs.edit()
-                    .putInt("diag_source_event_count",
-                            prefs.getInt("diag_source_event_count", 0) + 1)
+            prefs.edit()
+                    .putInt("diag_source_click_count",
+                            prefs.getInt("diag_source_click_count", 0) + 1)
                     .putString("diag_last_source_package", eventPackage)
-                    .putString("diag_last_source_text", describeEvent(event));
-            int type = event.getEventType();
-            if (type == AccessibilityEvent.TYPE_VIEW_CLICKED
-                    || type == AccessibilityEvent.TYPE_VIEW_LONG_CLICKED
-                    || (Build.VERSION.SDK_INT >= 23
-                    && type == AccessibilityEvent.TYPE_VIEW_CONTEXT_CLICKED)) {
-                eventEditor.putInt("diag_source_click_count",
-                                prefs.getInt("diag_source_click_count", 0) + 1)
-                        .putString("diag_last_click_package", eventPackage)
-                        .putString("diag_last_click_text", describeEvent(event));
-            }
-            eventEditor.apply();
+                    .putString("diag_last_source_text", describeEvent(event))
+                    .putString("diag_last_click_package", eventPackage)
+                    .putString("diag_last_click_text", describeEvent(event))
+                    .apply();
         }
 
         // First detect an explicit "Copy link/URL" action in the source app.
         // If the app does not expose that action, fall back to a URL shown by
         // Android/MIUI's own clipboard preview window.
-        boolean copyConfirmed = isCopyLinkAction(event);
-        boolean systemClipboardHost = "com.android.systemui".equals(eventPackage)
-                || "com.mi.android.globallauncher".equals(eventPackage);
-        if (!copyConfirmed && event.getEventType() == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+        boolean copyConfirmed = clickEvent && isCopyLinkAction(event);
+        if (!copyConfirmed && eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
                 && systemClipboardHost) {
-            copyConfirmed = hasSystemClipboardUrl();
-            getSharedPreferences(PREFS, MODE_PRIVATE).edit()
-                    .putBoolean("diag_last_systemui_url_match", copyConfirmed)
-                    .putString("diag_last_clipboard_host", eventPackage)
-                    .apply();
+            long now = android.os.SystemClock.uptimeMillis();
+            if (now - lastSystemClipboardScanAt >= 900L) {
+                lastSystemClipboardScanAt = now;
+                copyConfirmed = hasSystemClipboardUrl();
+                getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                        .putInt("diag_systemui_event_count",
+                                getSharedPreferences(PREFS, MODE_PRIVATE)
+                                        .getInt("diag_systemui_event_count", 0) + 1)
+                        .putBoolean("diag_last_systemui_url_match", copyConfirmed)
+                        .putString("diag_last_clipboard_host", eventPackage)
+                        .apply();
+            }
         }
 
         android.content.SharedPreferences.Editor diagnosticEditor =
