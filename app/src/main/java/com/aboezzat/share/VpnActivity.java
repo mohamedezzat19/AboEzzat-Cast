@@ -3,6 +3,8 @@ package com.aboezzat.share;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
 import android.graphics.Color;
 import android.net.VpnService;
 import android.net.Uri;
@@ -32,6 +34,11 @@ import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -45,6 +52,7 @@ public class VpnActivity extends Activity {
     private static final String PREFS = "abo_vpn_profiles";
     private static final String PROFILE_INDEX = "profiles_json";
     private static final String OLD_CONFIG_FILE = "abo_vpn.conf";
+    private static final String APP_SELECTION = "selected_apps_json";
 
     private static GoBackend backend;
     private static Tunnel tunnel;
@@ -54,6 +62,8 @@ public class VpnActivity extends Activity {
     private final LinkedHashMap<String, String> profiles = new LinkedHashMap<>();
     private TextView status;
     private TextView selectedLabel;
+    private TextView appSelectionLabel;
+    private final ArrayList<String> selectedApps = new ArrayList<>();
     private Button connectButton;
     private Button editButton;
     private String selectedId;
@@ -73,10 +83,134 @@ public class VpnActivity extends Activity {
             };
         }
         loadProfiles();
+        loadSelectedApps();
         migrateOldConfig();
         if (selectedId == null && !profiles.isEmpty()) selectedId = profiles.keySet().iterator().next();
         buildScreen();
         renderState();
+    }
+
+    private void loadSelectedApps() {
+        selectedApps.clear();
+        String json = getSharedPreferences(PREFS, MODE_PRIVATE).getString(APP_SELECTION, "[]");
+        try {
+            JSONArray array = new JSONArray(json);
+            for (int i = 0; i < array.length(); i++) {
+                String pkg = array.optString(i, "");
+                if (!pkg.isEmpty() && !selectedApps.contains(pkg)) selectedApps.add(pkg);
+            }
+        } catch (Exception ignored) { }
+    }
+
+    private void saveSelectedApps() {
+        JSONArray array = new JSONArray();
+        for (String pkg : selectedApps) array.put(pkg);
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(APP_SELECTION, array.toString()).apply();
+        renderAppSelection();
+    }
+
+    private void renderAppSelection() {
+        if (appSelectionLabel == null) return;
+        appSelectionLabel.setText(selectedApps.isEmpty()
+                ? "لم يتم اختيار تطبيقات بعد"
+                : "تم اختيار " + selectedApps.size() + " تطبيق — " + selectedApps.toString());
+    }
+
+    private static final class AppChoice {
+        final String packageName;
+        final String label;
+        AppChoice(String packageName, String label) {
+            this.packageName = packageName;
+            this.label = label;
+        }
+    }
+
+    private void chooseApps() {
+        PackageManager pm = getPackageManager();
+        Intent launcher = new Intent(Intent.ACTION_MAIN);
+        launcher.addCategory(Intent.CATEGORY_LAUNCHER);
+        List<ResolveInfo> activities = pm.queryIntentActivities(launcher, 0);
+        ArrayList<AppChoice> apps = new ArrayList<>();
+        HashSet<String> seen = new HashSet<>();
+        for (ResolveInfo info : activities) {
+            if (info.activityInfo == null) continue;
+            String pkg = info.activityInfo.packageName;
+            if (pkg == null || !seen.add(pkg)) continue;
+            CharSequence label = info.loadLabel(pm);
+            apps.add(new AppChoice(pkg, label == null ? pkg : label.toString()));
+        }
+        Collections.sort(apps, Comparator.comparing(a -> a.label.toLowerCase(java.util.Locale.ROOT)));
+        if (apps.isEmpty()) {
+            Toast.makeText(this, "لم أجد تطبيقات ظاهرة في قائمة التطبيقات", Toast.LENGTH_LONG).show();
+            return;
+        }
+        String[] labels = new String[apps.size()];
+        boolean[] checked = new boolean[apps.size()];
+        for (int i = 0; i < apps.size(); i++) {
+            AppChoice app = apps.get(i);
+            labels[i] = app.label;
+            checked[i] = selectedApps.contains(app.packageName);
+        }
+        HashSet<String> pending = new HashSet<>(selectedApps);
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("حدد التطبيقات التي تستخدم VPN")
+                .setMultiChoiceItems(labels, checked, (d, which, isChecked) -> {
+                    String pkg = apps.get(which).packageName;
+                    if (isChecked) pending.add(pkg); else pending.remove(pkg);
+                })
+                .setPositiveButton("حفظ الاختيار", (d, w) -> {
+                    selectedApps.clear();
+                    for (AppChoice app : apps) if (pending.contains(app.packageName)) selectedApps.add(app.packageName);
+                    saveSelectedApps();
+                })
+                .setNegativeButton("إلغاء", null)
+                .create();
+        dialog.show();
+    }
+
+    private String configWithSelectedApps(File file) throws Exception {
+        if (selectedApps.isEmpty()) throw new IllegalStateException("اختار تطبيقًا واحدًا على الأقل ليعمل VPN عليه.");
+        String raw;
+        try (FileInputStream in = new FileInputStream(file)) {
+            raw = new String(readAll(in), StandardCharsets.UTF_8);
+        }
+        StringBuilder cleaned = new StringBuilder();
+        String[] lines = raw.replace("\\r", "").split("\\n");
+        boolean inInterface = false;
+        boolean foundInterface = false;
+        boolean inserted = false;
+        for (String line : lines) {
+            String trimmed = line.trim();
+            if (trimmed.matches("(?i)^\\[Interface\\]$")) {
+                inInterface = true;
+                foundInterface = true;
+                cleaned.append(line).append('\\n');
+                continue;
+            }
+            if (trimmed.matches("(?i)^\\[.+\\]$")) {
+                if (inInterface && !inserted) {
+                    appendIncludedApps(cleaned);
+                    inserted = true;
+                }
+                inInterface = false;
+            }
+            if (inInterface && trimmed.matches("(?i)^(IncludedApplications|ExcludedApplications)\\s*=.*$")) continue;
+            cleaned.append(line).append('\\n');
+        }
+        if (!foundInterface) throw new IllegalArgumentException("ملف WireGuard لا يحتوي على [Interface].");
+        if (!inserted) appendIncludedApps(cleaned);
+        String result = cleaned.toString();
+        Config.parse(new ByteArrayInputStream(result.getBytes(StandardCharsets.UTF_8)));
+        return result;
+    }
+
+    private void appendIncludedApps(StringBuilder target) {
+        target.append("IncludedApplications = ");
+        for (int i = 0; i < selectedApps.size(); i++) {
+            if (i > 0) target.append(", ");
+            target.append(selectedApps.get(i));
+        }
+        target.append('\\n');
     }
 
     private void loadProfiles() {
@@ -132,85 +266,106 @@ public class VpnActivity extends Activity {
         ScrollView scroll = new ScrollView(this);
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setGravity(Gravity.TOP);
-        root.setPadding(dp(22), dp(22), dp(22), dp(22));
-        root.setBackgroundColor(Color.rgb(5, 17, 39));
+        root.setPadding(dp(20), dp(20), dp(20), dp(24));
+        root.setBackgroundColor(Color.rgb(7, 17, 35));
         scroll.addView(root);
 
         TextView title = new TextView(this);
-        title.setText("VPN داخل AboEzzat Cast");
+        title.setText("AboEzzat VPN");
         title.setTextColor(Color.WHITE);
-        title.setTextSize(23);
+        title.setTextSize(27);
+        title.setTypeface(null, android.graphics.Typeface.BOLD);
         title.setGravity(Gravity.CENTER);
-        title.setPadding(0, dp(8), 0, dp(16));
+        title.setPadding(0, dp(10), 0, dp(5));
         root.addView(title, matchWrap());
+
+        TextView subtitle = new TextView(this);
+        subtitle.setText("اتصال WireGuard وإدارة السيرفرات والتطبيقات");
+        subtitle.setTextColor(Color.rgb(160, 190, 220));
+        subtitle.setTextSize(13);
+        subtitle.setGravity(Gravity.CENTER);
+        subtitle.setPadding(0, 0, 0, dp(18));
+        root.addView(subtitle, matchWrap());
 
         status = new TextView(this);
         status.setTextColor(Color.rgb(255, 210, 80));
-        status.setTextSize(17);
+        status.setTextSize(19);
         status.setGravity(Gravity.CENTER);
-        status.setPadding(dp(12), dp(16), dp(12), dp(16));
-        status.setBackgroundColor(Color.rgb(17, 39, 70));
+        status.setPadding(dp(14), dp(22), dp(14), dp(22));
+        status.setBackgroundColor(Color.rgb(17, 42, 70));
         root.addView(status, matchWrap());
-
-        TextView note = new TextView(this);
-        note.setText("أضف أكثر من إعداد WireGuard واحفظها بأسماء مختلفة. يمكنك استيراد ملف .conf أو إدخال/تعديل الإعداد يدويًا في أي وقت. المفاتيح تُحفظ محليًا داخل التطبيق ولا تُرفع إلى GitHub.");
-        note.setTextColor(Color.rgb(195, 211, 232));
-        note.setTextSize(14);
-        note.setPadding(dp(4), dp(14), dp(4), dp(14));
-        root.addView(note, matchWrap());
 
         selectedLabel = new TextView(this);
         selectedLabel.setTextColor(Color.WHITE);
         selectedLabel.setTextSize(16);
-        selectedLabel.setPadding(dp(4), dp(12), dp(4), dp(12));
+        selectedLabel.setPadding(dp(4), dp(16), dp(4), dp(5));
         root.addView(selectedLabel, matchWrap());
 
-        Button choose = makeButton("اختيار إعداد محفوظ");
+        Button choose = makeButton("🌐  إدارة السيرفرات المحفوظة");
         choose.setOnClickListener(v -> chooseProfile());
-        root.addView(choose, matchWrap());
+        root.addView(choose, spaced());
 
-        Button importButton = makeButton("استيراد ملف WireGuard (.conf)");
-        importButton.setOnClickListener(v -> {
-            importAsNew = true;
-            chooseConfig();
-        });
+        Button importButton = makeButton("＋  استيراد سيرفر WireGuard (.conf)");
+        importButton.setOnClickListener(v -> { importAsNew = true; chooseConfig(); });
         root.addView(importButton, spaced());
 
-        Button addManual = makeButton("إضافة إعداد يدوي جديد");
+        Button addManual = makeButton("إضافة سيرفر يدويًا");
         addManual.setOnClickListener(v -> showConfigEditor(null));
         root.addView(addManual, spaced());
 
-        editButton = makeButton("تعديل الإعداد المحدد");
+        editButton = makeButton("تعديل السيرفر المحدد");
         editButton.setOnClickListener(v -> showConfigEditor(selectedId));
         root.addView(editButton, spaced());
 
-        Button rename = makeButton("تغيير اسم الإعداد");
+        Button rename = makeButton("إعادة تسمية السيرفر");
         rename.setOnClickListener(v -> renameProfile());
         root.addView(rename, spaced());
 
-        Button delete = makeButton("حذف الإعداد المحدد");
+        Button delete = makeButton("حذف السيرفر المحدد");
         delete.setOnClickListener(v -> deleteProfile());
         root.addView(delete, spaced());
 
-        connectButton = makeButton("تشغيل VPN");
-        connectButton.setOnClickListener(v -> toggleVpn());
-        root.addView(connectButton, spaced());
+        View gap = new View(this);
+        root.addView(gap, new LinearLayout.LayoutParams(1, dp(12)));
 
-        Button providerButton = makeButton("فتح موقع Proton لإنشاء إعداد جديد");
+        TextView appsTitle = new TextView(this);
+        appsTitle.setText("التطبيقات المسموح لها باستخدام VPN");
+        appsTitle.setTextColor(Color.WHITE);
+        appsTitle.setTextSize(17);
+        appsTitle.setTypeface(null, android.graphics.Typeface.BOLD);
+        appsTitle.setPadding(dp(4), dp(8), dp(4), dp(4));
+        root.addView(appsTitle, matchWrap());
+
+        appSelectionLabel = new TextView(this);
+        appSelectionLabel.setTextColor(Color.rgb(170, 205, 230));
+        appSelectionLabel.setTextSize(14);
+        appSelectionLabel.setPadding(dp(4), dp(4), dp(4), dp(8));
+        root.addView(appSelectionLabel, matchWrap());
+
+        Button appsButton = makeButton("اختيار التطبيقات");
+        appsButton.setOnClickListener(v -> chooseApps());
+        root.addView(appsButton, spaced());
+
+        TextView hint = new TextView(this);
+        hint.setText("التطبيقات التي تختارها فقط ستمر عبر نفق VPN. باقي تطبيقات الهاتف ستستخدم اتصال الإنترنت العادي. يلزم إيقاف VPN ثم إعادة تشغيله بعد تغيير القائمة.");
+        hint.setTextColor(Color.rgb(185, 205, 225));
+        hint.setTextSize(13);
+        hint.setPadding(dp(4), dp(10), dp(4), dp(14));
+        root.addView(hint, matchWrap());
+
+        connectButton = makeButton("تشغيل VPN");
+        connectButton.setTextSize(18);
+        connectButton.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.rgb(18, 130, 92)));
+        root.addView(connectButton, spaced());
+        connectButton.setOnClickListener(v -> toggleVpn());
+
+        Button providerButton = makeButton("الحصول على ملف Proton WireGuard");
         providerButton.setOnClickListener(v -> openProtonConfigPage());
         root.addView(providerButton, spaced());
 
-        Button leakProtectionButton = makeButton("إعداد منع الاتصال بدون VPN");
-        leakProtectionButton.setOnClickListener(v -> openVpnSystemSettings());
-        root.addView(leakProtectionButton, spaced());
-
-        TextView scope = new TextView(this);
-        scope.setText("تنبيه: WireGuard ينشئ نفق Android على مستوى الجهاز، وليس المتصفح وحده. تفعيل VPN دائمًا ومنع الاتصالات بدونه يتم من إعدادات Android.");
-        scope.setTextColor(Color.rgb(255, 196, 120));
-        scope.setTextSize(13);
-        scope.setPadding(dp(4), dp(14), dp(4), dp(12));
-        root.addView(scope, matchWrap());
+        Button systemSettings = makeButton("إعدادات VPN في Android");
+        systemSettings.setOnClickListener(v -> openVpnSystemSettings());
+        root.addView(systemSettings, spaced());
 
         Button close = makeButton("رجوع");
         close.setOnClickListener(v -> finish());
@@ -405,8 +560,9 @@ public class VpnActivity extends Activity {
         connectButton.setEnabled(false);
         status.setText("جارٍ إنشاء اتصال VPN...");
         executor.execute(() -> {
-            try (FileInputStream in = new FileInputStream(profileFile(connectingId))) {
-                Config config = Config.parse(in);
+            try {
+                String scopedConfig = configWithSelectedApps(profileFile(connectingId));
+                Config config = Config.parse(new ByteArrayInputStream(scopedConfig.getBytes(StandardCharsets.UTF_8)));
                 backend.setState(tunnel, Tunnel.State.UP, config);
                 connected = true;
                 runOnUiThread(() -> {
@@ -501,7 +657,8 @@ public class VpnActivity extends Activity {
         status.setTextColor(connected ? Color.rgb(74, 222, 128) : Color.rgb(255, 210, 80));
         connectButton.setText(connected ? "إيقاف VPN" : "تشغيل VPN");
         connectButton.setEnabled(true);
-        selectedLabel.setText(hasSelectedProfile() ? "الإعداد المحدد: " + profiles.get(selectedId) : "لا يوجد إعداد محدد");
+        selectedLabel.setText(hasSelectedProfile() ? "السيرفر المحدد: " + profiles.get(selectedId) : "لا يوجد سيرفر محفوظ — استورد ملف WireGuard للبدء");
+        renderAppSelection();
         editButton.setEnabled(hasSelectedProfile() && !connected);
     }
 
