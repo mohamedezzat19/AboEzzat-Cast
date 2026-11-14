@@ -160,13 +160,19 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
                 long now = android.os.SystemClock.uptimeMillis();
                 if (now - lastWebVideoCasterScanAt >= 500L) {
                     lastWebVideoCasterScanAt = now;
-                    captureWebVideoCasterUrls();
                     java.util.LinkedHashSet<String> eventUrls = new java.util.LinkedHashSet<>();
                     if (event.getText() != null) {
                         for (CharSequence item : event.getText()) addUrlsFromText(eventUrls, item);
                     }
                     addUrlsFromText(eventUrls, event.getContentDescription());
-                    mergeWebVideoCasterEventUrls(eventUrls);
+                    // A new window state means a new WVC page/session: discard the
+                    // previous page's links before reading the current page.
+                    if (type == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+                        getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                                .putString("wvc_captured_urls", "[]")
+                                .putInt("wvc_capture_count", 0).apply();
+                    }
+                    captureWebVideoCasterUrls(eventUrls);
                 }
             }
         }
@@ -319,7 +325,7 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
         return false;
     }
 
-    private void captureWebVideoCasterUrls() {
+    private void captureWebVideoCasterUrls(java.util.Set<String> eventUrls) {
         java.util.LinkedHashSet<String> found = new java.util.LinkedHashSet<>();
         // Scan every currently exposed interactive window, but accept nodes only
         // when their owning package is Web Video Caster.
@@ -359,58 +365,25 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
                 if (root != null) root.recycle();
             }
         }
-        if (found.isEmpty()) return;
+        if (eventUrls != null) found.addAll(eventUrls);
+        while (found.size() > 12) {
+            String last = null;
+            for (String value : found) last = value;
+            if (last != null) found.remove(last);
+        }
 
         android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
-        org.json.JSONArray existing;
-        try {
-            existing = new org.json.JSONArray(prefs.getString("wvc_captured_urls", "[]"));
-        } catch (Exception ignored) {
-            existing = new org.json.JSONArray();
-        }
-        java.util.LinkedHashSet<String> merged = new java.util.LinkedHashSet<>();
-        for (int i = 0; i < existing.length(); i++) {
-            String value = existing.optString(i, "");
-            if (!value.isEmpty()) merged.add(value);
-        }
-        int before = merged.size();
-        merged.addAll(found);
-        while (merged.size() > 12) {
-            String first = merged.iterator().next();
-            merged.remove(first);
-        }
-        if (merged.size() == before) return;
-
         org.json.JSONArray saved = new org.json.JSONArray();
-        for (String value : merged) saved.put(value);
+        for (String value : found) saved.put(value);
+        String nextSnapshot = saved.toString();
+        String previousSnapshot = prefs.getString("wvc_captured_urls", "[]");
+        if (nextSnapshot.equals(previousSnapshot)) return;
+
         prefs.edit()
-                .putString("wvc_captured_urls", saved.toString())
+                .putString("wvc_captured_urls", nextSnapshot)
                 .putLong("wvc_last_capture_time", System.currentTimeMillis())
-                .putInt("wvc_capture_count", merged.size())
+                .putInt("wvc_capture_count", found.size())
                 .apply();
-        if (android.provider.Settings.canDrawOverlays(this)) handler.post(this::showBubble);
-    }
-
-    private void mergeWebVideoCasterEventUrls(java.util.Set<String> eventUrls) {
-        if (eventUrls == null || eventUrls.isEmpty()) return;
-        android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
-        org.json.JSONArray existing;
-        try { existing = new org.json.JSONArray(prefs.getString("wvc_captured_urls", "[]")); }
-        catch (Exception ignored) { existing = new org.json.JSONArray(); }
-        java.util.LinkedHashSet<String> merged = new java.util.LinkedHashSet<>();
-        for (int i = 0; i < existing.length(); i++) {
-            String value = existing.optString(i, "");
-            if (!value.isEmpty()) merged.add(value);
-        }
-        int before = merged.size();
-        merged.addAll(eventUrls);
-        while (merged.size() > 12) merged.remove(merged.iterator().next());
-        if (merged.size() == before) return;
-        org.json.JSONArray saved = new org.json.JSONArray();
-        for (String value : merged) saved.put(value);
-        prefs.edit().putString("wvc_captured_urls", saved.toString())
-                .putLong("wvc_last_capture_time", System.currentTimeMillis())
-                .putInt("wvc_capture_count", merged.size()).apply();
         if (android.provider.Settings.canDrawOverlays(this)) handler.post(this::showBubble);
     }
 
@@ -768,7 +741,9 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
             final String selected = urls.get(i);
             android.widget.LinearLayout row = new android.widget.LinearLayout(this);
             row.setOrientation(android.widget.LinearLayout.VERTICAL);
-            row.setPadding(dp(12), dp(11), dp(12), dp(11));
+            row.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setPadding(dp(8), dp(6), dp(8), dp(6));
             GradientDrawable rowBg = new GradientDrawable();
             rowBg.setColor(Color.rgb(27, 39, 57));
             rowBg.setCornerRadius(dp(15));
@@ -787,7 +762,7 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
             urlText.setText(selected);
             urlText.setTextColor(Color.rgb(226, 235, 247));
             urlText.setTextSize(11);
-            urlText.setMaxLines(2);
+            urlText.setMaxLines(1);
             urlText.setEllipsize(android.text.TextUtils.TruncateAt.MIDDLE);
             topLine.addView(urlText, new android.widget.LinearLayout.LayoutParams(0, -2, 1));
             row.addView(topLine);
@@ -805,14 +780,14 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
             send.setBackground(sendBg);
             send.setPadding(dp(10), dp(10), dp(10), dp(10));
             android.widget.LinearLayout.LayoutParams sendParams =
-                    new android.widget.LinearLayout.LayoutParams(-1, dp(42));
-            sendParams.topMargin = dp(10);
+                    new android.widget.LinearLayout.LayoutParams(dp(76), dp(34));
+            sendParams.leftMargin = dp(6);
             row.addView(send, sendParams);
             send.setOnClickListener(v -> sendCapturedUrl(selected));
 
             android.widget.LinearLayout.LayoutParams rowParams =
-                    new android.widget.LinearLayout.LayoutParams(-1, -2);
-            rowParams.bottomMargin = dp(9);
+                    new android.widget.LinearLayout.LayoutParams(-1, dp(48));
+            rowParams.bottomMargin = dp(5);
             rows.addView(row, rowParams);
         }
         if (urls.isEmpty()) {
@@ -824,7 +799,8 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
             rows.addView(empty);
         }
         scroll.addView(rows);
-        card.addView(scroll, new android.widget.LinearLayout.LayoutParams(-1, dp(280)));
+        int visibleListHeight = Math.min(dp(250), Math.max(dp(48), urls.size() * dp(53)));
+        card.addView(scroll, new android.widget.LinearLayout.LayoutParams(-1, visibleListHeight));
 
         android.widget.LinearLayout footer = new android.widget.LinearLayout(this);
         footer.setGravity(Gravity.CENTER_VERTICAL);
@@ -870,6 +846,9 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
     }
 
     private void sendCapturedUrl(String mediaUrl) {
+        // Close the floating list immediately on selection; network delivery
+        // continues in the background.
+        removeCaptureOverlay();
         String tvIp = getSharedPreferences(PREFS, MODE_PRIVATE).getString("tv_ip", "").trim();
         if (tvIp.isEmpty()) {
             android.widget.Toast.makeText(this, "يرجى ضبط عنوان AboEzzat Receiver أولاً",
@@ -903,7 +882,6 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
                             android.widget.Toast.LENGTH_SHORT).show();
                     if (accepted) {
                         removeCapturedUrl(mediaUrl);
-                        removeCaptureOverlay();
                     }
                 });
             }).start();
