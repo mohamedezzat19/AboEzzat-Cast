@@ -451,9 +451,9 @@ public class MainActivity extends Activity {
                 + "روابط Web Video Caster: " + wvcUrls + "\n"
                 + "آخر نافذة نظام تم فحصها: " + clipboardHost + "\n"
                 + "هل عُثر على رابط HTTP/HTTPS في نافذة النظام؟ " + (systemClipboardMatch ? "نعم" : "لا") + "\n"
-                + "نتيجة عرض الفقاعة: " + bubbleResult + "\\n"
-                + "آخر حدث لدورة حياة الخدمة: " + lastLifecycle + "\\n"
-                + "سجل تشغيل/إغلاق الخدمة والتطبيق:\\n" + lifecycleLog;
+                + "نتيجة عرض الفقاعة: " + bubbleResult + "\n"
+                + "آخر حدث لدورة حياة الخدمة: " + lastLifecycle + "\n"
+                + "سجل تشغيل/إغلاق الخدمة والتطبيق:\n" + lifecycleLog;
         new AlertDialog.Builder(this)
                 .setTitle("تشخيص مشكلة الفقاعة")
                 .setMessage(report)
