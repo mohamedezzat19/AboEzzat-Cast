@@ -99,7 +99,7 @@ public class MainActivity extends Activity {
             setTheme(android.R.style.Theme_Translucent_NoTitleBar);
         super.onCreate(savedInstanceState);
 
-        prefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
+        prefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE | MODE_MULTI_PROCESS);
         restoreMediaQueues();
         startLocalServer();
 
@@ -409,7 +409,7 @@ public class MainActivity extends Activity {
     }
 
     private void showClipboardShortcutDiagnostics() {
-        SharedPreferences diagnosticPrefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
+        SharedPreferences diagnosticPrefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE | MODE_MULTI_PROCESS);
         boolean serviceConnected = diagnosticPrefs.getBoolean("diag_service_connected", false);
         int clipboardCount = diagnosticPrefs.getInt("diag_clipboard_count", 0);
         String mime = diagnosticPrefs.getString("diag_last_clipboard_mime", "لا توجد بيانات");
@@ -517,7 +517,7 @@ public class MainActivity extends Activity {
     }
 
     private void exportSettings(Uri uri) {
-        SharedPreferences browserPrefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
+        SharedPreferences browserPrefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE | MODE_MULTI_PROCESS);
         try (java.io.OutputStream out = getContentResolver().openOutputStream(uri)) {
             if (out == null) throw new IOException("تعذر فتح الملف");
             org.json.JSONObject json = new org.json.JSONObject();
@@ -552,7 +552,7 @@ public class MainActivity extends Activity {
     }
 
     private void importSettings(Uri uri) {
-        SharedPreferences browserPrefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
+        SharedPreferences browserPrefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE | MODE_MULTI_PROCESS);
         try (java.io.InputStream in = getContentResolver().openInputStream(uri)) {
             if (in == null) throw new IOException("تعذر قراءة الملف");
             java.io.ByteArrayOutputStream buffer = new java.io.ByteArrayOutputStream();
@@ -657,7 +657,7 @@ public class MainActivity extends Activity {
     }
 
     private void showBrowserHistory(boolean mostVisited) {
-        SharedPreferences browserPrefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
+        SharedPreferences browserPrefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE | MODE_MULTI_PROCESS);
         Set<String> saved = new HashSet<>(browserPrefs.getStringSet("browser_history", new HashSet<String>()));
         List<String> urls = new ArrayList<>(saved);
         urls.removeIf(url -> url == null || url.trim().isEmpty());
@@ -762,7 +762,7 @@ public class MainActivity extends Activity {
 
     // Library layout modeled on the supplied screenshot.
     private void showLibraryDialog() {
-        SharedPreferences browserPrefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
+        SharedPreferences browserPrefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE | MODE_MULTI_PROCESS);
         android.widget.ScrollView scroll = new android.widget.ScrollView(this);
         scroll.setFillViewport(true);
         scroll.setBackgroundColor(0xFF101014);
@@ -981,7 +981,7 @@ public class MainActivity extends Activity {
     }
 
     private void showBookmarksDialog() {
-        SharedPreferences bookmarkPrefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
+        SharedPreferences bookmarkPrefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE | MODE_MULTI_PROCESS);
         Set<String> customSites = new HashSet<>(bookmarkPrefs.getStringSet("custom_sites", new HashSet<String>()));
         List<String> names = new ArrayList<>();
         List<String> urls = new ArrayList<>();
@@ -1215,7 +1215,7 @@ private void showManualIpDialog() {
             return;
         }
         android.content.SharedPreferences reminderPrefs =
-                getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
+                getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE | MODE_MULTI_PROCESS);
         if (reminderPrefs.getLong("accessibility_reminder_version", -1L) == currentVersion) return;
 
         accessibilityReminderShown = true;
@@ -1404,7 +1404,7 @@ private void showManualIpDialog() {
         if (intent == null || !intent.getBooleanExtra("web_video_caster_capture_shortcut", false)) return false;
         intent.removeExtra("web_video_caster_capture_shortcut");
         new Handler(Looper.getMainLooper()).post(() -> {
-            SharedPreferences capturePrefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
+            SharedPreferences capturePrefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE | MODE_MULTI_PROCESS);
             java.util.ArrayList<String> urls = new java.util.ArrayList<>();
             try {
                 org.json.JSONArray array = new org.json.JSONArray(
@@ -1461,7 +1461,7 @@ private void showManualIpDialog() {
     }
 
     private void removeCapturedWebVideoCasterUrl(String selectedUrl) {
-        SharedPreferences capturePrefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
+        SharedPreferences capturePrefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE | MODE_MULTI_PROCESS);
         try {
             org.json.JSONArray old = new org.json.JSONArray(
                     capturePrefs.getString("wvc_captured_urls", "[]"));
@@ -2038,7 +2038,7 @@ private void showManualIpDialog() {
     @Override
     protected void onDestroy() {
         try {
-            SharedPreferences prefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
+            SharedPreferences prefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE | MODE_MULTI_PROCESS);
             String previous = prefs.getString("diag_lifecycle_log", "");
             String stamp = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", java.util.Locale.US)
                     .format(new java.util.Date());
