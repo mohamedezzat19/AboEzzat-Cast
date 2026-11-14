@@ -427,6 +427,8 @@ public class MainActivity extends Activity {
         String clickPackage = diagnosticPrefs.getString("diag_last_click_package", "لا توجد بيانات");
         String clickText = diagnosticPrefs.getString("diag_last_click_text", "لا توجد بيانات");
         String wvcUrls = diagnosticPrefs.getString("wvc_captured_urls", "[]");
+        String lifecycleLog = diagnosticPrefs.getString("diag_lifecycle_log", "لا توجد أحداث لدورة حياة الخدمة بعد");
+        String lastLifecycle = diagnosticPrefs.getString("diag_last_lifecycle_event", "لا يوجد");
         int wvcCount = 0;
         try { wvcCount = new org.json.JSONArray(wvcUrls).length(); } catch (Exception ignored) {}
         boolean overlay = android.provider.Settings.canDrawOverlays(this);
@@ -449,7 +451,9 @@ public class MainActivity extends Activity {
                 + "روابط Web Video Caster: " + wvcUrls + "\n"
                 + "آخر نافذة نظام تم فحصها: " + clipboardHost + "\n"
                 + "هل عُثر على رابط HTTP/HTTPS في نافذة النظام؟ " + (systemClipboardMatch ? "نعم" : "لا") + "\n"
-                + "نتيجة عرض الفقاعة: " + bubbleResult;
+                + "نتيجة عرض الفقاعة: " + bubbleResult + "\\n"
+                + "آخر حدث لدورة حياة الخدمة: " + lastLifecycle + "\\n"
+                + "سجل تشغيل/إغلاق الخدمة والتطبيق:\\n" + lifecycleLog;
         new AlertDialog.Builder(this)
                 .setTitle("تشخيص مشكلة الفقاعة")
                 .setMessage(report)
@@ -2033,6 +2037,21 @@ private void showManualIpDialog() {
 
     @Override
     protected void onDestroy() {
+        try {
+            SharedPreferences prefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
+            String previous = prefs.getString("diag_lifecycle_log", "");
+            String stamp = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", java.util.Locale.US)
+                    .format(new java.util.Date());
+            String line = stamp + " | MAIN onDestroy | pid=" + android.os.Process.myPid();
+            String[] old = previous.isEmpty() ? new String[0] : previous.split("\\\\n");
+            StringBuilder log = new StringBuilder();
+            int start = Math.max(0, old.length - 11);
+            for (int i = start; i < old.length; i++) if (!old[i].isEmpty()) log.append(old[i]).append("\\\\n");
+            log.append(line);
+            prefs.edit().putString("diag_lifecycle_log", log.toString())
+                    .putString("diag_last_main_event", "MAIN onDestroy")
+                    .apply();
+        } catch (Exception ignored) {}
         super.onDestroy();
         slideHandler.removeCallbacks(slideRunnable);
         if (localServer != null) {
