@@ -5,6 +5,8 @@ import android.app.AlertDialog;
 import android.content.Intent;
 import android.graphics.Color;
 import android.net.VpnService;
+import android.net.Uri;
+import android.provider.Settings;
 import android.os.Bundle;
 import android.view.Gravity;
 import android.view.View;
@@ -79,15 +81,32 @@ public class VpnActivity extends Activity {
         root.addView(status, matchWrap());
 
         TextView help = new TextView(this);
-        help.setText("استورد ملف WireGuard بصيغة .conf من مزود VPN موثوق. سيُحفظ داخل مساحة التطبيق الخاصة، ولن نعرض مفاتيح الاتصال على الشاشة.");
+        help.setText("يمكنك إنشاء ملف WireGuard مجاني من Proton VPN بعد إنشاء حساب مجاني. سجّل الدخول في موقع Proton الرسمي، ثم Downloads ثم WireGuard configuration، واختر الخادم المجاني ونزّل ملف .conf. لا تدخل كلمة مرور حسابك داخل AboEzzat Cast.");
         help.setTextColor(Color.rgb(195, 211, 232));
         help.setTextSize(14);
         help.setPadding(dp(4), dp(18), dp(4), dp(18));
         root.addView(help, matchWrap());
 
+        Button providerButton = makeButton("فتح موقع Proton لإنشاء ملف VPN");
+        providerButton.setOnClickListener(v -> openProtonConfigPage());
+        root.addView(providerButton, matchWrap());
+
         importButton = makeButton("استيراد ملف VPN (.conf)");
         importButton.setOnClickListener(v -> chooseConfig());
         root.addView(importButton, matchWrap());
+
+        Button leakProtectionButton = makeButton("إعداد منع الاتصال بدون VPN");
+        leakProtectionButton.setOnClickListener(v -> openVpnSystemSettings());
+        LinearLayout.LayoutParams lp = matchWrap();
+        lp.topMargin = dp(10);
+        root.addView(leakProtectionButton, lp);
+
+        TextView scope = new TextView(this);
+        scope.setText("تنبيه: محرك WireGuard الحالي ينشئ نفق Android على مستوى الجهاز، وليس المتصفح وحده. ويمكنك من إعدادات Android تفعيل VPN دائمًا ومنع الاتصالات بدونه إذا كان جهازك يدعم ذلك.");
+        scope.setTextColor(Color.rgb(255, 196, 120));
+        scope.setTextSize(13);
+        scope.setPadding(dp(4), dp(16), dp(4), dp(12));
+        root.addView(scope, matchWrap());
 
         connectButton = makeButton("تشغيل VPN");
         connectButton.setOnClickListener(v -> toggleVpn());
@@ -112,6 +131,29 @@ public class VpnActivity extends Activity {
         b.setTextSize(15);
         b.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.rgb(24, 75, 120)));
         return b;
+    }
+
+    private void openProtonConfigPage() {
+        new AlertDialog.Builder(this)
+                .setTitle("إنشاء ملف Proton VPN مجاني")
+                .setMessage("1) افتح موقع Proton الرسمي وسجّل الدخول أو أنشئ حسابًا مجانيًا.\\n2) افتح Downloads ثم WireGuard configuration.\\n3) اختر خادمًا متاحًا للخطة المجانية واضغط Create ثم Download.\\n4) ارجع إلى AboEzzat Cast واستورد ملف .conf.\\n\\nلن نطلب منك كلمة المرور أو نخزنها. الخطة المجانية لا تضمن اختيار أي دولة بعينها.")
+                .setPositiveButton("فتح موقع Proton", (d, w) -> {
+                    try {
+                        startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://account.protonvpn.com/downloads")));
+                    } catch (Exception e) {
+                        showError("تعذر فتح موقع Proton: " + safeMessage(e));
+                    }
+                })
+                .setNegativeButton("إلغاء", null)
+                .show();
+    }
+
+    private void openVpnSystemSettings() {
+        try {
+            startActivity(new Intent(Settings.ACTION_VPN_SETTINGS));
+        } catch (Exception e) {
+            showError("تعذر فتح إعدادات VPN في Android: " + safeMessage(e));
+        }
     }
 
     private void chooseConfig() {
@@ -198,8 +240,19 @@ public class VpnActivity extends Activity {
         }
     }
 
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (status != null) renderState();
+    }
+
     private void renderState() {
         boolean hasConfig = new File(getFilesDir(), CONFIG_FILE).isFile();
+        try {
+            connected = backend != null && tunnel != null && backend.getState(tunnel) == Tunnel.State.UP;
+        } catch (Exception ignored) {
+            // Keep the last known state if the backend is temporarily unavailable.
+        }
         status.setText(connected ? "● VPN متصل" : "○ VPN غير متصل");
         status.setTextColor(connected ? Color.rgb(74, 222, 128) : Color.rgb(255, 210, 80));
         connectButton.setText(connected ? "إيقاف VPN" : "تشغيل VPN");
