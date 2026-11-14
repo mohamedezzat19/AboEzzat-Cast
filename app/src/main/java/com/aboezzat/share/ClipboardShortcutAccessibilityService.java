@@ -384,7 +384,14 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
                 .putLong("wvc_last_capture_time", System.currentTimeMillis())
                 .putInt("wvc_capture_count", found.size())
                 .apply();
-        if (android.provider.Settings.canDrawOverlays(this)) handler.post(this::showBubble);
+        if (found.isEmpty()) {
+            handler.post(() -> {
+                removeBubble();
+                removeCaptureOverlay();
+            });
+        } else if (android.provider.Settings.canDrawOverlays(this)) {
+            handler.post(this::showBubble);
+        }
     }
 
     // Takes ownership of root and recycles every visited accessibility node.
@@ -626,12 +633,11 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
             getSharedPreferences(PREFS, MODE_PRIVATE).edit()
                     .putString("diag_last_bubble_result", "نجح عرض الفقاعة")
                     .apply();
-            // Keep a captured-link badge available until the user opens or dismisses it.
-            // Clipboard-only shortcut bubbles retain their original short timeout.
-            if (pendingWvcCount == 0) {
-                hideRunnable = this::removeBubble;
-                handler.postDelayed(hideRunnable, VISIBLE_MS);
-            }
+            // Every bubble is a temporary indicator: disappear after exactly
+            // three seconds unless the user opens it first. A fresh capture calls
+            // showBubble() again and restarts this timeout.
+            hideRunnable = this::removeBubble;
+            handler.postDelayed(hideRunnable, VISIBLE_MS);
         } catch (Exception e) {
             getSharedPreferences(PREFS, MODE_PRIVATE).edit()
                     .putString("diag_last_bubble_result",
@@ -767,23 +773,9 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
             topLine.addView(urlText, new android.widget.LinearLayout.LayoutParams(0, -2, 1));
             row.addView(topLine);
 
-            android.widget.TextView send = new android.widget.TextView(this);
-            send.setText("➤   إرسال مباشر إلى Receiver");
-            send.setTextColor(Color.WHITE);
-            send.setTextSize(12);
-            send.setTypeface(null, android.graphics.Typeface.BOLD);
-            send.setGravity(Gravity.CENTER);
-            GradientDrawable sendBg = new GradientDrawable(
-                    GradientDrawable.Orientation.LEFT_RIGHT,
-                    new int[]{Color.rgb(28, 112, 220), Color.rgb(31, 145, 204)});
-            sendBg.setCornerRadius(dp(11));
-            send.setBackground(sendBg);
-            send.setPadding(dp(10), dp(10), dp(10), dp(10));
-            android.widget.LinearLayout.LayoutParams sendParams =
-                    new android.widget.LinearLayout.LayoutParams(dp(76), dp(34));
-            sendParams.leftMargin = dp(6);
-            row.addView(send, sendParams);
-            send.setOnClickListener(v -> sendCapturedUrl(selected));
+            row.setContentDescription("إرسال الرابط رقم " + (i + 1) + " إلى Receiver");
+            row.setClickable(true);
+            row.setOnClickListener(v -> sendCapturedUrl(selected));
 
             android.widget.LinearLayout.LayoutParams rowParams =
                     new android.widget.LinearLayout.LayoutParams(-1, dp(48));
