@@ -1448,6 +1448,15 @@ public class BrowserActivity extends Activity {
                 "if(!a)return;var target=(a.getAttribute('target')||'').toLowerCase();if(target==='_blank'){" +
                 "var href=a.href||a.getAttribute('href')||'';if(isAd(href)){e.preventDefault();e.stopImmediatePropagation();return;}" +
                 "if(/^https?:/i.test(href)){e.preventDefault();e.stopImmediatePropagation();location.href=href;}}},true);" +
+                // Some legitimate player/server selectors submit target=_blank forms.
+                // Route those user-triggered HTTP(S) forms into this tab while still
+                // rejecting known ad destinations; native pop-up windows stay blocked.
+                "document.addEventListener('submit',function(e){var f=e.target;if(!f||!f.getAttribute)return;" +
+                "var t=(f.getAttribute('target')||'').toLowerCase();if(t!=='_blank')return;" +
+                "var raw=f.getAttribute('action')||location.href;var dest;try{dest=new URL(raw,location.href);}catch(x){return;}" +
+                "if(dest.protocol!=='http:'&&dest.protocol!=='https:')return;" +
+                "e.preventDefault();e.stopImmediatePropagation();if(isAd(dest.href))return;" +
+                "try{f.removeAttribute('target');}catch(x){}location.href=dest.href;},true);" +
                 "function clean(){try{var nodes=document.querySelectorAll('[class],[id]');for(var i=0;i<nodes.length;i++){" +
                 "var n=nodes[i],s=((n.id||'')+' '+(typeof n.className==='string'?n.className:'')).toLowerCase();" +
                 "if(/(^|[-_ ])(ad|ads|advert|advertisement|banner-ad|popup-ad|popunder)([-_ ]|$)/.test(s)){" +
