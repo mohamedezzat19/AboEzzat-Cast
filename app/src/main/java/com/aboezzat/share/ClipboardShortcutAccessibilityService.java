@@ -33,7 +33,7 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
 
     private void recordLifecycle(String event) {
         try {
-            android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+            android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE | MODE_MULTI_PROCESS);
             String previous = prefs.getString("diag_lifecycle_log", "");
             String stamp = new java.text.SimpleDateFormat(
                     "yyyy-MM-dd HH:mm:ss.SSS", java.util.Locale.US)
@@ -67,7 +67,7 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
         super.onServiceConnected();
         recordLifecycle("SERVICE onServiceConnected");
         windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
-        getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+        getSharedPreferences(PREFS, MODE_PRIVATE | MODE_MULTI_PROCESS).edit()
                 .putBoolean("diag_service_connected", true)
                 .putInt("diag_clipboard_count", 0)
                 .putString("diag_last_clipboard_mime", "لم يصل حدث نسخ بعد")
@@ -94,7 +94,7 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
                 // Detect text clipboard changes here; inspect the URL only after
                 // the user taps the bubble and the app is foregrounded.
                 try {
-                    int count = getSharedPreferences(PREFS, MODE_PRIVATE)
+                    int count = getSharedPreferences(PREFS, MODE_PRIVATE | MODE_MULTI_PROCESS)
                             .getInt("diag_clipboard_count", 0) + 1;
                     android.content.ClipDescription description =
                             clipboardManager.getPrimaryClipDescription();
@@ -105,7 +105,7 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
                             seenMimeTypes.append(description.getMimeType(i));
                         }
                     }
-                    getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                    getSharedPreferences(PREFS, MODE_PRIVATE | MODE_MULTI_PROCESS).edit()
                             .putInt("diag_clipboard_count", count)
                             .putString("diag_last_clipboard_mime",
                                     seenMimeTypes.length() == 0 ? "لا يوجد MIME ظاهر" : seenMimeTypes.toString())
@@ -146,12 +146,12 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
             };
             try {
                 clipboardManager.addPrimaryClipChangedListener(clipboardListener);
-                getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                getSharedPreferences(PREFS, MODE_PRIVATE | MODE_MULTI_PROCESS).edit()
                         .putBoolean("diag_clipboard_listener_registered", true)
                         .putString("diag_clipboard_listener_status", "تم تسجيل مستمع الحافظة بنجاح")
                         .apply();
             } catch (Exception registrationError) {
-                getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                getSharedPreferences(PREFS, MODE_PRIVATE | MODE_MULTI_PROCESS).edit()
                         .putBoolean("diag_clipboard_listener_registered", false)
                         .putString("diag_clipboard_listener_status",
                                 "فشل التسجيل: " + registrationError.getClass().getSimpleName())
@@ -165,7 +165,7 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
         if (android.provider.Settings.canDrawOverlays(this)) {
             try {
                 org.json.JSONArray pending = new org.json.JSONArray(
-                        getSharedPreferences(PREFS, MODE_PRIVATE)
+                        getSharedPreferences(PREFS, MODE_PRIVATE | MODE_MULTI_PROCESS)
                                 .getString("wvc_captured_urls", "[]"));
                 if (pending.length() > 0) {
                     handler.postDelayed(this::showBubble, 350L);
@@ -198,7 +198,7 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
                     // A new window state means a new WVC page/session: discard the
                     // previous page's links before reading the current page.
                     if (type == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-                        getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                        getSharedPreferences(PREFS, MODE_PRIVATE | MODE_MULTI_PROCESS).edit()
                                 .putString("wvc_captured_urls", "[]")
                                 .putInt("wvc_capture_count", 0).apply();
                     }
@@ -211,7 +211,7 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
         // Opening our own screens can expose words such as "copy" and must
         // never be counted as a user's copy action.
         if (getPackageName().equals(eventPackage)) {
-            getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+            getSharedPreferences(PREFS, MODE_PRIVATE | MODE_MULTI_PROCESS).edit()
                     .putString("diag_last_ignored_copy_package", eventPackage)
                     .apply();
             return;
@@ -229,7 +229,7 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
                 && eventType == AccessibilityEvent.TYPE_VIEW_CONTEXT_CLICKED);
 
         if (clickEvent && !systemClipboardHost) {
-            android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+            android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE | MODE_MULTI_PROCESS);
             prefs.edit()
                     .putInt("diag_source_click_count",
                             prefs.getInt("diag_source_click_count", 0) + 1)
@@ -250,9 +250,9 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
             if (now - lastSystemClipboardScanAt >= 900L) {
                 lastSystemClipboardScanAt = now;
                 copyConfirmed = hasSystemClipboardUrl();
-                getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                getSharedPreferences(PREFS, MODE_PRIVATE | MODE_MULTI_PROCESS).edit()
                         .putInt("diag_systemui_event_count",
-                                getSharedPreferences(PREFS, MODE_PRIVATE)
+                                getSharedPreferences(PREFS, MODE_PRIVATE | MODE_MULTI_PROCESS)
                                         .getInt("diag_systemui_event_count", 0) + 1)
                         .putBoolean("diag_last_systemui_url_match", copyConfirmed)
                         .putString("diag_last_clipboard_host", eventPackage)
@@ -261,12 +261,12 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
         }
 
         android.content.SharedPreferences.Editor diagnosticEditor =
-                getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                getSharedPreferences(PREFS, MODE_PRIVATE | MODE_MULTI_PROCESS).edit()
                         .putString("diag_last_accessibility_package",
                                 packageName == null ? "غير معروف" : packageName.toString())
                         .putInt("diag_last_accessibility_type", event.getEventType());
         if (copyConfirmed) {
-            int copyCount = getSharedPreferences(PREFS, MODE_PRIVATE)
+            int copyCount = getSharedPreferences(PREFS, MODE_PRIVATE | MODE_MULTI_PROCESS)
                     .getInt("diag_accessibility_copy_count", 0) + 1;
             diagnosticEditor.putInt("diag_accessibility_copy_count", copyCount)
                     .putString("diag_last_copy_package",
@@ -397,7 +397,7 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
             if (last != null) found.remove(last);
         }
 
-        android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE | MODE_MULTI_PROCESS);
         org.json.JSONArray saved = new org.json.JSONArray();
         for (String value : found) saved.put(value);
         String nextSnapshot = saved.toString();
@@ -564,7 +564,7 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
         removeBubble();
 
         int size = dp(48);
-        android.content.SharedPreferences bubblePrefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        android.content.SharedPreferences bubblePrefs = getSharedPreferences(PREFS, MODE_PRIVATE | MODE_MULTI_PROCESS);
         int pendingWvcCount = 0;
         try {
             pendingWvcCount = new org.json.JSONArray(
@@ -616,8 +616,8 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
                         | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
                 PixelFormat.TRANSLUCENT);
         bubbleParams.gravity = Gravity.TOP | Gravity.START;
-        bubbleParams.x = getSharedPreferences(PREFS, MODE_PRIVATE).getInt("clipboard_bubble_x", dp(16));
-        bubbleParams.y = getSharedPreferences(PREFS, MODE_PRIVATE).getInt("clipboard_bubble_y", dp(220));
+        bubbleParams.x = getSharedPreferences(PREFS, MODE_PRIVATE | MODE_MULTI_PROCESS).getInt("clipboard_bubble_x", dp(16));
+        bubbleParams.y = getSharedPreferences(PREFS, MODE_PRIVATE | MODE_MULTI_PROCESS).getInt("clipboard_bubble_y", dp(220));
 
         bubbleContent.setOnTouchListener((view, event) -> {
             switch (event.getAction()) {
@@ -641,7 +641,7 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
                     return true;
                 case MotionEvent.ACTION_UP:
                     if (dragged) {
-                        getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                        getSharedPreferences(PREFS, MODE_PRIVATE | MODE_MULTI_PROCESS).edit()
                                 .putInt("clipboard_bubble_x", bubbleParams.x)
                                 .putInt("clipboard_bubble_y", bubbleParams.y).apply();
                     } else {
@@ -655,7 +655,7 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
         bubble = bubbleContent;
         try {
             windowManager.addView(bubble, bubbleParams);
-            getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+            getSharedPreferences(PREFS, MODE_PRIVATE | MODE_MULTI_PROCESS).edit()
                     .putString("diag_last_bubble_result", "نجح عرض الفقاعة")
                     .apply();
             // Every bubble is a temporary indicator: disappear after exactly
@@ -664,7 +664,7 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
             hideRunnable = this::removeBubble;
             handler.postDelayed(hideRunnable, VISIBLE_MS);
         } catch (Exception e) {
-            getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+            getSharedPreferences(PREFS, MODE_PRIVATE | MODE_MULTI_PROCESS).edit()
                     .putString("diag_last_bubble_result",
                             "فشل عرض الفقاعة: " + e.getClass().getSimpleName())
                     .apply();
@@ -674,7 +674,7 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
     }
 
     private void launchPendingCaptureListOrClipboard() {
-        android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE | MODE_MULTI_PROCESS);
         boolean hasPending = false;
         try {
             hasPending = new org.json.JSONArray(prefs.getString("wvc_captured_urls", "[]")).length() > 0;
@@ -700,7 +700,7 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
         if (windowManager == null) return;
         removeCaptureOverlay();
 
-        android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE | MODE_MULTI_PROCESS);
         java.util.ArrayList<String> urls = new java.util.ArrayList<>();
         try {
             org.json.JSONArray array = new org.json.JSONArray(prefs.getString("wvc_captured_urls", "[]"));
@@ -837,7 +837,9 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
         clear.setOnClickListener(v -> {
             prefs.edit().remove("wvc_captured_urls").putInt("wvc_capture_count", 0).apply();
             removeCaptureOverlay();
-            showBubble();
+            // Clearing the final captured URL closes the shortcut as well.
+            // Do not recreate an empty bubble that opens a dead/empty list.
+            removeBubble();
         });
         card.addView(footer);
 
@@ -866,7 +868,7 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
         // Close the floating list immediately on selection; network delivery
         // continues in the background.
         removeCaptureOverlay();
-        String tvIp = getSharedPreferences(PREFS, MODE_PRIVATE).getString("tv_ip", "").trim();
+        String tvIp = getSharedPreferences(PREFS, MODE_PRIVATE | MODE_MULTI_PROCESS).getString("tv_ip", "").trim();
         if (tvIp.isEmpty()) {
             android.widget.Toast.makeText(this, "يرجى ضبط عنوان AboEzzat Receiver أولاً",
                     android.widget.Toast.LENGTH_LONG).show();
@@ -909,7 +911,7 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
     }
 
     private void removeCapturedUrl(String selectedUrl) {
-        android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE | MODE_MULTI_PROCESS);
         try {
             org.json.JSONArray old = new org.json.JSONArray(prefs.getString("wvc_captured_urls", "[]"));
             org.json.JSONArray updated = new org.json.JSONArray();
@@ -974,7 +976,7 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
     @Override
     public void onDestroy() {
         recordLifecycle("SERVICE onDestroy");
-        getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+        getSharedPreferences(PREFS, MODE_PRIVATE | MODE_MULTI_PROCESS).edit()
                 .putBoolean("diag_service_connected", false).apply();
         removeBubble();
         removeCaptureOverlay();
