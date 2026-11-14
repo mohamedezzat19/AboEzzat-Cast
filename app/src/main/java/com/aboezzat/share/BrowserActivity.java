@@ -1453,10 +1453,12 @@ public class BrowserActivity extends Activity {
                 // rejecting known ad destinations; native pop-up windows stay blocked.
                 "document.addEventListener('submit',function(e){var f=e.target;if(!f||!f.getAttribute)return;" +
                 "var t=(f.getAttribute('target')||'').toLowerCase();if(t!=='_blank')return;" +
+                "if((f.method||'get').toLowerCase()!=='get')return;" +
                 "var raw=f.getAttribute('action')||location.href;var dest;try{dest=new URL(raw,location.href);}catch(x){return;}" +
                 "if(dest.protocol!=='http:'&&dest.protocol!=='https:')return;" +
+                "var data;try{data=new FormData(f);data.forEach(function(v,k){if(typeof v==='string')dest.searchParams.append(k,v);});}catch(x){}" +
                 "e.preventDefault();e.stopImmediatePropagation();if(isAd(dest.href))return;" +
-                "try{f.removeAttribute('target');}catch(x){}location.href=dest.href;},true);" +
+                "location.href=dest.href;},true);" +
                 "function clean(){try{var nodes=document.querySelectorAll('[class],[id]');for(var i=0;i<nodes.length;i++){" +
                 "var n=nodes[i],s=((n.id||'')+' '+(typeof n.className==='string'?n.className:'')).toLowerCase();" +
                 "if(/(^|[-_ ])(ad|ads|advert|advertisement|banner-ad|popup-ad|popunder)([-_ ]|$)/.test(s)){" +
