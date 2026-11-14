@@ -175,7 +175,7 @@ public class VpnActivity extends Activity {
             raw = new String(readAll(in), StandardCharsets.UTF_8);
         }
         StringBuilder cleaned = new StringBuilder();
-        String[] lines = raw.replace("\\r", "").split("\\n");
+        String[] lines = raw.replace("\r", "").split("\n");
         boolean inInterface = false;
         boolean foundInterface = false;
         boolean inserted = false;
@@ -184,7 +184,7 @@ public class VpnActivity extends Activity {
             if (trimmed.matches("(?i)^\\[Interface\\]$")) {
                 inInterface = true;
                 foundInterface = true;
-                cleaned.append(line).append('\\n');
+                cleaned.append(line).append('\n');
                 continue;
             }
             if (trimmed.matches("(?i)^\\[.+\\]$")) {
@@ -195,7 +195,7 @@ public class VpnActivity extends Activity {
                 inInterface = false;
             }
             if (inInterface && trimmed.matches("(?i)^(IncludedApplications|ExcludedApplications)\\s*=.*$")) continue;
-            cleaned.append(line).append('\\n');
+            cleaned.append(line).append('\n');
         }
         if (!foundInterface) throw new IllegalArgumentException("ملف WireGuard لا يحتوي على [Interface].");
         if (!inserted) appendIncludedApps(cleaned);
@@ -210,7 +210,7 @@ public class VpnActivity extends Activity {
             if (i > 0) target.append(", ");
             target.append(selectedApps.get(i));
         }
-        target.append('\\n');
+        target.append('\n');
     }
 
     private void loadProfiles() {
