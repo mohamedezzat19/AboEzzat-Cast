@@ -54,7 +54,7 @@
 
         <service
             android:name=".ClipboardShortcutAccessibilityService"
-            android:label="اختصار AboEzzat Cast عند النسخ"
+            android:label="التقاط روابط AboEzzat Cast"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
             android:exported="true">
             <intent-filter>
