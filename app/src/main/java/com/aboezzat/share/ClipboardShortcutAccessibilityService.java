@@ -22,6 +22,7 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
     private WindowManager windowManager;
     private View bubble;
     private WindowManager.LayoutParams bubbleParams;
+    private View capturePanel;
     private Runnable hideRunnable;
     private float downRawX, downRawY;
     private int downX, downY;
@@ -549,8 +550,12 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
             getSharedPreferences(PREFS, MODE_PRIVATE).edit()
                     .putString("diag_last_bubble_result", "نجح عرض الفقاعة")
                     .apply();
-            hideRunnable = this::removeBubble;
-            handler.postDelayed(hideRunnable, VISIBLE_MS);
+            // Keep a captured-link badge available until the user opens or dismisses it.
+            // Clipboard-only shortcut bubbles retain their original short timeout.
+            if (pendingWvcCount == 0) {
+                hideRunnable = this::removeBubble;
+                handler.postDelayed(hideRunnable, VISIBLE_MS);
+            }
         } catch (Exception e) {
             getSharedPreferences(PREFS, MODE_PRIVATE).edit()
                     .putString("diag_last_bubble_result",
@@ -568,16 +573,218 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
             hasPending = new org.json.JSONArray(prefs.getString("wvc_captured_urls", "[]")).length() > 0;
         } catch (Exception ignored) {}
         removeBubble();
+        if (hasPending) {
+            showCaptureOverlay();
+            return;
+        }
         Intent launch = new Intent(this, MainActivity.class);
         launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
                 | Intent.FLAG_ACTIVITY_MULTIPLE_TASK
                 | Intent.FLAG_ACTIVITY_NO_ANIMATION);
-        if (hasPending) {
-            launch.putExtra("web_video_caster_capture_shortcut", true);
-        } else {
-            launch.putExtra("clipboard_cast_shortcut", true);
-        }
+        launch.putExtra("clipboard_cast_shortcut", true);
         try { startActivity(launch); } catch (Exception ignored) {}
+    }
+
+    // Web Video Caster links are shown in a true system overlay. Opening the
+    // captured-link list does not launch an Activity or create a recent-task card.
+    private void showCaptureOverlay() {
+        if (!android.provider.Settings.canDrawOverlays(this)) return;
+        if (windowManager == null) windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
+        if (windowManager == null) return;
+        removeCaptureOverlay();
+
+        android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        java.util.ArrayList<String> urls = new java.util.ArrayList<>();
+        try {
+            org.json.JSONArray array = new org.json.JSONArray(prefs.getString("wvc_captured_urls", "[]"));
+            for (int i = 0; i < array.length(); i++) {
+                String value = array.optString(i, "");
+                if (value.startsWith("http://") || value.startsWith("https://")) urls.add(value);
+            }
+        } catch (Exception ignored) {}
+
+        android.widget.LinearLayout card = new android.widget.LinearLayout(this);
+        card.setOrientation(android.widget.LinearLayout.VERTICAL);
+        card.setPadding(dp(14), dp(12), dp(14), dp(12));
+        GradientDrawable cardBg = new GradientDrawable();
+        cardBg.setColor(Color.rgb(24, 29, 39));
+        cardBg.setCornerRadius(dp(18));
+        cardBg.setStroke(dp(1), Color.rgb(70, 126, 210));
+        card.setBackground(cardBg);
+        card.setElevation(dp(14));
+
+        android.widget.LinearLayout header = new android.widget.LinearLayout(this);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        android.widget.TextView title = new android.widget.TextView(this);
+        title.setText("روابط Web Video Caster  •  " + urls.size());
+        title.setTextColor(Color.WHITE);
+        title.setTextSize(16);
+        title.setTypeface(null, android.graphics.Typeface.BOLD);
+        header.addView(title, new android.widget.LinearLayout.LayoutParams(0, dp(42), 1));
+        android.widget.TextView close = new android.widget.TextView(this);
+        close.setText("✕");
+        close.setTextColor(Color.WHITE);
+        close.setTextSize(20);
+        close.setGravity(Gravity.CENTER);
+        header.addView(close, new android.widget.LinearLayout.LayoutParams(dp(38), dp(42)));
+        close.setOnClickListener(v -> removeCaptureOverlay());
+        card.addView(header);
+
+        android.widget.ScrollView scroll = new android.widget.ScrollView(this);
+        android.widget.LinearLayout rows = new android.widget.LinearLayout(this);
+        rows.setOrientation(android.widget.LinearLayout.VERTICAL);
+        for (int i = 0; i < urls.size(); i++) {
+            final String selected = urls.get(i);
+            android.widget.LinearLayout row = new android.widget.LinearLayout(this);
+            row.setOrientation(android.widget.LinearLayout.VERTICAL);
+            row.setPadding(dp(9), dp(8), dp(9), dp(8));
+            GradientDrawable rowBg = new GradientDrawable();
+            rowBg.setColor(Color.rgb(38, 46, 60));
+            rowBg.setCornerRadius(dp(12));
+            row.setBackground(rowBg);
+            android.widget.TextView urlText = new android.widget.TextView(this);
+            urlText.setText((i + 1) + "  •  " + selected);
+            urlText.setTextColor(Color.WHITE);
+            urlText.setTextSize(12);
+            urlText.setMaxLines(3);
+            urlText.setEllipsize(android.text.TextUtils.TruncateAt.MIDDLE);
+            row.addView(urlText);
+            android.widget.LinearLayout actions = new android.widget.LinearLayout(this);
+            actions.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
+            android.widget.Button send = new android.widget.Button(this);
+            send.setText("إرسال إلى Receiver");
+            send.setTextSize(11);
+            send.setOnClickListener(v -> sendCapturedUrl(selected));
+            actions.addView(send);
+            android.widget.Button browser = new android.widget.Button(this);
+            browser.setText("المتصفح");
+            browser.setTextSize(11);
+            browser.setOnClickListener(v -> openCapturedUrlInBrowser(selected));
+            actions.addView(browser);
+            row.addView(actions);
+            android.widget.LinearLayout.LayoutParams rowParams =
+                    new android.widget.LinearLayout.LayoutParams(-1, -2);
+            rowParams.bottomMargin = dp(7);
+            rows.addView(row, rowParams);
+        }
+        if (urls.isEmpty()) {
+            android.widget.TextView empty = new android.widget.TextView(this);
+            empty.setText("لا توجد روابط ملتقطة حاليًا");
+            empty.setTextColor(Color.LTGRAY);
+            empty.setPadding(dp(8), dp(16), dp(8), dp(16));
+            rows.addView(empty);
+        }
+        scroll.addView(rows);
+        card.addView(scroll, new android.widget.LinearLayout.LayoutParams(-1, dp(270)));
+
+        android.widget.LinearLayout footer = new android.widget.LinearLayout(this);
+        footer.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
+        android.widget.Button clear = new android.widget.Button(this);
+        clear.setText("مسح القائمة");
+        clear.setTextSize(11);
+        clear.setOnClickListener(v -> {
+            prefs.edit().remove("wvc_captured_urls").putInt("wvc_capture_count", 0).apply();
+            removeCaptureOverlay();
+            showBubble();
+        });
+        footer.addView(clear);
+        card.addView(footer);
+
+        int overlayType = Build.VERSION.SDK_INT >= 26
+                ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                : WindowManager.LayoutParams.TYPE_PHONE;
+        WindowManager.LayoutParams params = new WindowManager.LayoutParams(
+                dp(320), WindowManager.LayoutParams.WRAP_CONTENT, overlayType,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                        | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+                        | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+                PixelFormat.TRANSLUCENT);
+        params.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
+        params.y = dp(90);
+        capturePanel = card;
+        try {
+            windowManager.addView(capturePanel, params);
+        } catch (Exception e) {
+            capturePanel = null;
+        }
+    }
+
+    private void sendCapturedUrl(String mediaUrl) {
+        String tvIp = getSharedPreferences(PREFS, MODE_PRIVATE).getString("tv_ip", "").trim();
+        if (tvIp.isEmpty()) {
+            android.widget.Toast.makeText(this, "يرجى ضبط عنوان AboEzzat Receiver أولاً",
+                    android.widget.Toast.LENGTH_LONG).show();
+            return;
+        }
+        try {
+            String endpoint = tvIp;
+            if (!endpoint.startsWith("http://") && !endpoint.startsWith("https://"))
+                endpoint = "http://" + endpoint;
+            if (!endpoint.matches("(?i)^https?://[^/]+:\\d+.*$")) endpoint += ":8081";
+            final String requestUrl = endpoint + "/?url="
+                    + java.net.URLEncoder.encode(mediaUrl, "UTF-8");
+            new Thread(() -> {
+                java.net.HttpURLConnection connection = null;
+                boolean ok = false;
+                try {
+                    connection = (java.net.HttpURLConnection) new java.net.URL(requestUrl).openConnection();
+                    connection.setConnectTimeout(7000);
+                    connection.setReadTimeout(7000);
+                    connection.setRequestMethod("GET");
+                    ok = connection.getResponseCode() >= 200 && connection.getResponseCode() < 400;
+                } catch (Exception ignored) {
+                } finally {
+                    if (connection != null) connection.disconnect();
+                }
+                final boolean accepted = ok;
+                handler.post(() -> {
+                    android.widget.Toast.makeText(this,
+                            accepted ? "تم إرسال الرابط إلى Receiver" : "تعذر إرسال الرابط؛ راجع اتصال Receiver",
+                            android.widget.Toast.LENGTH_SHORT).show();
+                    if (accepted) {
+                        removeCapturedUrl(mediaUrl);
+                        removeCaptureOverlay();
+                    }
+                });
+            }).start();
+        } catch (Exception e) {
+            android.widget.Toast.makeText(this, "الرابط غير صالح للإرسال",
+                    android.widget.Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void removeCapturedUrl(String selectedUrl) {
+        android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        try {
+            org.json.JSONArray old = new org.json.JSONArray(prefs.getString("wvc_captured_urls", "[]"));
+            org.json.JSONArray updated = new org.json.JSONArray();
+            for (int i = 0; i < old.length(); i++) {
+                String value = old.optString(i, "");
+                if (!selectedUrl.equals(value)) updated.put(value);
+            }
+            prefs.edit().putString("wvc_captured_urls", updated.toString())
+                    .putInt("wvc_capture_count", updated.length()).apply();
+        } catch (Exception ignored) {}
+    }
+
+    private void openCapturedUrlInBrowser(String url) {
+        try {
+            Intent intent = new Intent(this, BrowserActivity.class);
+            intent.putExtra("url", url);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS);
+            startActivity(intent);
+            removeCaptureOverlay();
+        } catch (Exception e) {
+            android.widget.Toast.makeText(this, "تعذر فتح الرابط في المتصفح",
+                    android.widget.Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void removeCaptureOverlay() {
+        if (capturePanel != null && windowManager != null) {
+            try { windowManager.removeView(capturePanel); } catch (Exception ignored) {}
+        }
+        capturePanel = null;
     }
 
     private void launchCastFromClipboard() {
@@ -607,13 +814,14 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
     }
 
     @Override
-    public void onInterrupt() { removeBubble(); }
+    public void onInterrupt() { removeBubble(); removeCaptureOverlay(); }
 
     @Override
     public void onDestroy() {
         getSharedPreferences(PREFS, MODE_PRIVATE).edit()
                 .putBoolean("diag_service_connected", false).apply();
         removeBubble();
+        removeCaptureOverlay();
         if (clipboardManager != null && clipboardListener != null) {
             try { clipboardManager.removePrimaryClipChangedListener(clipboardListener); }
             catch (Exception ignored) {}
