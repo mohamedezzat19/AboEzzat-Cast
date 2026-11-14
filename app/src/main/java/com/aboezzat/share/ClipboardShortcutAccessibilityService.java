@@ -39,11 +39,11 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
                     "yyyy-MM-dd HH:mm:ss.SSS", java.util.Locale.US)
                     .format(new java.util.Date());
             String line = stamp + " | " + event + " | pid=" + android.os.Process.myPid();
-            String[] old = previous.isEmpty() ? new String[0] : previous.split("\\n");
+            String[] old = previous.isEmpty() ? new String[0] : previous.split("\n");
             StringBuilder log = new StringBuilder();
             int start = Math.max(0, old.length - 11);
             for (int i = start; i < old.length; i++) {
-                if (!old[i].isEmpty()) log.append(old[i]).append("\\n");
+                if (!old[i].isEmpty()) log.append(old[i]).append("\n");
             }
             log.append(line);
             prefs.edit().putString("diag_lifecycle_log", log.toString())
