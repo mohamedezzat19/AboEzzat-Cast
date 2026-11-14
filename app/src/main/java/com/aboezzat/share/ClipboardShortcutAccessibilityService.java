@@ -367,10 +367,10 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
     private void addUrlsFromText(java.util.Set<String> target, CharSequence value) {
         if (value == null || target.size() >= 12) return;
         java.util.regex.Matcher matcher = java.util.regex.Pattern
-                .compile("(?i)https?://[^\\\\s<>\\\\\\"']+")
+                .compile("(?i)https?://[^\\s<>\\\"']+")
                 .matcher(value);
         while (matcher.find() && target.size() < 12) {
-            String candidate = matcher.group().replaceAll("[\\\\]),}،.؛!?]+$", "");
+            String candidate = matcher.group().replaceAll("[\\]),}،.؛!?]+$", "");
             try {
                 android.net.Uri uri = android.net.Uri.parse(candidate);
                 String host = uri.getHost();
