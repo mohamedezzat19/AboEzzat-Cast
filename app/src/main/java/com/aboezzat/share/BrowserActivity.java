@@ -1043,7 +1043,7 @@ public class BrowserActivity extends Activity {
                 "function send(u,title,poster){try{if(!u||!/^https?:/i.test(u))return;var l=u.toLowerCase();" +
                 "if(/\\.(jpg|jpeg|png|webp|gif|bmp|svg|ts|m4s|js|css|woff2?)(?:[?#]|$)/i.test(l))return;" +
                 "if(/\\.mp4(?:[?#]|$)/i.test(l))window.AboEzzatBridge.onCapturedCandidateTrack(u,title,poster||'');" +
-                "else if(/\\.(m3u8|mpd|m4v|webm|flv|mov)(?:[?#]|$)/i.test(l)||/mime(?:_|-)?type=video|mime=video|type=video|videoplayback|video\\/|pull-/i.test(l))" +
+                "else if(/\\.(m3u8|mpd|m4v|webm|flv|mov)(?:[?#]|$)/i.test(l)||/mime(?:_|-)?type=video|mime=video|type=video|content[_-]?type=video|contenttype=video|application\\/(?:vnd\\.apple\\.mpegurl|x-mpegurl|dash\\+xml)|format=(?:m3u8|mpd)|playlist\\.m3u8|chunklist|videoplayback|video\\/|pull-/i.test(l))" +
                 "window.AboEzzatBridge.onCapturedVideoTrack(u,title,poster||'');}catch(e){}}" +
                 "function scan(w,seen){try{if(!w||seen.indexOf(w)!==-1)return;seen.push(w);var d=w.document;if(!d)return;" +
                 "var title=d.title||document.title||'فيديو قيد التشغيل';" +
@@ -1209,6 +1209,10 @@ public class BrowserActivity extends Activity {
                 || lower.contains("mime_type=video") || lower.contains("mime-type=video")
                 || lower.contains("mime=video") || lower.contains("type=video")
                 || lower.contains("contenttype=video") || lower.contains("content_type=video")
+                || lower.contains("application/vnd.apple.mpegurl")
+                || lower.contains("application/x-mpegurl") || lower.contains("application/dash+xml")
+                || lower.contains("format=m3u8") || lower.contains("format=mpd")
+                || lower.contains("playlist.m3u8") || lower.contains("chunklist")
                 || lower.contains("videoplayback") || lower.contains("video/tos")
                 || lower.contains("/video/tos/") || tiktokLiveStream;
         return video ? 1 : 0;
