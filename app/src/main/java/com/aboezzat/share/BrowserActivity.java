@@ -1050,7 +1050,8 @@ public class BrowserActivity extends Activity {
                 "var vs=[].slice.call(d.querySelectorAll('video'));" +
                 "for(var i=0;i<vs.length;i++){var v=vs[i],poster=v.poster||'';" +
                 "var u=v.currentSrc||v.src||v.getAttribute('src')||'';" +
-                "if(!v.paused&&!v.ended&&v.readyState>=2)send(u,title,poster);" +
+                "if(!v.paused&&!v.ended&&v.readyState>=2){if(u){send(u,title,poster);" +
+                "if(/^https?:/i.test(u))window.AboEzzatBridge.onCapturedUnknownVideoTrack(u,title,poster||'');}}" +
                 "var ss=v.querySelectorAll('source');for(var z=0;z<ss.length;z++)send(ss[z].src||ss[z].getAttribute('src'),title,poster);}" +
                 "var sources=d.querySelectorAll('video source, source[type*=\\\"video\\\"], link[rel=\\\"preload\\\"][as=\\\"video\\\"]');" +
                 "for(var q=0;q<sources.length;q++)send(sources[q].src||sources[q].href||sources[q].getAttribute('src'),title,'');" +
@@ -1133,6 +1134,12 @@ public class BrowserActivity extends Activity {
         public void onCapturedCandidateTrack(String mediaUrl, String title, String posterUrl) {
             if ((activePlaybackKey.isEmpty() && !isManualSniffActive() && !isGenericAutoSniffActive()) || mediaUrl == null || !mediaUrl.startsWith("http")) return;
             probeAndAddMp4(mediaUrl, title, posterUrl);
+        }
+
+        @JavascriptInterface
+        public void onCapturedUnknownVideoTrack(String mediaUrl, String title, String posterUrl) {
+            if (activePlaybackKey.isEmpty() && !isManualSniffActive() && !isGenericAutoSniffActive()) return;
+            probeUnknownVideoByContentType(mediaUrl, title, posterUrl);
         }
 
         @JavascriptInterface
@@ -1369,6 +1376,47 @@ public class BrowserActivity extends Activity {
                     .replaceAll("&byteend=\\d+", "");
             String label = type == 2 ? "🎵 مسار صوت (تم فحص MP4)" : "🎬 مسار فيديو (تم فحص MP4)";
             addCapturedMedia(clean, title, label, posterUrl, type);
+        });
+    }
+
+    // Active HTML5 video elements sometimes use extension-less CDN URLs.
+    // Confirm the response MIME type before offering such a URL to the user.
+    private void probeUnknownVideoByContentType(final String mediaUrl, final String title, final String posterUrl) {
+        if (mediaUrl == null || !mediaUrl.startsWith("http") || !mp4ProbeRequests.add("mime:" + mediaUrl)) return;
+        String lower = mediaUrl.toLowerCase(Locale.ROOT);
+        if (lower.matches(".*\\.(jpg|jpeg|png|webp|gif|bmp|svg|ts|m4s|js|css)(?:[?#].*)?$")) return;
+        AsyncTask.execute(() -> {
+            HttpURLConnection connection = null;
+            try {
+                connection = (HttpURLConnection) new URL(mediaUrl).openConnection();
+                connection.setInstanceFollowRedirects(true);
+                connection.setConnectTimeout(7000);
+                connection.setReadTimeout(7000);
+                connection.setRequestMethod("GET");
+                connection.setRequestProperty("Range", "bytes=0-1");
+                connection.setRequestProperty("Accept", "video/*,application/vnd.apple.mpegurl,application/x-mpegURL,application/dash+xml,*/*;q=0.5");
+                connection.setRequestProperty("User-Agent", WebSettings.getDefaultUserAgent(BrowserActivity.this));
+                String cookie = CookieManager.getInstance().getCookie(mediaUrl);
+                if (cookie != null && !cookie.isEmpty()) connection.setRequestProperty("Cookie", cookie);
+                if (activePageUrl != null && !activePageUrl.isEmpty()) connection.setRequestProperty("Referer", activePageUrl);
+                int status = connection.getResponseCode();
+                String mime = connection.getContentType();
+                if (status >= 200 && status < 300 && mime != null) {
+                    String type = mime.toLowerCase(Locale.ROOT).split(";")[0].trim();
+                    int mediaType = type.startsWith("video/") || type.equals("application/vnd.apple.mpegurl")
+                            || type.equals("application/x-mpegurl") || type.equals("application/dash+xml") ? 1 : 0;
+                    if (mediaType == 1 && !(activePlaybackKey.isEmpty() && !isManualSniffActive() && !isGenericAutoSniffActive())) {
+                        String clean = mediaUrl.replaceAll("&bytestart=\\d+", "").replaceAll("&byteend=\\d+", "");
+                        addCapturedMedia(clean, title == null || title.trim().isEmpty() ? "فيديو قيد التشغيل" : title.trim(),
+                                type.contains("mpegurl") ? "📡 بث مباشر - m3u8" : type.contains("dash") ? "🎬 فيديو DASH" : "🎬 فيديو (تم فحص نوع الاستجابة)",
+                                posterUrl, mediaType);
+                    }
+                }
+            } catch (Exception e) {
+                Log.d(TAG, "Could not verify extension-less video URL", e);
+            } finally {
+                if (connection != null) connection.disconnect();
+            }
         });
     }
 
