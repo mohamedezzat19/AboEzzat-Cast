@@ -773,15 +773,34 @@ public class BrowserActivity extends Activity {
                         } else if (lowerUrl.matches(".*\\.mp4(?:[?#].*)?$")) {
                             probeAndAddMp4(reqUrl, lastDiscoveredTitle, lastDiscoveredPoster);
                         } else if (isGenericAutoSniffActive()) {
-                            // Cross-origin iframe players are opaque to page JavaScript, but
-                            // WebView still exposes their network requests here. Probe only
-                            // requests whose Accept header explicitly identifies media.
+                            // Generic fallback for embedded players on any movie site:
+                            // cross-origin iframe requests are invisible to page JS, so use
+                            // WebView's request metadata to identify likely stream endpoints.
                             try {
-                                String accept = request.getRequestHeaders().get("Accept");
-                                if (accept != null && (accept.toLowerCase(Locale.ROOT).contains("video/")
+                                Map<String, String> headers = request.getRequestHeaders();
+                                String accept = "";
+                                String range = "";
+                                if (headers != null) {
+                                    for (Map.Entry<String, String> header : headers.entrySet()) {
+                                        if (header.getKey() == null) continue;
+                                        if ("accept".equalsIgnoreCase(header.getKey())) accept = header.getValue() == null ? "" : header.getValue();
+                                        if ("range".equalsIgnoreCase(header.getKey())) range = header.getValue() == null ? "" : header.getValue();
+                                    }
+                                }
+                                String requestHints = lowerUrl;
+                                boolean mediaAccept = accept.toLowerCase(Locale.ROOT).contains("video/")
                                         || accept.toLowerCase(Locale.ROOT).contains("application/vnd.apple.mpegurl")
                                         || accept.toLowerCase(Locale.ROOT).contains("application/x-mpegurl")
-                                        || accept.toLowerCase(Locale.ROOT).contains("application/dash+xml"))) {
+                                        || accept.toLowerCase(Locale.ROOT).contains("application/dash+xml");
+                                boolean mediaRange = !range.isEmpty();
+                                boolean playerEndpoint = requestHints.contains("manifest")
+                                        || requestHints.contains("playlist") || requestHints.contains("master")
+                                        || requestHints.contains("videoplayback") || requestHints.contains("/stream/")
+                                        || requestHints.contains("stream_url=") || requestHints.contains("video_url=")
+                                        || requestHints.contains("file=") || requestHints.contains("source=")
+                                        || requestHints.contains("/embed/") || requestHints.contains("/player/");
+                                if ("GET".equalsIgnoreCase(request.getMethod())
+                                        && (mediaAccept || mediaRange || playerEndpoint)) {
                                     probeUnknownVideoByContentType(reqUrl, lastDiscoveredTitle, lastDiscoveredPoster);
                                 }
                             } catch (Exception ignored) {}
