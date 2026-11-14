@@ -147,6 +147,12 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
                 if (now - lastWebVideoCasterScanAt >= 500L) {
                     lastWebVideoCasterScanAt = now;
                     captureWebVideoCasterUrls();
+                    java.util.LinkedHashSet<String> eventUrls = new java.util.LinkedHashSet<>();
+                    if (event.getText() != null) {
+                        for (CharSequence item : event.getText()) addUrlsFromText(eventUrls, item);
+                    }
+                    addUrlsFromText(eventUrls, event.getContentDescription());
+                    mergeWebVideoCasterEventUrls(eventUrls);
                 }
             }
         }
@@ -300,37 +306,43 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
     }
 
     private void captureWebVideoCasterUrls() {
-        android.view.accessibility.AccessibilityNodeInfo root = getRootInActiveWindow();
-        if (root == null) return;
-        CharSequence owner = root.getPackageName();
-        if (owner == null || !WEB_VIDEO_CASTER_PACKAGE.equals(owner.toString())) {
-            root.recycle();
-            return;
+        java.util.LinkedHashSet<String> found = new java.util.LinkedHashSet<>();
+        // Scan every currently exposed interactive window, but accept nodes only
+        // when their owning package is Web Video Caster.
+        if (Build.VERSION.SDK_INT >= 21) {
+            try {
+                for (android.view.accessibility.AccessibilityWindowInfo window : getWindows()) {
+                    if (window == null) continue;
+                    android.view.accessibility.AccessibilityNodeInfo windowRoot = null;
+                    try {
+                        windowRoot = window.getRoot();
+                        if (windowRoot != null) {
+                            CharSequence owner = windowRoot.getPackageName();
+                            if (owner != null && WEB_VIDEO_CASTER_PACKAGE.equals(owner.toString())) {
+                                scanWebVideoCasterTree(windowRoot, found, 240);
+                                windowRoot = null; // scan method owns/recycles it
+                            }
+                        }
+                    } catch (Exception ignored) {
+                    } finally {
+                        if (windowRoot != null) windowRoot.recycle();
+                    }
+                    if (found.size() >= 12) break;
+                }
+            } catch (Exception ignored) {
+            }
         }
 
-        java.util.LinkedHashSet<String> found = new java.util.LinkedHashSet<>();
-        java.util.ArrayDeque<android.view.accessibility.AccessibilityNodeInfo> queue =
-                new java.util.ArrayDeque<>();
-        queue.add(root);
-        int inspected = 0;
-        try {
-            while (!queue.isEmpty() && inspected < 120 && found.size() < 12) {
-                android.view.accessibility.AccessibilityNodeInfo node = queue.removeFirst();
-                inspected++;
-                addUrlsFromText(found, node.getText());
-                addUrlsFromText(found, node.getContentDescription());
-                if (Build.VERSION.SDK_INT >= 26) addUrlsFromText(found, node.getHintText());
-                for (int i = 0; i < node.getChildCount()
-                        && inspected + queue.size() < 120; i++) {
-                    android.view.accessibility.AccessibilityNodeInfo child = node.getChild(i);
-                    if (child != null) queue.addLast(child);
+        // Fallback for Android builds where interactive-window enumeration is restricted.
+        if (found.isEmpty()) {
+            android.view.accessibility.AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (root != null) {
+                CharSequence owner = root.getPackageName();
+                if (owner != null && WEB_VIDEO_CASTER_PACKAGE.equals(owner.toString())) {
+                    scanWebVideoCasterTree(root, found, 240);
+                    root = null;
                 }
-                node.recycle();
-            }
-        } catch (Exception ignored) {
-        } finally {
-            while (!queue.isEmpty()) {
-                try { queue.removeFirst().recycle(); } catch (Exception ignored) {}
+                if (root != null) root.recycle();
             }
         }
         if (found.isEmpty()) return;
@@ -365,11 +377,79 @@ public class ClipboardShortcutAccessibilityService extends AccessibilityService 
         if (android.provider.Settings.canDrawOverlays(this)) handler.post(this::showBubble);
     }
 
+    private void mergeWebVideoCasterEventUrls(java.util.Set<String> eventUrls) {
+        if (eventUrls == null || eventUrls.isEmpty()) return;
+        android.content.SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        org.json.JSONArray existing;
+        try { existing = new org.json.JSONArray(prefs.getString("wvc_captured_urls", "[]")); }
+        catch (Exception ignored) { existing = new org.json.JSONArray(); }
+        java.util.LinkedHashSet<String> merged = new java.util.LinkedHashSet<>();
+        for (int i = 0; i < existing.length(); i++) {
+            String value = existing.optString(i, "");
+            if (!value.isEmpty()) merged.add(value);
+        }
+        int before = merged.size();
+        merged.addAll(eventUrls);
+        while (merged.size() > 12) merged.remove(merged.iterator().next());
+        if (merged.size() == before) return;
+        org.json.JSONArray saved = new org.json.JSONArray();
+        for (String value : merged) saved.put(value);
+        prefs.edit().putString("wvc_captured_urls", saved.toString())
+                .putLong("wvc_last_capture_time", System.currentTimeMillis())
+                .putInt("wvc_capture_count", merged.size()).apply();
+        if (android.provider.Settings.canDrawOverlays(this)) handler.post(this::showBubble);
+    }
+
+    // Takes ownership of root and recycles every visited accessibility node.
+    private void scanWebVideoCasterTree(
+            android.view.accessibility.AccessibilityNodeInfo root,
+            java.util.Set<String> found, int maxNodes) {
+        if (root == null) return;
+        java.util.ArrayDeque<android.view.accessibility.AccessibilityNodeInfo> queue =
+                new java.util.ArrayDeque<>();
+        queue.add(root);
+        int inspected = 0;
+        try {
+            while (!queue.isEmpty() && inspected < maxNodes && found.size() < 12) {
+                android.view.accessibility.AccessibilityNodeInfo node = queue.removeFirst();
+                inspected++;
+                addUrlsFromText(found, node.getText());
+                addUrlsFromText(found, node.getContentDescription());
+                if (Build.VERSION.SDK_INT >= 26) {
+                    addUrlsFromText(found, node.getHintText());
+                }
+                if (Build.VERSION.SDK_INT >= 28) {
+                    addUrlsFromText(found, node.getTooltipText());
+                }
+                if (Build.VERSION.SDK_INT >= 30) {
+                    addUrlsFromText(found, node.getStateDescription());
+                }
+                for (int i = 0; i < node.getChildCount()
+                        && inspected + queue.size() < maxNodes; i++) {
+                    android.view.accessibility.AccessibilityNodeInfo child = node.getChild(i);
+                    if (child != null) queue.addLast(child);
+                }
+                node.recycle();
+            }
+        } catch (Exception ignored) {
+        } finally {
+            while (!queue.isEmpty()) {
+                try { queue.removeFirst().recycle(); } catch (Exception ignored) {}
+            }
+        }
+    }
+
     private void addUrlsFromText(java.util.Set<String> target, CharSequence value) {
         if (value == null || target.size() >= 12) return;
+        String source = value.toString()
+                .replace("\\\\/", "/")
+                .replace("\\\\u0026", "&")
+                .replace("\\\\u003d", "=")
+                .replace("&amp;", "&")
+                .replace("&#38;", "&");
         java.util.regex.Matcher matcher = java.util.regex.Pattern
                 .compile("(?i)https?://[^\\s<>\\\"']+")
-                .matcher(value);
+                .matcher(source);
         while (matcher.find() && target.size() < 12) {
             String candidate = matcher.group().replaceAll("[\\]),}،.؛!?]+$", "");
             try {
