@@ -99,6 +99,14 @@ public class MainActivity extends Activity {
             setTheme(android.R.style.Theme_Translucent_NoTitleBar);
         super.onCreate(savedInstanceState);
 
+        // Start the app-wide foreground session while the user is opening the app.
+        CastKeepAliveService.start(this);
+        if (android.os.Build.VERSION.SDK_INT >= 33
+                && checkSelfPermission("android.permission.POST_NOTIFICATIONS")
+                != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, 8403);
+        }
+
         prefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE | MODE_MULTI_PROCESS);
         restoreMediaQueues();
         startLocalServer();
