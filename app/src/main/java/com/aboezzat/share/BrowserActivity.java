@@ -41,6 +41,7 @@ import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.webkit.ValueCallback;
 import android.widget.BaseAdapter;
 import android.widget.Button;
 import android.widget.CheckBox;
@@ -101,6 +102,8 @@ public class BrowserActivity extends Activity {
 
     private View customView;
     private WebChromeClient.CustomViewCallback customViewCallback;
+    private static final int FILE_CHOOSER_REQUEST_CODE = 7401;
+    private ValueCallback<Uri[]> pendingFileChooserCallback;
 
     private EditText etUrl;
     private Button btnSniff;
@@ -685,6 +688,27 @@ public class BrowserActivity extends Activity {
         webView.addJavascriptInterface(new JsBridge(), "AboEzzatBridge");
 
         webView.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> filePathCallback,
+                                             FileChooserParams fileChooserParams) {
+                if (pendingFileChooserCallback != null) {
+                    pendingFileChooserCallback.onReceiveValue(null);
+                    pendingFileChooserCallback = null;
+                }
+                pendingFileChooserCallback = filePathCallback;
+                try {
+                    Intent chooserIntent = fileChooserParams.createIntent();
+                    startActivityForResult(chooserIntent, FILE_CHOOSER_REQUEST_CODE);
+                    return true;
+                } catch (Exception error) {
+                    pendingFileChooserCallback = null;
+                    filePathCallback.onReceiveValue(null);
+                    Toast.makeText(BrowserActivity.this,
+                            "تعذر فتح اختيار الملفات على هذا الجهاز", Toast.LENGTH_SHORT).show();
+                    return false;
+                }
+            }
+
             @Override
             public void onShowCustomView(View view, CustomViewCallback callback) {
                 showHtml5FullScreen(view, callback);
@@ -2985,13 +3009,48 @@ public class BrowserActivity extends Activity {
     }
 
     @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (requestCode == FILE_CHOOSER_REQUEST_CODE) {
+            if (pendingFileChooserCallback != null) {
+                Uri[] results = resultCode == Activity.RESULT_OK
+                        ? WebChromeClient.FileChooserParams.parseResult(resultCode, data) : null;
+                pendingFileChooserCallback.onReceiveValue(results);
+                pendingFileChooserCallback = null;
+            }
+            return;
+        }
+        super.onActivityResult(requestCode, resultCode, data);
+    }
+
+    @Override
     protected void onDestroy() {
-        super.onDestroy();
+        if (pendingFileChooserCallback != null) {
+            pendingFileChooserCallback.onReceiveValue(null);
+            pendingFileChooserCallback = null;
+        }
+        if (customView != null) hideHtml5FullScreen();
+        for (WebView tab : new ArrayList<>(tabList)) {
+            if (tab == null) continue;
+            try {
+                tab.stopLoading();
+                tab.removeJavascriptInterface("AboEzzatBridge");
+                if (tab.getParent() instanceof ViewGroup) {
+                    ((ViewGroup) tab.getParent()).removeView(tab);
+                }
+                tab.destroy();
+            } catch (Exception ignored) {}
+        }
+        tabList.clear();
+        tabTitles.clear();
+        navigationStartedAt.clear();
+        activeWebView = null;
+        activePageUrl = "";
         if (wakeLock != null && wakeLock.isHeld()) {
             try {
                 wakeLock.release();
             } catch (Exception ignored) {}
         }
+        super.onDestroy();
     }
 
     @Override
