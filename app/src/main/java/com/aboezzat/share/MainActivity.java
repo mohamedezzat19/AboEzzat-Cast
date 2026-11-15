@@ -62,7 +62,6 @@ public class MainActivity extends Activity {
     private TextView tvStatusBadge;
     private SharedPreferences prefs;
     private final OkHttpClient client = new OkHttpClient();
-    private LocalMediaServer localServer;
     private Uri selectedMediaUri = null;
 
     private final List<Uri> slideshowQueue = new ArrayList<>();
@@ -78,7 +77,7 @@ public class MainActivity extends Activity {
         public void run() {
             if (!slideshowQueue.isEmpty() && isSlideshowRunning) {
                 currentSlideIndex = (currentSlideIndex + 1) % slideshowQueue.size();
-                selectedMediaUri = slideshowQueue.get(currentSlideIndex);
+                setSelectedMediaUri(slideshowQueue.get(currentSlideIndex));
                 castLocalMediaToTv(false);
                 slideHandler.postDelayed(this, 5000);
             }
@@ -109,7 +108,6 @@ public class MainActivity extends Activity {
 
         prefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE | MODE_MULTI_PROCESS);
         restoreMediaQueues();
-        startLocalServer();
 
         // The shortcut uses a separate translucent task: process the copied link
         // without showing the normal Cast home screen.
@@ -212,11 +210,11 @@ public class MainActivity extends Activity {
         findViewById(R.id.btn_next).setOnClickListener(v -> {
             if (!slideshowQueue.isEmpty()) {
                 currentSlideIndex = (currentSlideIndex + 1) % slideshowQueue.size();
-                selectedMediaUri = slideshowQueue.get(currentSlideIndex);
+                setSelectedMediaUri(slideshowQueue.get(currentSlideIndex));
                 castLocalMediaToTv(false);
             } else if (videoQueue.size() > 1 && currentVideoIndex < videoQueue.size() - 1) {
                 currentVideoIndex++;
-                selectedMediaUri = videoQueue.get(currentVideoIndex);
+                setSelectedMediaUri(videoQueue.get(currentVideoIndex));
                 castLocalMediaToTv(true);
             } else {
                 sendRemoteCommand("next");
@@ -226,11 +224,11 @@ public class MainActivity extends Activity {
         findViewById(R.id.btn_prev).setOnClickListener(v -> {
             if (!slideshowQueue.isEmpty()) {
                 currentSlideIndex = (currentSlideIndex - 1 + slideshowQueue.size()) % slideshowQueue.size();
-                selectedMediaUri = slideshowQueue.get(currentSlideIndex);
+                setSelectedMediaUri(slideshowQueue.get(currentSlideIndex));
                 castLocalMediaToTv(false);
             } else if (videoQueue.size() > 1 && currentVideoIndex > 0) {
                 currentVideoIndex--;
-                selectedMediaUri = videoQueue.get(currentVideoIndex);
+                setSelectedMediaUri(videoQueue.get(currentVideoIndex));
                 castLocalMediaToTv(true);
             } else {
                 sendRemoteCommand("prev");
@@ -641,7 +639,7 @@ public class MainActivity extends Activity {
         videoQueue.clear();
         currentSlideIndex = 0;
         currentVideoIndex = 0;
-        selectedMediaUri = null;
+        setSelectedMediaUri(null);
         persistMediaQueues();
 
         // Stop whatever is currently playing on the receiver, including web video.
@@ -968,7 +966,7 @@ public class MainActivity extends Activity {
         new AlertDialog.Builder(this).setTitle("الوسائط الأخيرة")
                 .setItems(labels, (dialog, which) -> {
                     Uri chosen = recent.get(which);
-                    selectedMediaUri = chosen;
+                    setSelectedMediaUri(chosen);
                     if (videoQueue.contains(chosen)) currentVideoIndex = videoQueue.indexOf(chosen);
                     if (slideshowQueue.contains(chosen)) currentSlideIndex = slideshowQueue.indexOf(chosen);
                     castLocalMediaToTv(true);
@@ -988,7 +986,7 @@ public class MainActivity extends Activity {
         new AlertDialog.Builder(this).setTitle("قائمة التشغيل (" + videoQueue.size() + " ملفات)")
                 .setItems(items, (dialog, which) -> {
                     currentVideoIndex = which;
-                    selectedMediaUri = videoQueue.get(currentVideoIndex);
+                    setSelectedMediaUri(videoQueue.get(currentVideoIndex));
                     castLocalMediaToTv(true);
                 }).setPositiveButton("إضافة فيديوهات", (d, w) -> openMediaPicker(false))
                 .setNegativeButton("إغلاق", null).show();
@@ -1710,7 +1708,7 @@ private void showManualIpDialog() {
                     currentVideoIndex = 0;
                     persistMediaQueues();
                     for (Uri mediaUri : videoQueue) addRecentMedia(mediaUri);
-                    selectedMediaUri = videoQueue.get(0);
+                    setSelectedMediaUri(videoQueue.get(0));
                     castLocalMediaToTv(true);
                     if (videoQueue.size() > 1) {
                         Toast.makeText(this, "تم تحميل (" + videoQueue.size() + ") وسائط، استخدم التالي والسابق للتنقل", Toast.LENGTH_LONG).show();
@@ -1737,7 +1735,7 @@ private void showManualIpDialog() {
                     currentSlideIndex = 0;
                     persistMediaQueues();
                     for (Uri mediaUri : slideshowQueue) addRecentMedia(mediaUri);
-                    selectedMediaUri = slideshowQueue.get(0);
+                    setSelectedMediaUri(slideshowQueue.get(0));
                     castLocalMediaToTv(true);
                     if (slideshowQueue.size() > 1) {
                         isSlideshowRunning = true;
@@ -1913,143 +1911,9 @@ private void showManualIpDialog() {
         } catch (Exception ignored) {}
     }
 
-    private void startLocalServer() {
-        try {
-            if (localServer == null) {
-                localServer = new LocalMediaServer(8088);
-                localServer.start();
-            }
-        } catch (Exception ignored) {}
-    }
-
-    private class LocalMediaServer extends NanoHTTPD {
-        public LocalMediaServer(int port) { super(port); }
-
-        @Override
-        public Response serve(IHTTPSession session) {
-            // Capture one URI per request; playback may issue several Range requests.
-            final Uri mediaUri = selectedMediaUri;
-            if (mediaUri == null) return newFixedLengthResponse(Response.Status.NOT_FOUND,
-                    "text/plain", "No media selected");
-
-            AssetFileDescriptor afd = null;
-            try {
-                afd = getContentResolver().openAssetFileDescriptor(mediaUri, "r");
-                if (afd == null) return newFixedLengthResponse(Response.Status.NOT_FOUND,
-                        "text/plain", "Media file unavailable");
-
-                long fileLength = afd.getLength();
-                if (fileLength < 0) fileLength = queryMediaLength(mediaUri);
-                if (fileLength <= 0) return newFixedLengthResponse(Response.Status.INTERNAL_ERROR,
-                        "text/plain", "Unable to determine media length");
-
-                String mime = getContentResolver().getType(mediaUri);
-                if (mime == null || mime.trim().isEmpty()
-                        || "application/octet-stream".equalsIgnoreCase(mime)) {
-                    String name = getMediaDisplayName(mediaUri, 0);
-                    if (name != null) {
-                        int dot = name.lastIndexOf('.');
-                        if (dot >= 0 && dot < name.length() - 1) {
-                            String guessed = android.webkit.MimeTypeMap.getSingleton()
-                                    .getMimeTypeFromExtension(name.substring(dot + 1).toLowerCase(java.util.Locale.ROOT));
-                            if (guessed != null) mime = guessed;
-                        }
-                    }
-                }
-                if (mime == null || mime.trim().isEmpty()) mime = "application/octet-stream";
-
-                long start = 0L, end = fileLength - 1L;
-                boolean partial = false;
-                String range = session.getHeaders().get("range");
-                if (range != null && !range.trim().isEmpty()) {
-                    try {
-                        if (!range.startsWith("bytes=")) throw new IllegalArgumentException("Unsupported range");
-                        String spec = range.substring(6).trim();
-                        int comma = spec.indexOf(',');
-                        if (comma >= 0) spec = spec.substring(0, comma).trim();
-                        int dash = spec.indexOf('-');
-                        if (dash < 0) throw new IllegalArgumentException("Malformed range");
-                        String left = spec.substring(0, dash).trim();
-                        String right = spec.substring(dash + 1).trim();
-                        if (left.isEmpty()) {
-                            long suffix = Long.parseLong(right);
-                            if (suffix <= 0) throw new IllegalArgumentException("Invalid suffix range");
-                            start = Math.max(0L, fileLength - suffix);
-                            end = fileLength - 1L;
-                        } else {
-                            start = Long.parseLong(left);
-                            end = right.isEmpty() ? fileLength - 1L : Long.parseLong(right);
-                        }
-                        if (start < 0 || start >= fileLength || end < start)
-                            throw new IllegalArgumentException("Range outside file");
-                        end = Math.min(end, fileLength - 1L);
-                        partial = true;
-                    } catch (Exception invalidRange) {
-                        Response response = newFixedLengthResponse(Response.Status.RANGE_NOT_SATISFIABLE,
-                                "text/plain", "");
-                        response.addHeader("Content-Range", "bytes */" + fileLength);
-                        response.addHeader("Accept-Ranges", "bytes");
-                        return response;
-                    }
-                }
-
-                long contentLength = end - start + 1L;
-                final AssetFileDescriptor responseAfd = afd;
-                FileInputStream rawStream = afd.createInputStream();
-                java.io.InputStream fis = new java.io.FilterInputStream(rawStream) {
-                    @Override
-                    public void close() throws IOException {
-                        try { super.close(); } finally {
-                            try { responseAfd.close(); } catch (IOException ignored) {}
-                        }
-                    }
-                };
-                long toSkip = start;
-                while (toSkip > 0) {
-                    long skipped = fis.skip(toSkip);
-                    if (skipped <= 0) {
-                        if (fis.read() == -1) throw new IOException("Cannot seek to requested range");
-                        skipped = 1;
-                    }
-                    toSkip -= skipped;
-                }
-
-                Response response = newFixedLengthResponse(
-                        partial ? Response.Status.PARTIAL_CONTENT : Response.Status.OK,
-                        mime, fis, contentLength);
-                response.addHeader("Content-Length", String.valueOf(contentLength));
-                response.addHeader("Accept-Ranges", "bytes");
-                response.addHeader("Cache-Control", "no-store");
-                response.addHeader("Access-Control-Allow-Origin", "*");
-                if (partial) response.addHeader("Content-Range",
-                        "bytes " + start + "-" + end + "/" + fileLength);
-                return response;
-            } catch (Exception e) {
-                android.util.Log.e("AboEzzatCast", "Failed to serve local media", e);
-                return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "text/plain",
-                        "Error loading local media");
-            } finally {
-                // Keep the descriptor open while NanoHTTPD streams the response;
-                // the wrapped response stream closes it after transmission.
-            }
-        }
-
-        private long queryMediaLength(Uri uri) {
-            android.database.Cursor cursor = null;
-            try {
-                cursor = getContentResolver().query(uri,
-                        new String[]{android.provider.OpenableColumns.SIZE}, null, null, null);
-                if (cursor != null && cursor.moveToFirst()) {
-                    int column = cursor.getColumnIndex(android.provider.OpenableColumns.SIZE);
-                    if (column >= 0 && !cursor.isNull(column)) return cursor.getLong(column);
-                }
-            } catch (Exception e) {
-                android.util.Log.w("AboEzzatCast", "Could not query local media size", e);
-            } finally {
-                if (cursor != null) cursor.close();
-            }
-            return -1L;
-        }
+    private void setSelectedMediaUri(Uri uri) {
+        selectedMediaUri = uri;
+        CastKeepAliveService.setSelectedMediaUri(this, uri);
     }
 
     @Override
@@ -2080,8 +1944,5 @@ private void showManualIpDialog() {
         } catch (Exception ignored) {}
         super.onDestroy();
         slideHandler.removeCallbacks(slideRunnable);
-        if (localServer != null) {
-            localServer.stop();
-        }
     }
 }
