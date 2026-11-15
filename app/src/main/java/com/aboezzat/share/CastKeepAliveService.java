@@ -83,7 +83,7 @@ public class CastKeepAliveService extends Service {
         String status = "AboEzzat Cast يعمل في الخلفية • " + accessibility + vpn;
 
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setSmallIcon(R.drawable.ic_launcher)
+                .setSmallIcon(R.drawable.ic_notification)
                 .setContentTitle("AboEzzat Cast")
                 .setContentText(status)
                 .setStyle(new NotificationCompat.BigTextStyle().bigText(status))
