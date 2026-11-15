@@ -662,11 +662,10 @@ public class BrowserActivity extends Activity {
         settings.setDatabaseEnabled(true);
         settings.setMediaPlaybackRequiresUserGesture(false);
 
-        // Support OAuth/login popup windows used by social websites.
+        // Keep web popups in the current tab. The popup guard routes normal
+        // HTTP(S) player/server links here and rejects known ad destinations.
         settings.setJavaScriptCanOpenWindowsAutomatically(true);
-        // Preserve the original multi-window behavior for non-QFilm sites.
-        // QFilm is switched to same-tab handling only when that domain loads.
-        settings.setSupportMultipleWindows(true);
+        settings.setSupportMultipleWindows(false);
 
         settings.setUseWideViewPort(true);
         settings.setLoadWithOverviewMode(true);
@@ -727,6 +726,41 @@ public class BrowserActivity extends Activity {
                 super.doUpdateVisitedHistory(view, loadedUrl, isReload);
                 injectAdKiller(view);
                 recordVisitedUrl(view, loadedUrl);
+            }
+
+            @Override
+            public boolean onRenderProcessGone(WebView view, android.webkit.RenderProcessGoneDetail detail) {
+                // A crashed/evicted renderer cannot be reused. Remove only the affected tab.
+                int removedIndex = tabList.indexOf(view);
+                if (view.getParent() instanceof ViewGroup) {
+                    ((ViewGroup) view.getParent()).removeView(view);
+                }
+                if (removedIndex >= 0) {
+                    tabList.remove(removedIndex);
+                    tabTitles.remove(removedIndex);
+                }
+                navigationStartedAt.remove(view);
+                if (activeWebView == view) {
+                    activeWebView = null;
+                    activePageUrl = "";
+                    activePlaybackKey = "";
+                    clearCapturedMedia();
+                }
+                view.destroy();
+                if (tabList.isEmpty()) {
+                    addNewTab("about:home");
+                } else {
+                    if (removedIndex >= 0 && removedIndex < currentTabIndex) {
+                        currentTabIndex--;
+                    } else if (removedIndex == currentTabIndex) {
+                        currentTabIndex = Math.min(removedIndex, tabList.size() - 1);
+                    }
+                    switchToTab(Math.max(0, currentTabIndex));
+                }
+                Toast.makeText(BrowserActivity.this,
+                        "تعطلت صفحة ويب وتمت استعادة المتصفح؛ يمكنك إعادة فتح الصفحة.",
+                        Toast.LENGTH_LONG).show();
+                return true;
             }
 
             @Override
@@ -836,8 +870,8 @@ public class BrowserActivity extends Activity {
                     view.getSettings().setSupportMultipleWindows(false);
                     view.getSettings().setUserAgentString(getQFilmCompatibleUserAgent());
                 } else if (loadedUrl != null && loadedUrl.startsWith("http")) {
-                    // Restore the established browser settings on every other site.
-                    view.getSettings().setSupportMultipleWindows(true);
+                    // Keep target=_blank and window.open destinations in this tab.
+                    view.getSettings().setSupportMultipleWindows(false);
                     view.getSettings().setUserAgentString("Mozilla/5.0 (Linux; Android 14; Mobile; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.6478.122 Mobile Safari/537.36");
                 }
                 if (getCurrentWebView() == view && loadedUrl != null
@@ -1632,7 +1666,7 @@ public class BrowserActivity extends Activity {
             current.getSettings().setSupportMultipleWindows(false);
             current.getSettings().setUserAgentString(getQFilmCompatibleUserAgent());
         } else {
-            current.getSettings().setSupportMultipleWindows(true);
+            current.getSettings().setSupportMultipleWindows(false);
             current.getSettings().setUserAgentString("Mozilla/5.0 (Linux; Android 14; Mobile; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.6478.122 Mobile Safari/537.36");
         }
 
