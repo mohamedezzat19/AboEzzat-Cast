@@ -1114,7 +1114,7 @@ public class BrowserActivity extends Activity {
     private void injectAdKiller(WebView view) {
         String js = "(function(){try{" +
                 "if(!window.__aboYoutubeAdSpeedSkipV2){try{if(window.__aboYoutubeSkipLoop)clearInterval(window.__aboYoutubeSkipLoop);}catch(e){}" +
-                "window.__aboYoutubeAdSpeedSkipFn=function(){try{var h=(location.hostname||'').toLowerCase();var yt=/(^|\\.)youtube\\.com$/.test(h)||/(^|\\.)youtube-nocookie\\.com$/.test(h)||h==='youtu.be';if(!yt)return;" +
+                "var h=(location.hostname||'').toLowerCase();if(!/(^|\\.)youtube\\.com$/.test(h)&&h!=='youtu.be'&&!/(^|\\.)youtube-nocookie\\.com$/.test(h))return;" +
                 "var p=document.getElementById('movie_player');var pc=p?String(p.className||''):'';" +
                 "var adActive=/(^|\\s)(ad-showing|ad-interrupting)(\\s|$)/i.test(pc)||!!document.querySelector('.ad-showing,.ad-interrupting,.ytp-ad-player-overlay,.ytm-ad-player-overlay');" +
                 "var vids=document.querySelectorAll('#movie_player video,video.html5-main-video');" +
@@ -1402,6 +1402,10 @@ public class BrowserActivity extends Activity {
     private int classifyCapturedMedia(String mediaUrl) {
         if (mediaUrl == null) return 0;
         String lower = mediaUrl.toLowerCase();
+        // YouTube googlevideo videoplayback requests can be SABR/UMP transport, not a standalone MP4.
+        // Do not label them as video from the endpoint name alone; NewPipe extracts a fresh matched pair
+        // from the canonical watch URL instead.
+        if (lower.contains("googlevideo.com") && lower.contains("/videoplayback")) return 0;
         if (lower.matches(".*\\.(jpg|jpeg|png|webp|gif|bmp|svg|ts|m4s|js|css)(?:[?#].*)?$")) return 0;
 
         // Instagram/Threads frequently expose DASH tracks as extension-less CDN
