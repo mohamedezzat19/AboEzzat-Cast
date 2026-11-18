@@ -133,6 +133,9 @@ public class BrowserActivity extends Activity {
         public Bitmap posterBitmap;
         public int mediaType;
         public boolean isAudio;
+        // YouTube appears as one playable item; its separately hosted audio
+        // rendition stays paired internally, never exposed as a broken standalone item.
+        public String pairedAudioUrl;
         public boolean isSelected = false;
 
         public CapturedMedia(String url, String title, String format, String posterUrl, int mediaType) {
@@ -2203,11 +2206,15 @@ public class BrowserActivity extends Activity {
 
         if (audioOnly) {
             if (selectedAudio == null && audioTrackCount == 1) selectedAudio = onlyAudioTrack;
-            if (selectedAudio == null) {
-                Toast.makeText(this, "حدد مسار الصوت فقط من القائمة أولاً", Toast.LENGTH_LONG).show();
+            if (selectedAudio != null) {
+                downloadMedia(selectedAudio.url, true, "audio/mp4");
                 return;
             }
-            downloadMedia(selectedAudio.url, true, "audio/mp4");
+            if (bestVideo != null && bestVideo.pairedAudioUrl != null) {
+                downloadMedia(bestVideo.pairedAudioUrl, true, "audio/mp4");
+                return;
+            }
+            Toast.makeText(this, "لا يوجد مسار صوت منفصل محدد", Toast.LENGTH_LONG).show();
             return;
         }
 
@@ -2217,10 +2224,12 @@ public class BrowserActivity extends Activity {
             Toast.makeText(this, "حدد مسار الفيديو فقط من القائمة أولاً", Toast.LENGTH_LONG).show();
             return;
         }
-        if (getCurrentYouTubePageUrl() != null && selectedAudio != null) {
+        String pairedAudio = selectedAudio != null ? selectedAudio.url : bestVideo.pairedAudioUrl;
+        if (getCurrentYouTubePageUrl() != null && pairedAudio != null) {
             WebView current = getCurrentWebView();
-            String referer = current == null ? "https://www.youtube.com/" : current.getUrl();
-            BrowserFileDownloader.startMux(this, bestVideo.url, selectedAudio.url,
+            String referer = current == null || current.getUrl() == null
+                    ? "https://www.youtube.com/" : current.getUrl();
+            BrowserFileDownloader.startMux(this, bestVideo.url, pairedAudio,
                     referer, bestVideo.title, lastDiscoveredPoster);
             return;
         }
@@ -2269,7 +2278,7 @@ public class BrowserActivity extends Activity {
                     if (which == 0) {
                         mergeAndCastToTv();
                     } else if (which == 1) {
-                        castToTv(media.url);
+                        castToTv(media.url, media.pairedAudioUrl);
                     } else if (which == 2) {
                         downloadSelectedMedia(false);
                     } else if (which == 3) {
@@ -2454,8 +2463,13 @@ public class BrowserActivity extends Activity {
                     String video = null, audio = null;
                     synchronized (capturedList) {
                         for (CapturedMedia item : capturedList) {
-                            if (item.mediaType == 1) video = item.url;
-                            else if (item.mediaType == 2) audio = item.url;
+                            if (item.mediaType == 1) {
+                                video = item.url;
+                                audio = item.pairedAudioUrl;
+                            } else if (item.mediaType == 2 && audio == null) {
+                                // Compatibility with older captures.
+                                audio = item.url;
+                            }
                         }
                     }
                     if (video != null) castToTv(video, audio);
@@ -2478,9 +2492,20 @@ public class BrowserActivity extends Activity {
                 String poster = lastDiscoveredPoster;
                 clearCapturedMedia();
                 String safeTitle = title == null || title.trim().isEmpty() ? "YouTube video" : title.trim();
-                addCapturedMedia(videoUrl, safeTitle, "🎬 YouTube فيديو " + quality, poster, 1);
-                if (audioUrl != null && !audioUrl.trim().isEmpty()) {
-                    addCapturedMedia(audioUrl, safeTitle, "🎵 YouTube صوت منفصل", poster, 2);
+                // One visible YouTube capture; the selected Arabic/original audio
+                // URL remains paired with the video for casting and muxed download.
+                addCapturedMedia(videoUrl, safeTitle,
+                        "🎬 رابط YouTube مباشر " + quality
+                                + (audioUrl != null && !audioUrl.trim().isEmpty()
+                                ? " • الصوت المفضل مرفق" : ""), poster, 1);
+                synchronized (capturedList) {
+                    for (CapturedMedia item : capturedList) {
+                        if (item.mediaType == 1 && videoUrl.equals(item.url)) {
+                            item.pairedAudioUrl = (audioUrl == null || audioUrl.trim().isEmpty())
+                                    ? null : audioUrl;
+                            break;
+                        }
+                    }
                 }
                 if (shouldCast) castToTv(videoUrl, audioUrl);
                 runOnUiThread(() -> Toast.makeText(BrowserActivity.this,
