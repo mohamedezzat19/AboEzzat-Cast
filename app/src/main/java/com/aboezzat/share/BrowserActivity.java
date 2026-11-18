@@ -6,6 +6,8 @@ import android.app.AlertDialog;
 import android.app.Dialog;
 import android.app.DownloadManager;
 import android.content.Context;
+import android.content.ClipboardManager;
+import android.content.ClipData;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -149,6 +151,7 @@ public class BrowserActivity extends Activity {
     }
 
     private final List<CapturedMedia> capturedList = Collections.synchronizedList(new ArrayList<CapturedMedia>());
+    private BaseAdapter capturedMediaAdapter;
     private final Set<String> mp4ProbeRequests = Collections.synchronizedSet(new HashSet<String>());
     private final OkHttpClient client = new OkHttpClient();
     private String tvIp = "";
@@ -1589,16 +1592,103 @@ public class BrowserActivity extends Activity {
         });
     }
 
+    private String compactCapturedUrl(String value) {
+        if (value == null) return "";
+        String clean = value.trim();
+        if (clean.length() <= 92) return clean;
+        return clean.substring(0, 48) + " … " + clean.substring(clean.length() - 38);
+    }
+
+    private void showCapturedUrlDialog(CapturedMedia item) {
+        if (item == null || item.url == null) return;
+        TextView value = new TextView(this);
+        value.setText(item.url);
+        value.setTextIsSelectable(true);
+        value.setTextDirection(View.TEXT_DIRECTION_LTR);
+        value.setTextColor(Color.WHITE);
+        value.setPadding(dp(18), dp(14), dp(18), dp(14));
+        new AlertDialog.Builder(this)
+                .setTitle(item.mediaType == 2 ? "رابط مسار الصوت" : item.mediaType == 3
+                        ? "رابط صفحة الموقع" : "رابط الفيديو الملتقط")
+                .setView(value)
+                .setPositiveButton("نسخ الرابط", (d, w) -> {
+                    ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                    if (clipboard != null) {
+                        clipboard.setPrimaryClip(ClipData.newPlainText("Captured media URL", item.url));
+                        Toast.makeText(this, "تم نسخ الرابط", Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setNegativeButton("إغلاق", null)
+                .show();
+    }
+
+    private String getYouTubeThumbnailForCurrentPage() {
+        String page = getCurrentYouTubePageUrl();
+        if (page == null) return "";
+        try {
+            Uri uri = Uri.parse(page);
+            String id = uri.getQueryParameter("v");
+            if (id == null || id.isEmpty()) {
+                List<String> parts = uri.getPathSegments();
+                if (parts != null && !parts.isEmpty()) id = parts.get(parts.size() - 1);
+            }
+            if (id == null || !id.matches("[A-Za-z0-9_-]{11}")) return "";
+            return "https://i.ytimg.com/vi/" + id + "/hqdefault.jpg";
+        } catch (Exception ignored) { return ""; }
+    }
+
     private void loadThumbnailAsync(final CapturedMedia media) {
+        if (media == null || media.posterUrl == null || media.posterUrl.trim().isEmpty()) return;
         AsyncTask.execute(() -> {
+            HttpURLConnection conn = null;
+            InputStream input = null;
             try {
                 URL u = new URL(media.posterUrl);
-                HttpURLConnection conn = (HttpURLConnection) u.openConnection();
-                conn.setDoInput(true);
-                conn.connect();
-                InputStream input = conn.getInputStream();
-                media.posterBitmap = BitmapFactory.decodeStream(input);
-            } catch (Exception ignored) {}
+                conn = (HttpURLConnection) u.openConnection();
+                conn.setConnectTimeout(8000);
+                conn.setReadTimeout(8000);
+                conn.setInstanceFollowRedirects(true);
+                conn.setRequestProperty("User-Agent", WebSettings.getDefaultUserAgent(BrowserActivity.this));
+                conn.setRequestProperty("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8");
+                String cookie = CookieManager.getInstance().getCookie(media.posterUrl);
+                if (cookie != null && !cookie.isEmpty()) conn.setRequestProperty("Cookie", cookie);
+                if (activePageUrl != null && !activePageUrl.isEmpty()) conn.setRequestProperty("Referer", activePageUrl);
+                input = conn.getInputStream();
+                Bitmap bitmap = BitmapFactory.decodeStream(input);
+                if (bitmap != null) {
+                    media.posterBitmap = bitmap;
+                    runOnUiThread(() -> {
+                        if (capturedMediaAdapter != null) capturedMediaAdapter.notifyDataSetChanged();
+                    });
+                }
+            } catch (Exception e) {
+                Log.d(TAG, "Thumbnail load failed: " + media.posterUrl, e);
+            } finally {
+                try { if (input != null) input.close(); } catch (Exception ignored) {}
+                if (conn != null) conn.disconnect();
+            }
+        });
+    }
+
+    private void addCapturedPageLink(String pageUrl, String title) {
+        if (pageUrl == null || pageUrl.trim().isEmpty()) return;
+        synchronized (capturedList) {
+            for (CapturedMedia existing : capturedList) {
+                if (pageUrl.equals(existing.url)) return;
+            }
+            CapturedMedia page = new CapturedMedia(pageUrl,
+                    title == null || title.trim().isEmpty() ? "صفحة YouTube" : title.trim(),
+                    "🔗 رابط صفحة فقط - ليس رابط فيديو مباشر", getYouTubeThumbnailForCurrentPage(), 3);
+            page.isSelected = false;
+            capturedList.add(page);
+            if (page.posterUrl != null && !page.posterUrl.isEmpty()) loadThumbnailAsync(page);
+        }
+        runOnUiThread(() -> {
+            if (btnCast != null) {
+                btnCast.setVisibility(View.VISIBLE);
+                btnCast.setText("📺 " + capturedList.size());
+            }
+            if (capturedMediaAdapter != null) capturedMediaAdapter.notifyDataSetChanged();
         });
     }
 
@@ -2058,7 +2148,7 @@ public class BrowserActivity extends Activity {
         listView.setDivider(new ColorDrawable(Color.parseColor("#2A2A2A")));
         listView.setDividerHeight(2);
 
-        listView.setAdapter(new BaseAdapter() {
+        capturedMediaAdapter = new BaseAdapter() {
             @Override
             public int getCount() { return capturedList.size(); }
 
@@ -2107,6 +2197,17 @@ public class BrowserActivity extends Activity {
                 tvFormat.setPadding(0, 4, 0, 0);
                 infoLayout.addView(tvFormat);
 
+                TextView tvUrl = new TextView(BrowserActivity.this);
+                tvUrl.setText((item.mediaType == 2 ? "رابط مسار الصوت: " : item.mediaType == 3
+                        ? "رابط صفحة فقط: " : "رابط الفيديو: ") + compactCapturedUrl(item.url));
+                tvUrl.setTextColor(Color.parseColor("#90CAF9"));
+                tvUrl.setTextSize(10);
+                tvUrl.setMaxLines(2);
+                tvUrl.setEllipsize(TextUtils.TruncateAt.MIDDLE);
+                tvUrl.setTextDirection(View.TEXT_DIRECTION_LTR);
+                tvUrl.setOnClickListener(v -> showCapturedUrlDialog(item));
+                infoLayout.addView(tvUrl);
+
                 row.addView(infoLayout);
 
                 ImageView thumb = new ImageView(BrowserActivity.this);
@@ -2118,6 +2219,14 @@ public class BrowserActivity extends Activity {
                     thumb.setImageBitmap(item.posterBitmap);
                 } else {
                     thumb.setBackgroundColor(Color.parseColor("#2C2C2C"));
+                    thumb.setImageResource(android.R.drawable.ic_menu_report_image);
+                    if ((item.posterUrl == null || item.posterUrl.isEmpty()) && item.mediaType != 2) {
+                        String fallbackPoster = getYouTubeThumbnailForCurrentPage();
+                        if (!fallbackPoster.isEmpty()) {
+                            item.posterUrl = fallbackPoster;
+                            loadThumbnailAsync(item);
+                        }
+                    }
                 }
                 row.addView(thumb);
 
@@ -2128,7 +2237,8 @@ public class BrowserActivity extends Activity {
 
                 return row;
             }
-        });
+        };
+        listView.setAdapter(capturedMediaAdapter);
 
         main.addView(listView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 650));
 
@@ -2576,8 +2686,9 @@ public class BrowserActivity extends Activity {
                 // to Receiver; its YouTube-only path opens SmartTube without an app chooser.
                 runOnUiThread(() -> {
                     Toast.makeText(BrowserActivity.this,
-                            "تعذر استخراج رابط مباشر (" + reason + ")؛ جاري تحويل رابط YouTube الأصلي إلى الشاشة عبر SmartTube.",
+                            "تعذر استخراج رابط فيديو مباشر (" + reason + ")؛ سيتم إرسال رابط صفحة YouTube الأصلي.",
                             Toast.LENGTH_LONG).show();
+                    addCapturedPageLink(pageUrl, lastDiscoveredTitle);
                     castToTv(pageUrl, null);
                 });
             }
