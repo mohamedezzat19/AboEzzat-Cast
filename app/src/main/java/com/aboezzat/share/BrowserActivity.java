@@ -1101,7 +1101,7 @@ public class BrowserActivity extends Activity {
     }
 
     private void injectAdKiller(WebView view) {
-        String js = "javascript:(function(){try{" +
+        String js = "(function(){try{" +
                 "if(!window.__aboYoutubeSkipLoop){window.__aboYoutubeSkipLoop=setInterval(function(){try{var h=(location.hostname||'').toLowerCase();var yt=/(^|\\.)youtube\\.com$/.test(h)||/(^|\\.)youtube-nocookie\\.com$/.test(h)||h==='youtu.be';if(!yt)return;var b=document.querySelector('.ytp-ad-skip-button:not([disabled]),.ytp-ad-skip-button-modern:not([disabled]),.ytp-skip-ad-button:not([disabled]),.videoAdUiSkipButton:not([disabled])');if(b&&b.getClientRects().length&&getComputedStyle(b).visibility!=='hidden'&&getComputedStyle(b).display!=='none'){b.click();}}catch(e){}},250);}" +
                 "if(window.__aboActiveCaptureInstalled)return;window.__aboActiveCaptureInstalled=true;" +
                 "var armed=false,activeKey='',activeSince=0,seenResources={};" +
@@ -1115,8 +1115,10 @@ public class BrowserActivity extends Activity {
                 // YouTube: click only the native Skip Ad control once it is visible and enabled.
                 // Do not seek/mute/alter the player or interfere with non-skippable ads.
                 "if(!window.AboEzzatKillerLoop){window.AboEzzatKillerLoop=setInterval(function(){try{" +
-                "var b=document.querySelector('.ytp-ad-skip-button:not([disabled]),.ytp-ad-skip-button-modern:not([disabled]),.ytp-skip-ad-button:not([disabled]),.videoAdUiSkipButton:not([disabled])');" +
-                "if(b&&b.getClientRects().length&&getComputedStyle(b).visibility!=='hidden'){b.click();}" +
+                "var bs=document.querySelectorAll('.ytp-ad-skip-button,.ytp-ad-skip-button-modern,.ytp-skip-ad-button,.videoAdUiSkipButton,button[aria-label],button');" +
+                "for(var si=0;si<bs.length;si++){var b=bs[si],cl=(b.className&&String(b.className))||'',al=(b.getAttribute('aria-label')||''),tx=(b.innerText||b.textContent||'');" +
+                "var known=/ytp-ad-skip-button|ytp-skip-ad-button|videoAdUiSkipButton/.test(cl),named=/(skip\\s*ads?|تخطي\\s*(الإعلان|الإعلانات))/i.test(al+' '+tx);" +
+                "var st=getComputedStyle(b);if((known||named)&&!b.disabled&&b.getClientRects().length&&st.visibility!=='hidden'&&st.display!=='none'&&Number(st.opacity||1)>0.05){var target=b.matches('button')?b:(b.querySelector('button')||b);target.click();break;}}" +
                 "if(!isYouTubeHost){var av=document.querySelectorAll('video');for(var ai=0;ai<av.length;ai++){var x=av[ai];if(document.querySelector('.ad-interrupting,.ad-showing')||x.classList.contains('ad-interrupting')){" +
                 "x.muted=true;if(!isNaN(x.duration)&&x.duration>0)x.currentTime=x.duration+1;}}}" +
                 "}catch(e){}},350);}" +
