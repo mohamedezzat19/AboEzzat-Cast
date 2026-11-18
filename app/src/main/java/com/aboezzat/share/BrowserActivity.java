@@ -1102,7 +1102,14 @@ public class BrowserActivity extends Activity {
 
     private void injectAdKiller(WebView view) {
         String js = "(function(){try{" +
-                "if(!window.__aboYoutubeSkipLoop){window.__aboYoutubeSkipLoop=setInterval(function(){try{var h=(location.hostname||'').toLowerCase();var yt=/(^|\\.)youtube\\.com$/.test(h)||/(^|\\.)youtube-nocookie\\.com$/.test(h)||h==='youtu.be';if(!yt)return;var b=document.querySelector('.ytp-ad-skip-button:not([disabled]),.ytp-ad-skip-button-modern:not([disabled]),.ytp-skip-ad-button:not([disabled]),.videoAdUiSkipButton:not([disabled])');if(b&&b.getClientRects().length&&getComputedStyle(b).visibility!=='hidden'&&getComputedStyle(b).display!=='none'){b.click();}}catch(e){}},250);}" +
+                "if(!window.__aboYoutubeSkipLoop){window.__aboYoutubeSkipFn=function(){try{var h=(location.hostname||'').toLowerCase();var yt=/(^|\\.)youtube\\.com$/.test(h)||/(^|\\.)youtube-nocookie\\.com$/.test(h)||h==='youtu.be';if(!yt)return;" +
+                "var adActive=!!document.querySelector('.ad-showing,.ad-interrupting,.ytp-ad-player-overlay,.ytm-ad-player-overlay,[class*=\\\"ad-showing\\\"]');" +
+                "var nodes=document.querySelectorAll('.ytp-ad-skip-button,.ytp-ad-skip-button-modern,.ytp-skip-ad-button,.videoAdUiSkipButton,.ytm-skip-ad-button,.ytm-ad-skip-button,[class*=\\\"ad-skip\\\"] button,[class*=\\\"skip-ad\\\"] button,button[aria-label],button');" +
+                "for(var i=0;i<nodes.length;i++){var b=nodes[i];if(!b||b.disabled)continue;var cl=String(b.className||'');var al=b.getAttribute('aria-label')||'';var tx=(b.innerText||b.textContent||'').trim();var parent=b.parentElement;var pcl=parent?String(parent.className||''):'';" +
+                "var known=/(ytp-ad-skip-button|ytp-skip-ad-button|videoAdUiSkipButton|ytm-skip-ad-button|ytm-ad-skip-button|ad-skip|skip-ad)/i.test(cl+' '+pcl);" +
+                "var named=/(skip\\s*(?:ad|ads)|تخطي\\s*(?:الإعلان|الإعلانات))/i.test(al+' '+tx)|| (adActive&&/^skip$/i.test((al+' '+tx).trim()));" +
+                "var st=getComputedStyle(b);if((known|| (adActive&&named))&&b.getClientRects().length&&st.visibility!=='hidden'&&st.display!=='none'&&Number(st.opacity||1)>0.05){try{b.click();}catch(e){}break;}}" +
+                "}catch(e){}};window.__aboYoutubeSkipLoop=setInterval(window.__aboYoutubeSkipFn,250);if(document.documentElement&&!window.__aboYoutubeSkipObserver){window.__aboYoutubeSkipObserver=new MutationObserver(function(){window.__aboYoutubeSkipFn();});window.__aboYoutubeSkipObserver.observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['class','aria-label','disabled']});}window.__aboYoutubeSkipFn();}" +
                 "if(window.__aboActiveCaptureInstalled)return;window.__aboActiveCaptureInstalled=true;" +
                 "var armed=false,activeKey='',activeSince=0,seenResources={};" +
                 // Keep extended preload history only for Threads; preserve Instagram behavior.
@@ -2557,11 +2564,15 @@ public class BrowserActivity extends Activity {
                 }
                 if (!shouldReport) return;
 
-                // Never send browser-sniffed YouTube tracks after a failed dedicated
-                // extraction: they may be stale, mismatched, or missing the matching
-                // audio rendition. Do not turn a capture into an unverified stream.
-                runOnUiThread(() -> Toast.makeText(BrowserActivity.this,
-                        "فشل استخراج YouTube: " + reason, Toast.LENGTH_LONG).show());
+                // Do not send potentially stale/mismatched captured googlevideo tracks.
+                // If sender-side direct extraction fails, send the original YouTube page
+                // to Receiver; its YouTube-only path opens SmartTube without an app chooser.
+                runOnUiThread(() -> {
+                    Toast.makeText(BrowserActivity.this,
+                            "تعذر استخراج رابط مباشر (" + reason + ")؛ جاري تحويل رابط YouTube الأصلي إلى الشاشة عبر SmartTube.",
+                            Toast.LENGTH_LONG).show();
+                    castToTv(pageUrl, null);
+                });
             }
         });
     }
