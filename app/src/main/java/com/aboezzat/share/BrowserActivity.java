@@ -1633,6 +1633,13 @@ public class BrowserActivity extends Activity {
     @SuppressLint("JavascriptInterface")
     private void injectPopupAndOverlayBlocker(WebView view) {
         if (view == null) return;
+        // YouTube owns a highly dynamic player DOM. The generic overlay cleaner
+        // can mistake native ytp player/ad nodes for third-party ad containers
+        // and hide elements required by the HTML5 video surface. Keep all
+        // generic popup/DOM cleanup away from YouTube; its native skip button
+        // handling remains isolated in injectAdKiller().
+        String pageUrl = view.getUrl();
+        if (isYouTubePageUrl(pageUrl) || isYouTubePageUrl(activePageUrl)) return;
         String js = "(function(){try{" +
                 "if(window.__aboPopupGuardInstalled)return;window.__aboPopupGuardInstalled=true;" +
                 "var adHosts=" + new org.json.JSONArray(adDomains).toString() + ";" +
