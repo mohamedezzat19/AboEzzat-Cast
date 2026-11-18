@@ -47,7 +47,7 @@ public final class YoutubeDirectExtractor {
 
     /** Must match the fallback UA used by the extractor for googlevideo playback. */
     public static String getStreamUserAgent() {
-        return STREAM_USER_AGENT;
+        return streamRequestUserAgent;
     }
     private static final ExecutorService WORKER = Executors.newSingleThreadExecutor();
     private static final OkHttpClient HTTP = new OkHttpClient.Builder()
@@ -56,6 +56,7 @@ public final class YoutubeDirectExtractor {
             .readTimeout(35, TimeUnit.SECONDS)
             .callTimeout(90, TimeUnit.SECONDS).build();
     private static volatile boolean initialized;
+    private static volatile String streamRequestUserAgent = STREAM_USER_AGENT;
 
     private YoutubeDirectExtractor() {}
 
@@ -69,10 +70,17 @@ public final class YoutubeDirectExtractor {
                 boolean hasUserAgent = false;
                 for (Map.Entry<String, List<String>> header : request.headers().entrySet()) {
                     if (header.getKey() == null || header.getValue() == null) continue;
-                    if ("user-agent".equalsIgnoreCase(header.getKey())) hasUserAgent = true;
+                    if ("user-agent".equalsIgnoreCase(header.getKey())) {
+                        hasUserAgent = true;
+                        if (!header.getValue().isEmpty() && header.getValue().get(0) != null
+                                && !header.getValue().get(0).trim().isEmpty()) {
+                            streamRequestUserAgent = header.getValue().get(0).trim();
+                        }
+                    }
                     for (String value : header.getValue()) builder.addHeader(header.getKey(), value);
                 }
                 if (!hasUserAgent) {
+                    streamRequestUserAgent = STREAM_USER_AGENT;
                     builder.header("User-Agent", STREAM_USER_AGENT);
                 }
                 String method = request.httpMethod();
