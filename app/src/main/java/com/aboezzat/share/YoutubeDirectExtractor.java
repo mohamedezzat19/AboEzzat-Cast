@@ -41,7 +41,14 @@ public final class YoutubeDirectExtractor {
     }
 
     private static final String TAG = "CastYoutubeExtractor";
+    private static final String STREAM_USER_AGENT =
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0";
     private static final int MAX_STABLE_HEIGHT = 1080;
+
+    /** Must match the fallback UA used by the extractor for googlevideo playback. */
+    public static String getStreamUserAgent() {
+        return STREAM_USER_AGENT;
+    }
     private static final ExecutorService WORKER = Executors.newSingleThreadExecutor();
     private static final OkHttpClient HTTP = new OkHttpClient.Builder()
             .followRedirects(true).followSslRedirects(true)
@@ -66,7 +73,7 @@ public final class YoutubeDirectExtractor {
                     for (String value : header.getValue()) builder.addHeader(header.getKey(), value);
                 }
                 if (!hasUserAgent) {
-                    builder.header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0");
+                    builder.header("User-Agent", STREAM_USER_AGENT);
                 }
                 String method = request.httpMethod();
                 if ("POST".equalsIgnoreCase(method)) {
