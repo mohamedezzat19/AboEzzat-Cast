@@ -163,7 +163,7 @@ public class ShareActivity extends Activity {
                     if (isFinishing() || videoUrl == null || videoUrl.trim().isEmpty()) return;
                     // Send extracted media renditions only. A separate audio URL is
                     // included when YouTube's highest-quality video is video-only.
-                    sendToTv(targetTvIp, videoUrl, audioUrl, false);
+                    sendToTv(targetTvIp, videoUrl, audioUrl, false, url);
                 }
 
                 @Override public void onError(String reason) {
@@ -557,9 +557,12 @@ public class ShareActivity extends Activity {
                 if ((mediaUrl != null && mediaUrl.contains("googlevideo.com"))
                         || (audioUrl != null && audioUrl.contains("googlevideo.com"))) {
                     JSONObject headers = new JSONObject();
-                    headers.put("user-agent", WebSettings.getDefaultUserAgent(this));
+                    // Match the User-Agent actually used by NewPipe when resolving
+                    // googlevideo URLs; a WebView UA can make Receiver requests return 403.
+                    headers.put("user-agent", YoutubeDirectExtractor.getStreamUserAgent());
                     headers.put("referer", "https://www.youtube.com/");
                     headers.put("origin", "https://www.youtube.com");
+                    headers.put("accept-language", "ar-EG,ar;q=0.9,en-US;q=0.8");
                     payload.put("headers", headers);
                 }
                 RequestBody body = RequestBody.create(
