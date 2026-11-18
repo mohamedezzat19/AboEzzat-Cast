@@ -2316,15 +2316,24 @@ public class BrowserActivity extends Activity {
         if (videoUrl != null && !videoUrl.trim().isEmpty()) payload.put("url", videoUrl);
         if (audioUrl != null && !audioUrl.trim().isEmpty()) payload.put("audio", audioUrl);
         JSONObject headers = new JSONObject();
-        headers.put("user-agent", WebSettings.getDefaultUserAgent(this));
+        String youtubePage = getCurrentYouTubePageUrl();
+        // The extracted googlevideo URLs were resolved with NewPipe's Firefox
+        // fallback UA. The Receiver must use the same UA for both video and
+        // companion audio requests; sending the unrelated WebView UA can yield
+        // HTTP 403 even though the extracted URLs are valid.
+        headers.put("user-agent", youtubePage != null
+                ? YoutubeDirectExtractor.getStreamUserAgent()
+                : WebSettings.getDefaultUserAgent(this));
+        headers.put("accept-language", "ar-EG,ar;q=0.9,en-US;q=0.8");
         WebView current = getCurrentWebView();
-        String referer = getCurrentYouTubePageUrl();
+        String referer = youtubePage;
         if (referer == null && current != null) referer = current.getUrl();
         if (referer != null && (referer.startsWith("http://") || referer.startsWith("https://"))) {
             headers.put("referer", referer);
             try { Uri refUri = Uri.parse(referer); headers.put("origin", refUri.getScheme() + "://" + refUri.getHost()); }
             catch (Exception ignored) {}
         }
+        if (youtubePage != null) payload.put("sourceUrl", youtubePage);
         payload.put("headers", headers);
         RequestBody body = RequestBody.create(
                 MediaType.parse("application/json; charset=utf-8"), payload.toString());
