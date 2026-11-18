@@ -2555,34 +2555,11 @@ public class BrowserActivity extends Activity {
                 }
                 if (!shouldReport) return;
 
-                // If NewPipe cannot resolve this particular YouTube page, try the
-                // current browser-captured pair as a last resort. Never let these
-                // sniffed tracks override a successful dedicated extraction.
-                String fallbackVideo = null;
-                String fallbackAudio = null;
-                synchronized (capturedList) {
-                    for (CapturedMedia item : capturedList) {
-                        if (item.mediaType == 1 && fallbackVideo == null) {
-                            fallbackVideo = item.url;
-                            fallbackAudio = item.pairedAudioUrl;
-                        } else if (item.mediaType == 2 && fallbackAudio == null) {
-                            fallbackAudio = item.url;
-                        }
-                    }
-                }
-                if (fallbackVideo != null && !fallbackVideo.trim().isEmpty()) {
-                    final String video = fallbackVideo;
-                    final String audio = fallbackAudio;
-                    runOnUiThread(() -> {
-                        Toast.makeText(BrowserActivity.this,
-                                "تعذر الاستخراج المباشر؛ جاري تجربة المسارات الملتقطة كخطة احتياطية",
-                                Toast.LENGTH_LONG).show();
-                        castToTv(video, audio);
-                    });
-                } else {
-                    runOnUiThread(() -> Toast.makeText(BrowserActivity.this,
-                            "تعذر استخراج رابط مباشر من YouTube: " + reason, Toast.LENGTH_LONG).show());
-                }
+                // Never send browser-sniffed YouTube tracks after a failed dedicated
+                // extraction: they may be stale, mismatched, or missing the matching
+                // audio rendition. Do not turn a capture into an unverified stream.
+                runOnUiThread(() -> Toast.makeText(BrowserActivity.this,
+                        "فشل استخراج YouTube: " + reason, Toast.LENGTH_LONG).show());
             }
         });
     }
