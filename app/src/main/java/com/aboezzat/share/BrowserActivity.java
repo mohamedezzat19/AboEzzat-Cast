@@ -95,6 +95,9 @@ public class BrowserActivity extends Activity {
     // Volatile snapshots shared with WebView worker / JavaScript bridge threads.
     private volatile WebView activeWebView;
     private volatile String activePageUrl = "";
+    // Canonical YouTube watch URL reported by the page itself; WebView navigation callbacks
+    // alone miss YouTube SPA transitions from the home feed to an in-page video player.
+    private volatile String activeYouTubeWatchUrl = "";
 
     private LinearLayout rootLayout;
     private LinearLayout topBar;
@@ -926,7 +929,10 @@ public class BrowserActivity extends Activity {
             public void onPageStarted(WebView view, String loadedUrl, android.graphics.Bitmap favicon) {
                 super.onPageStarted(view, loadedUrl, favicon);
                 navigationStartedAt.put(view, System.currentTimeMillis());
-                if (view == activeWebView) activePageUrl = loadedUrl == null ? "" : loadedUrl;
+                if (view == activeWebView) {
+                    activePageUrl = loadedUrl == null ? "" : loadedUrl;
+                    activeYouTubeWatchUrl = canonicalYouTubeWatchUrl(loadedUrl);
+                }
                 if (loadedUrl != null && isYouTubePageUrl(loadedUrl)) {
                     // Use the actual system WebView Chromium version on YouTube;
                     // the old hard-coded Chrome 126 UA can trigger unsupported-player behavior.
@@ -956,12 +962,14 @@ public class BrowserActivity extends Activity {
                 super.onPageFinished(view, loadedUrl);
                 if (getCurrentWebView() == view) {
                     activePageUrl = loadedUrl == null ? "" : loadedUrl;
+                    activeYouTubeWatchUrl = canonicalYouTubeWatchUrl(loadedUrl);
                     etUrl.setText(loadedUrl.equals("about:home") ? "" : loadedUrl);
                     tabTitles.set(currentTabIndex, view.getTitle() != null ? view.getTitle() : "علامة تبويب");
                 }
                 injectPopupAndOverlayBlocker(view);
                 injectAdKiller(view);
                 injectTikTokLiveSniffer(view);
+                injectYouTubePageUrlTracker(view);
                 // YouTube extraction starts only after the player reports actual playback
                 // through JsBridge; keep page URL snapshots on the UI thread.
                 if (isGenericAutoSniffActive() && shouldAutoCaptureGenericPage(loadedUrl)) {
@@ -1199,6 +1207,23 @@ public class BrowserActivity extends Activity {
         view.evaluateJavascript(js, null);
     }
 
+    // YouTube is a single-page app: navigating from the home feed to a video often
+    // changes history/location without a WebView onPageStarted callback. Report only the
+    // actual visible YouTube watch URL so temporary googlevideo requests are never used
+    // as the source page for extraction or casting.
+    private void injectYouTubePageUrlTracker(WebView view) {
+        if (view == null) return;
+        String js = "(function(){try{" +
+                "var h=(location.hostname||'').toLowerCase();if(!/(^|\\\\.)youtube\\\\.com$/.test(h)&&h!=='youtu.be'&&!/(^|\\\\.)youtube-nocookie\\\\.com$/.test(h))return;" +
+                "function report(){try{if(document.visibilityState==='hidden')return;var u=String(location.href||'');if(u!==window.__aboLastReportedYouTubeUrl){window.__aboLastReportedYouTubeUrl=u;if(window.AboEzzatBridge&&window.AboEzzatBridge.onYouTubePageChanged)window.AboEzzatBridge.onYouTubePageChanged(u);}}catch(e){}}" +
+                "if(!window.__aboYouTubeUrlTracker){window.__aboYouTubeUrlTracker=true;var p=history.pushState,r=history.replaceState;" +
+                "history.pushState=function(){var x=p.apply(this,arguments);setTimeout(report,0);return x;};" +
+                "history.replaceState=function(){var x=r.apply(this,arguments);setTimeout(report,0);return x;};" +
+                "window.addEventListener('popstate',report,true);window.addEventListener('hashchange',report,true);setInterval(report,500);}" +
+                "report();}catch(e){}})();";
+        view.evaluateJavascript(js, null);
+    }
+
     // Automatic generic player monitor. It is installed only on non-social web-player
     // pages (plus TikTok LIVE), so existing platform-specific sniffers remain isolated.
     private void injectGenericAutoCapture(WebView view) {
@@ -1248,6 +1273,14 @@ public class BrowserActivity extends Activity {
                 lastDiscoveredTitle = title.replace("Instagram: ", "").replace("on Instagram", "").trim();
             }
             if (posterUrl != null && !posterUrl.isEmpty()) lastDiscoveredPoster = posterUrl;
+        }
+
+        @JavascriptInterface
+        public void onYouTubePageChanged(String pageUrl) {
+            // Ignore callbacks from hidden tabs or pages that are no longer YouTube.
+            if (!isYouTubePageUrl(activePageUrl)) return;
+            String canonical = canonicalYouTubeWatchUrl(pageUrl);
+            activeYouTubeWatchUrl = canonical == null ? "" : canonical;
         }
 
         @JavascriptInterface
@@ -1714,6 +1747,7 @@ public class BrowserActivity extends Activity {
         activeWebView = tabList.get(index);
         String activeUrl = activeWebView.getUrl();
         activePageUrl = activeUrl == null ? "" : activeUrl;
+        activeYouTubeWatchUrl = canonicalYouTubeWatchUrl(activeUrl);
         for (int i = 0; i < tabList.size(); i++) {
             tabList.get(i).setVisibility(i == index ? View.VISIBLE : View.GONE);
         }
@@ -2614,9 +2648,31 @@ public class BrowserActivity extends Activity {
         return ua.replace("; wv)", ")").replace(" Version/4.0", "");
     }
 
+    private String canonicalYouTubeWatchUrl(String page) {
+        if (!isYouTubePageUrl(page)) return null;
+        try {
+            Uri uri = Uri.parse(page.trim());
+            String videoId = uri.getQueryParameter("v");
+            if (videoId == null || videoId.isEmpty()) {
+                List<String> segments = uri.getPathSegments();
+                if (segments != null && !segments.isEmpty()) {
+                    String last = segments.get(segments.size() - 1);
+                    String path = uri.getPath() == null ? "" : uri.getPath();
+                    if (path.matches("(?i).*/(?:shorts|live|embed|v)/[^/]+/?$")
+                            || "youtu.be".equalsIgnoreCase(uri.getHost())) videoId = last;
+                }
+            }
+            if (videoId == null || !videoId.matches("[A-Za-z0-9_-]{11}")) return null;
+            return "https://www.youtube.com/watch?v=" + videoId;
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
     private String getCurrentYouTubePageUrl() {
-        String page = activePageUrl;
-        return isYouTubePageUrl(page) ? page.trim() : null;
+        String canonical = activeYouTubeWatchUrl;
+        if (canonical != null && !canonical.isEmpty()) return canonical;
+        return canonicalYouTubeWatchUrl(activePageUrl);
     }
 
     private void extractYouTubeForPage(String pageUrl, boolean castAfterExtraction) {
@@ -3302,6 +3358,7 @@ public class BrowserActivity extends Activity {
         navigationStartedAt.clear();
         activeWebView = null;
         activePageUrl = "";
+        activeYouTubeWatchUrl = "";
         if (wakeLock != null && wakeLock.isHeld()) {
             try {
                 wakeLock.release();
