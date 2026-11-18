@@ -1102,14 +1102,21 @@ public class BrowserActivity extends Activity {
 
     private void injectAdKiller(WebView view) {
         String js = "(function(){try{" +
-                "if(!window.__aboYoutubeSkipLoop){window.__aboYoutubeSkipFn=function(){try{var h=(location.hostname||'').toLowerCase();var yt=/(^|\\.)youtube\\.com$/.test(h)||/(^|\\.)youtube-nocookie\\.com$/.test(h)||h==='youtu.be';if(!yt)return;" +
-                "var adActive=!!document.querySelector('.ad-showing,.ad-interrupting,.ytp-ad-player-overlay,.ytm-ad-player-overlay,[class*=\\\"ad-showing\\\"]');" +
-                "var nodes=document.querySelectorAll('.ytp-ad-skip-button,.ytp-ad-skip-button-modern,.ytp-skip-ad-button,.videoAdUiSkipButton,.ytm-skip-ad-button,.ytm-ad-skip-button,[class*=\\\"ad-skip\\\"] button,[class*=\\\"skip-ad\\\"] button,button[aria-label],button');" +
-                "for(var i=0;i<nodes.length;i++){var b=nodes[i];if(!b||b.disabled)continue;var cl=String(b.className||'');var al=b.getAttribute('aria-label')||'';var tx=(b.innerText||b.textContent||'').trim();var parent=b.parentElement;var pcl=parent?String(parent.className||''):'';" +
-                "var known=/(ytp-ad-skip-button|ytp-skip-ad-button|videoAdUiSkipButton|ytm-skip-ad-button|ytm-ad-skip-button|ad-skip|skip-ad)/i.test(cl+' '+pcl);" +
-                "var named=/(skip\\s*(?:ad|ads)|تخطي\\s*(?:الإعلان|الإعلانات))/i.test(al+' '+tx)|| (adActive&&/^skip$/i.test((al+' '+tx).trim()));" +
-                "var st=getComputedStyle(b);if((known|| (adActive&&named))&&b.getClientRects().length&&st.visibility!=='hidden'&&st.display!=='none'&&Number(st.opacity||1)>0.05){try{b.click();}catch(e){}break;}}" +
-                "}catch(e){}};window.__aboYoutubeSkipLoop=setInterval(window.__aboYoutubeSkipFn,250);if(document.documentElement&&!window.__aboYoutubeSkipObserver){window.__aboYoutubeSkipObserver=new MutationObserver(function(){window.__aboYoutubeSkipFn();});window.__aboYoutubeSkipObserver.observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['class','aria-label','disabled']});}window.__aboYoutubeSkipFn();}" +
+                "if(!window.__aboYoutubeAdSpeedSkipV2){try{if(window.__aboYoutubeSkipLoop)clearInterval(window.__aboYoutubeSkipLoop);}catch(e){}" +
+                "window.__aboYoutubeAdSpeedSkipFn=function(){try{var h=(location.hostname||'').toLowerCase();var yt=/(^|\\.)youtube\\.com$/.test(h)||/(^|\\.)youtube-nocookie\\.com$/.test(h)||h==='youtu.be';if(!yt)return;" +
+                "var p=document.getElementById('movie_player');var pc=p?String(p.className||''):'';" +
+                "var adActive=/(^|\\s)(ad-showing|ad-interrupting)(\\s|$)/i.test(pc)||!!document.querySelector('.ad-showing,.ad-interrupting,.ytp-ad-player-overlay,.ytm-ad-player-overlay');" +
+                "var vids=document.querySelectorAll('#movie_player video,video.html5-main-video');" +
+                "for(var vi=0;vi<vids.length;vi++){var v=vids[vi];if(adActive){if(typeof v.__aboSavedPlaybackRate==='undefined')v.__aboSavedPlaybackRate=(v.playbackRate&&v.playbackRate>0)?v.playbackRate:1;" +
+                "try{v.playbackRate=16;v.defaultPlaybackRate=16;}catch(e){}" +
+                "}else if(typeof v.__aboSavedPlaybackRate!=='undefined'){try{v.playbackRate=v.__aboSavedPlaybackRate;v.defaultPlaybackRate=v.__aboSavedPlaybackRate;}catch(e){}delete v.__aboSavedPlaybackRate;}}" +
+                "if(adActive&&p&&typeof p.setPlaybackRate==='function'){try{if(typeof p.__aboSavedPlayerRate==='undefined'){var rr=p.getPlaybackRate();p.__aboSavedPlayerRate=(rr&&rr>0)?rr:1;}p.setPlaybackRate(16);}catch(e){}}" +
+                "else if(!adActive&&p&&typeof p.__aboSavedPlayerRate!=='undefined'){try{p.setPlaybackRate(p.__aboSavedPlayerRate);}catch(e){}delete p.__aboSavedPlayerRate;}" +
+                "var nodes=document.querySelectorAll('.ytp-ad-skip-button:not([disabled]),.ytp-ad-skip-button-modern:not([disabled]),.ytp-skip-ad-button:not([disabled]),.videoAdUiSkipButton:not([disabled]),.ytm-skip-ad-button:not([disabled]),.ytm-ad-skip-button:not([disabled]),[class*=\\\"ad-skip\\\"] button:not([disabled]),[class*=\\\"skip-ad\\\"] button:not([disabled])');" +
+                "for(var i=0;i<nodes.length;i++){var b=nodes[i];if(!b||b.disabled)continue;var st=getComputedStyle(b);if(b.getClientRects().length&&st.visibility!=='hidden'&&st.display!=='none'&&Number(st.opacity||1)>0.05){try{b.click();}catch(e){}break;}}" +
+                "if(adActive){var named=document.querySelectorAll('button[aria-label],button');for(var ni=0;ni<named.length;ni++){var nb=named[ni];var label=(nb.getAttribute('aria-label')||'')+' '+(nb.innerText||nb.textContent||'');if(/skip\\s*(?:ad|ads)|تخطي\\s*(?:الإعلان|الإعلانات)/i.test(label)&&!nb.disabled&&nb.getClientRects().length){try{nb.click();}catch(e){}break;}}}" +
+                "}catch(e){}};window.__aboYoutubeAdSpeedSkipV2=true;window.__aboYoutubeSkipLoop=setInterval(window.__aboYoutubeAdSpeedSkipFn,200);" +
+                "if(document.documentElement&&!window.__aboYoutubeAdSpeedSkipObserver){window.__aboYoutubeAdSpeedSkipObserver=new MutationObserver(function(){window.__aboYoutubeAdSpeedSkipFn();});window.__aboYoutubeAdSpeedSkipObserver.observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['class','aria-label','disabled']});}window.__aboYoutubeAdSpeedSkipFn();}" +
                 "if(window.__aboActiveCaptureInstalled)return;window.__aboActiveCaptureInstalled=true;" +
                 "var armed=false,activeKey='',activeSince=0,seenResources={};" +
                 // Keep extended preload history only for Threads; preserve Instagram behavior.
