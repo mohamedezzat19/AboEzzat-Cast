@@ -1102,6 +1102,7 @@ public class BrowserActivity extends Activity {
 
     private void injectAdKiller(WebView view) {
         String js = "javascript:(function(){try{" +
+                "if(!window.__aboYoutubeSkipLoop){window.__aboYoutubeSkipLoop=setInterval(function(){try{var h=(location.hostname||'').toLowerCase();var yt=/(^|\\.)youtube\\.com$/.test(h)||/(^|\\.)youtube-nocookie\\.com$/.test(h)||h==='youtu.be';if(!yt)return;var b=document.querySelector('.ytp-ad-skip-button:not([disabled]),.ytp-ad-skip-button-modern:not([disabled]),.ytp-skip-ad-button:not([disabled]),.videoAdUiSkipButton:not([disabled])');if(b&&b.getClientRects().length&&getComputedStyle(b).visibility!=='hidden'&&getComputedStyle(b).display!=='none'){b.click();}}catch(e){}},250);}" +
                 "if(window.__aboActiveCaptureInstalled)return;window.__aboActiveCaptureInstalled=true;" +
                 "var armed=false,activeKey='',activeSince=0,seenResources={};" +
                 // Keep extended preload history only for Threads; preserve Instagram behavior.
@@ -2332,10 +2333,6 @@ public class BrowserActivity extends Activity {
 
     private void mergeAndCastToTv() {
         String youtubePage = getCurrentYouTubePageUrl();
-        if (youtubePage != null) {
-            extractYouTubeForPage(youtubePage, true);
-            return;
-        }
         String videoTrackUrl = "";
         String audioTrackUrl = "";
         CapturedMedia bestVideo = null;
@@ -2356,6 +2353,20 @@ public class BrowserActivity extends Activity {
 
         if (bestVideo != null) videoTrackUrl = bestVideo.url;
         if (bestAudio != null) audioTrackUrl = bestAudio.url;
+
+        // On YouTube, use the already captured and auto-selected video/audio
+        // renditions first. Re-extracting the watch page here can fail even though
+        // both playable CDN tracks are already present in the capture list.
+        if (youtubePage != null) {
+            if (!videoTrackUrl.isEmpty()) {
+                String pairedAudio = !audioTrackUrl.isEmpty()
+                        ? audioTrackUrl : bestVideo.pairedAudioUrl;
+                castToTv(videoTrackUrl, pairedAudio);
+            } else {
+                extractYouTubeForPage(youtubePage, true);
+            }
+            return;
+        }
 
         if (videoTrackUrl.isEmpty()) {
             Toast.makeText(this, "تعذر العثور على مسار الفيديو للدمج", Toast.LENGTH_SHORT).show();
