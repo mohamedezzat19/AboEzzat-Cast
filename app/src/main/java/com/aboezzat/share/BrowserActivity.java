@@ -635,6 +635,8 @@ public class BrowserActivity extends Activity {
     @SuppressLint("SetJavaScriptEnabled")
     private void addNewTab(String url) {
         final WebView webView = new WebView(this);
+        // YouTube's HTML5/MSE video surface needs a hardware-backed WebView layer.
+        webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
 
         webView.setFocusable(true);
         webView.setFocusableInTouchMode(true);
@@ -1109,10 +1111,14 @@ public class BrowserActivity extends Activity {
                 "if(isThreadsHost||isTikTokLivePage){try{if(performance.setResourceTimingBufferSize)performance.setResourceTimingBufferSize(1500);}catch(e){}}" +
                 "if(!isYouTubeHost){var style=document.getElementById('abo-ezzat-adblock');if(!style){style=document.createElement('style');style.id='abo-ezzat-adblock';" +
                 "style.innerHTML='.ytp-ad-overlay-container,.ytp-ad-message-container,ytd-promoted-sparkles-web-renderer,ytd-banner-promo-renderer,ytd-ad-slot-renderer,.ad-container,.ad-div,ytd-in-feed-ad-layout-renderer,ytm-promoted-sparkles-web-renderer,.ytp-ad-action-interstitial,[id^=\\\"google_ads_\\\"],iframe[src*=\\\"doubleclick\\\"]{display:none!important;width:0!important;height:0!important}';if(document.head)document.head.appendChild(style);}}" +
-                "if(!isYouTubeHost&&!window.AboEzzatKillerLoop){window.AboEzzatKillerLoop=setInterval(function(){try{" +
-                "var b=document.querySelector('.ytp-ad-skip-button,.ytp-ad-skip-button-modern,.ytp-skip-ad-button,.videoAdUiSkipButton');if(b)b.click();" +
-                "var av=document.querySelectorAll('video');for(var ai=0;ai<av.length;ai++){var x=av[ai];if(document.querySelector('.ad-interrupting,.ad-showing')||x.classList.contains('ad-interrupting')){" +
-                "x.muted=true;if(!isNaN(x.duration)&&x.duration>0)x.currentTime=x.duration+1;}}}catch(e){}},200);}" +
+                // YouTube: click only the native Skip Ad control once it is visible and enabled.
+                // Do not seek/mute/alter the player or interfere with non-skippable ads.
+                "if(!window.AboEzzatKillerLoop){window.AboEzzatKillerLoop=setInterval(function(){try{" +
+                "var b=document.querySelector('.ytp-ad-skip-button:not([disabled]),.ytp-ad-skip-button-modern:not([disabled]),.ytp-skip-ad-button:not([disabled]),.videoAdUiSkipButton:not([disabled])');" +
+                "if(b&&b.getClientRects().length&&getComputedStyle(b).visibility!=='hidden'){b.click();}" +
+                "if(!isYouTubeHost){var av=document.querySelectorAll('video');for(var ai=0;ai<av.length;ai++){var x=av[ai];if(document.querySelector('.ad-interrupting,.ad-showing')||x.classList.contains('ad-interrupting')){" +
+                "x.muted=true;if(!isNaN(x.duration)&&x.duration>0)x.currentTime=x.duration+1;}}}" +
+                "}catch(e){}},350);}" +
                 "function metaValue(prop,name){try{var ms=document.getElementsByTagName('meta');for(var i=0;i<ms.length;i++){var m=ms[i];if((prop&&m.getAttribute('property')===prop)||(name&&m.getAttribute('name')===name)){var c=m.getAttribute('content')||'';if(c.trim())return c.trim();}}}catch(e){}return '';}" +
                 "function titleFor(v){try{if(isTikTokLivePage){var t=metaValue('og:title','twitter:title');if(!t){var ns=[].slice.call(document.querySelectorAll('[data-e2e]'));for(var ni=0;ni<ns.length;ni++){var de=(ns[ni].getAttribute('data-e2e')||'').toLowerCase();if(de.indexOf('live-room')>=0||de.indexOf('live-title')>=0||de.indexOf('live-user')>=0){t=(ns[ni].innerText||ns[ni].textContent||'').trim();if(t)break;}}}if(!t)t=document.title||'';t=t.replace(/\\s*[|—-]\\s*TikTok.*$/i,'').replace(/^TikTok\\s*(LIVE)?\\s*[:—-]?\\s*/i,'').trim();if(t&&!/^live$|^tiktok$/i.test(t))return t;return '';}" +
                 "var a=v.closest('article')||v.parentElement,owner='',caption='';if(a){var links=[].slice.call(a.querySelectorAll('a[href]'));for(var i=0;i<links.length;i++){var h=links[i].getAttribute('href')||'';var m=h.match(/\\/@([A-Za-z0-9._-]{2,})/);if(m){owner='@'+m[1];break;}var al=links[i].getAttribute('aria-label')||links[i].innerText||'';if(!owner&&/^@?[A-Za-z0-9._-]{2,}$/.test(al.trim()))owner=al.trim().charAt(0)==='@'?al.trim():'@'+al.trim();}var c=a.querySelector('[data-e2e*=\\\"video-desc\\\"],[data-testid*=\\\"text\\\"],[dir=\\\"auto\\\"]');caption=c?(c.innerText||c.textContent||'').trim():(a.innerText||'').trim();caption=caption.replace(/\\s+/g,' ').substring(0,95);}var t=(owner?owner+' — ':'')+caption;return t||document.title||'فيديو قيد التشغيل';}catch(e){}return isTikTokLivePage?'':(document.title||'فيديو قيد التشغيل');}" +
@@ -1727,6 +1733,11 @@ public class BrowserActivity extends Activity {
         if (isQFilmUrl(target)) {
             current.getSettings().setSupportMultipleWindows(false);
             current.getSettings().setUserAgentString(getQFilmCompatibleUserAgent());
+        } else if (isYouTubePageUrl(target)) {
+            // Set the real device WebView Chromium UA before the first request.
+            // Changing it only in onPageStarted is too late for YouTube's player bootstrap.
+            current.getSettings().setSupportMultipleWindows(false);
+            current.getSettings().setUserAgentString(getYouTubeCompatibleUserAgent());
         } else {
             current.getSettings().setSupportMultipleWindows(false);
             current.getSettings().setUserAgentString("Mozilla/5.0 (Linux; Android 14; Mobile; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.6478.122 Mobile Safari/537.36");
