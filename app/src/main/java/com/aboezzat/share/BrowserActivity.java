@@ -1663,6 +1663,11 @@ public class BrowserActivity extends Activity {
                 }
             } catch (Exception e) {
                 Log.d(TAG, "Thumbnail load failed: " + media.posterUrl, e);
+                String youtubeFallback = getYouTubeThumbnailForCurrentPage();
+                if (!youtubeFallback.isEmpty() && !youtubeFallback.equals(media.posterUrl)) {
+                    media.posterUrl = youtubeFallback;
+                    loadThumbnailAsync(media);
+                }
             } finally {
                 try { if (input != null) input.close(); } catch (Exception ignored) {}
                 if (conn != null) conn.disconnect();
