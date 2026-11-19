@@ -931,20 +931,16 @@ public class BrowserActivity extends Activity {
                 navigationStartedAt.put(view, System.currentTimeMillis());
                 if (view == activeWebView) {
                     activePageUrl = loadedUrl == null ? "" : loadedUrl;
-                    String previousYouTubePage = activeYouTubeWatchUrl;
                     String nextYouTubePage = canonicalYouTubeWatchUrl(loadedUrl);
                     activeYouTubeWatchUrl = nextYouTubePage == null ? "" : nextYouTubePage;
-                    if (!activeYouTubeWatchUrl.equals(previousYouTubePage)) {
-                        activePlaybackKey = "";
-                        synchronized (BrowserActivity.this) {
-                            youtubeExtractionInProgressFor = "";
-                            youtubeExtractedFor = "";
-                            youtubeCastPendingFor = "";
-                        }
-                        clearCapturedMedia();
-                        if (!activeYouTubeWatchUrl.isEmpty()) {
-                            extractYouTubeForPage(activeYouTubeWatchUrl, false);
-                        }
+                    // A real page load (including reloading the same video) starts a
+                    // fresh capture generation. Start extraction only after the old
+                    // visible list is cleared below.
+                    activePlaybackKey = "";
+                    synchronized (BrowserActivity.this) {
+                        youtubeExtractionInProgressFor = "";
+                        youtubeExtractedFor = "";
+                        youtubeCastPendingFor = "";
                     }
                 }
                 if (loadedUrl != null && isYouTubePageUrl(loadedUrl)) {
@@ -968,6 +964,9 @@ public class BrowserActivity extends Activity {
                     genericAutoSniffUntilMs = shouldAutoCaptureGenericPage(loadedUrl)
                             ? System.currentTimeMillis() + 10 * 60 * 1000L : 0L;
                     clearCapturedMedia();
+                    if (!activeYouTubeWatchUrl.isEmpty()) {
+                        extractYouTubeForPage(activeYouTubeWatchUrl, false);
+                    }
                 }
             }
 
