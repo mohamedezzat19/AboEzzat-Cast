@@ -1329,6 +1329,10 @@ public class BrowserActivity extends Activity {
         @JavascriptInterface
         public void onCapturedVideoTrack(String mediaUrl, String title, String posterUrl) {
             if ((activePlaybackKey.isEmpty() && !isManualSniffActive() && !isGenericAutoSniffActive()) || mediaUrl == null || !mediaUrl.startsWith("http")) return;
+            String lower = mediaUrl.toLowerCase(Locale.ROOT);
+            // YouTube SABR videoplayback URLs are transport requests, not verified standalone tracks.
+            // They must never enter the generic captured-video list or be paired as audio/video.
+            if (lower.contains("googlevideo.com") && lower.contains("/videoplayback")) return;
             String clean = mediaUrl.replaceAll("&bytestart=\\d+", "")
                     .replaceAll("&byteend=\\d+", "");
             String cleanTitle = title == null || title.trim().isEmpty() ? "فيديو قيد التشغيل" : title.trim();
@@ -2121,6 +2125,15 @@ public class BrowserActivity extends Activity {
         final WebView current = getCurrentWebView();
         if (current == null) return;
 
+        // YouTube must be handled through its canonical watch page and NewPipe,
+        // never by collecting its temporary SABR googlevideo transport requests.
+        String youtubePage = getCurrentYouTubePageUrl();
+        if (youtubePage != null) {
+            extractYouTubeForPage(youtubePage, false);
+            Toast.makeText(this, "جاري استخراج الفيديو من صفحة YouTube الأصلية...", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
         // Arm only the generic manual-capture path for 45 seconds. This does not
         // modify share-sheet dispatch or the platform-specific automatic sniffers.
         manualSniffUntilMs = System.currentTimeMillis() + 45000L;
@@ -2136,6 +2149,7 @@ public class BrowserActivity extends Activity {
                 "for(var i=0;i<vs.length;i++){var v=vs[i],u=v.currentSrc||v.src||'';if(/^https?:/i.test(u))window.AboEzzatBridge.onActiveVideoTrack(u,d.title||document.title,v.poster||'');}" +
                 "var es=w.performance&&w.performance.getEntriesByType?w.performance.getEntriesByType('resource'):[];" +
                 "for(var j=0;j<es.length;j++){var u=es[j].name||'',l=u.toLowerCase();if(!/^https?:/i.test(u))continue;" +
+                "if(l.indexOf('googlevideo.com')!==-1&&l.indexOf('/videoplayback')!==-1)continue;" +
                 "if(/\\.(jpg|jpeg|png|webp|gif|bmp|svg|ts|m4s|js|css)(?:[?#]|$)/i.test(l))continue;" +
                 "var a=/mime(?:_|-)?type=audio|mime=audio|type=audio|content[_-]?type=audio|dash_ln_heaac|audio_dash|\\.(aac|m4a|mp3|opus|ogg)(?:[?#]|$)/i.test(l);" +
                 "var v=/mime(?:_|-)?type=video|mime=video|type=video|content[_-]?type=video|videoplayback|video\\/|\\.(m3u8|mpd|mp4|m4v|webm|flv|mov)(?:[?#]|$)/i.test(l);" +
