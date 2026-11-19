@@ -1369,6 +1369,7 @@ public class BrowserActivity extends Activity {
                     tabTitles.set(currentTabIndex, title == null || title.trim().isEmpty()
                             ? reportedUrl : title.trim());
                 }
+                navigationStartedAt.put(source, System.currentTimeMillis());
                 recordVisitedUrl(source, reportedUrl);
             });
         }
@@ -2660,7 +2661,14 @@ public class BrowserActivity extends Activity {
                     } else if (which == 1) {
                         castToTv(media.url, media.pairedAudioUrl, media.requestHeaders);
                     } else if (which == 2) {
-                        downloadSelectedMedia(false);
+                        // This row action must download this exact media URL.
+                        // The bulk-download button below is the only action that
+                        // uses the multi-selection/highest-quality chooser.
+                        if (media.mediaType == 1 && !isCapturedAudioTrack(media)) {
+                            downloadMedia(media.url, false, "video/mp4");
+                        } else {
+                            Toast.makeText(this, "العنصر المحدد ليس مسار فيديو", Toast.LENGTH_LONG).show();
+                        }
                     } else if (which == 3) {
                         if (isCapturedAudioTrack(media)) {
                             downloadMedia(media.url, true, "audio/mp4");
