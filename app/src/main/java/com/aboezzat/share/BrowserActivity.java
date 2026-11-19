@@ -141,6 +141,7 @@ public class BrowserActivity extends Activity {
         // YouTube appears as one playable item; its separately hosted audio
         // rendition stays paired internally, never exposed as a broken standalone item.
         public String pairedAudioUrl;
+        public java.util.Map<String, String> requestHeaders = new java.util.LinkedHashMap<>();
         public boolean isSelected = false;
 
         public CapturedMedia(String url, String title, String format, String posterUrl, int mediaType) {
@@ -885,7 +886,8 @@ public class BrowserActivity extends Activity {
                                     : "🎬 فيديو";
                             String title = !lastDiscoveredTitle.isEmpty()
                                     ? lastDiscoveredTitle : "فيديو قيد التشغيل";
-                            addCapturedMedia(cleanMedia, title, format, lastDiscoveredPoster, type);
+                            addCapturedMedia(cleanMedia, title, format, lastDiscoveredPoster, type,
+                                    capturePlaybackRequestHeaders(request, reqUrl));
                         } else if (lowerUrl.matches(".*\\.mp4(?:[?#].*)?$")) {
                             probeAndAddMp4(reqUrl, lastDiscoveredTitle, lastDiscoveredPoster);
                         } else if (isGenericAutoSniffActive()) {
@@ -1459,6 +1461,35 @@ public class BrowserActivity extends Activity {
         });
     }
 
+    private java.util.Map<String, String> capturePlaybackRequestHeaders(WebResourceRequest request, String mediaUrl) {
+        java.util.Map<String, String> result = new java.util.LinkedHashMap<>();
+        if (request == null || !isTikTokCdnVideoUrl(mediaUrl)) return result;
+        try {
+            java.util.Map<String, String> source = request.getRequestHeaders();
+            if (source != null) {
+                for (java.util.Map.Entry<String, String> entry : source.entrySet()) {
+                    String key = entry.getKey();
+                    String value = entry.getValue();
+                    if (key == null || value == null || value.isEmpty()) continue;
+                    String lower = key.toLowerCase(Locale.ROOT);
+                    if (("user-agent".equals(lower) || "referer".equals(lower) || "origin".equals(lower)
+                            || "accept".equals(lower) || "accept-language".equals(lower))
+                            && value.length() <= 2048 && !value.contains("\\r") && !value.contains("\\n")) {
+                        result.put(lower, value);
+                    }
+                }
+            }
+            // WebView does not expose Cookie in every request-header snapshot.
+            // Ask its cookie store for the exact CDN host's cookies as a fallback.
+            String cookie = CookieManager.getInstance().getCookie(mediaUrl);
+            if (cookie != null && !cookie.isEmpty() && cookie.length() <= 8192
+                    && !cookie.contains("\\r") && !cookie.contains("\\n")) {
+                result.put("cookie", cookie);
+            }
+        } catch (Exception ignored) {}
+        return result;
+    }
+
     private int classifyCapturedMedia(String mediaUrl) {
         if (mediaUrl == null) return 0;
         String lower = mediaUrl.toLowerCase();
@@ -1538,12 +1569,18 @@ public class BrowserActivity extends Activity {
     }
 
     private synchronized void addCapturedMedia(String url, String title, String format, String posterUrl, int mediaType) {
+        addCapturedMedia(url, title, format, posterUrl, mediaType, null);
+    }
+
+    private synchronized void addCapturedMedia(String url, String title, String format, String posterUrl,
+                                               int mediaType, java.util.Map<String, String> requestHeaders) {
         if (isBlockedAdUrl(url)) return;
         if ((mediaType != 1 && mediaType != 2) || (activePlaybackKey.isEmpty() && !isManualSniffActive() && !isGenericAutoSniffActive())) return;
         boolean added = false;
         synchronized (capturedList) {
             for (CapturedMedia item : capturedList) {
                 if (item.url.equalsIgnoreCase(url)) {
+                    if (requestHeaders != null && !requestHeaders.isEmpty()) item.requestHeaders.putAll(requestHeaders);
                     // An active <video> element is authoritative: promote a URL
                     // previously guessed as audio to a video track when necessary.
                     if (mediaType == 1 && item.mediaType != 1) {
@@ -1598,6 +1635,7 @@ public class BrowserActivity extends Activity {
             // Select both video renditions and the separate audio track by default.
             // The merge action independently chooses the highest-quality video.
             newMedia.isSelected = true;
+            if (requestHeaders != null) newMedia.requestHeaders.putAll(requestHeaders);
             capturedList.add(newMedia);
             added = true;
             if (posterUrl != null && !posterUrl.isEmpty()) loadThumbnailAsync(newMedia);
@@ -2542,7 +2580,7 @@ public class BrowserActivity extends Activity {
                     if (which == 0) {
                         mergeAndCastToTv();
                     } else if (which == 1) {
-                        castToTv(media.url, media.pairedAudioUrl);
+                        castToTv(media.url, media.pairedAudioUrl, media.requestHeaders);
                     } else if (which == 2) {
                         downloadSelectedMedia(false);
                     } else if (which == 3) {
@@ -2557,6 +2595,11 @@ public class BrowserActivity extends Activity {
     }
 
     private Request buildReceiverPlayRequest(String endpoint, String videoUrl, String audioUrl) throws Exception {
+        return buildReceiverPlayRequest(endpoint, videoUrl, audioUrl, null);
+    }
+
+    private Request buildReceiverPlayRequest(String endpoint, String videoUrl, String audioUrl,
+                                             java.util.Map<String, String> capturedHeaders) throws Exception {
         JSONObject payload = new JSONObject();
         if (isBlockedAdUrl(videoUrl) || isBlockedAdUrl(audioUrl)) {
             throw new IllegalArgumentException("تم استبعاد رابط إعلاني");
@@ -2573,6 +2616,22 @@ public class BrowserActivity extends Activity {
                 ? YoutubeDirectExtractor.getStreamUserAgent()
                 : WebSettings.getDefaultUserAgent(this));
         headers.put("accept-language", "ar-EG,ar;q=0.9,en-US;q=0.8");
+        // TikTok signed CDN URLs must be replayed with the browser request context
+        // that fetched the resource, not a newly invented generic Referer.
+        if (isTikTokCdnVideoUrl(videoUrl) && capturedHeaders != null) {
+            for (java.util.Map.Entry<String, String> entry : capturedHeaders.entrySet()) {
+                String key = entry.getKey();
+                String value = entry.getValue();
+                if (key == null || value == null || value.isEmpty()) continue;
+                String lower = key.toLowerCase(Locale.ROOT);
+                if (("user-agent".equals(lower) || "referer".equals(lower) || "origin".equals(lower)
+                        || "accept".equals(lower) || "accept-language".equals(lower) || "cookie".equals(lower))
+                        && value.length() <= ("cookie".equals(lower) ? 8192 : 2048)
+                        && !value.contains("\\r") && !value.contains("\\n")) {
+                    headers.put(lower, value);
+                }
+            }
+        }
         WebView current = getCurrentWebView();
         String referer = youtubePage;
         if (referer == null && current != null) referer = current.getUrl();
@@ -2641,7 +2700,7 @@ public class BrowserActivity extends Activity {
         }
 
         if (audioTrackUrl.isEmpty()) {
-            castToTv(videoTrackUrl);
+            castToTv(videoTrackUrl, null, bestVideo == null ? null : bestVideo.requestHeaders);
             return;
         }
 
@@ -2866,9 +2925,11 @@ public class BrowserActivity extends Activity {
         });
     }
 
-    private void castToTv(String mediaUrl) { castToTv(mediaUrl, null); }
+    private void castToTv(String mediaUrl) { castToTv(mediaUrl, null, null); }
 
-    private void castToTv(String mediaUrl, String audioUrl) {
+    private void castToTv(String mediaUrl, String audioUrl) { castToTv(mediaUrl, audioUrl, null); }
+
+    private void castToTv(String mediaUrl, String audioUrl, java.util.Map<String, String> capturedHeaders) {
         if (isBlockedAdUrl(mediaUrl) || isBlockedAdUrl(audioUrl)) {
             Toast.makeText(this, "تم استبعاد رابط إعلاني ولا يمكن تشغيله", Toast.LENGTH_SHORT).show();
             return;
@@ -2886,7 +2947,7 @@ public class BrowserActivity extends Activity {
                 endpoint = endpoint + ":8081";
             }
 
-            Request req = buildReceiverPlayRequest(endpoint, mediaUrl, audioUrl);
+            Request req = buildReceiverPlayRequest(endpoint, mediaUrl, audioUrl, capturedHeaders);
             final String receiverEndpoint = endpoint;
             AtomicBoolean requestHeadersSent = new AtomicBoolean(false);
             OkHttpClient trackedClient = client.newBuilder()
