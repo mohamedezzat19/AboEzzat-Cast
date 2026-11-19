@@ -111,9 +111,12 @@ public final class YoutubeDirectExtractor {
         if (callback == null) return;
         WORKER.execute(() -> {
             try {
-                if (!isYouTubeUrl(pageUrl)) throw new IOException("رابط YouTube غير صالح");
+                String canonicalPageUrl = normalizeYouTubePageUrl(pageUrl);
+                if (canonicalPageUrl == null) {
+                    throw new IOException("الرابط المرسل من YouTube ليس صفحة فيديو؛ تم استلام رابط إحصائيات أو رابط غير صالح");
+                }
                 initialize();
-                StreamInfo info = StreamInfo.getInfo(pageUrl);
+                StreamInfo info = StreamInfo.getInfo(canonicalPageUrl);
 
                 String videoUrl = null;
                 String audioUrl = null;
@@ -285,15 +288,43 @@ public final class YoutubeDirectExtractor {
         return matcher.find() ? Integer.parseInt(matcher.group(1)) : 0;
     }
 
-    private static boolean isYouTubeUrl(String value) {
+    /**
+     * Some Android share sources expose YouTube's internal QoE telemetry request
+     * instead of the watch page. It is never a playable stream URL. Recover the
+     * video ID from docid and resolve the actual watch page through NewPipe.
+     */
+    private static String normalizeYouTubePageUrl(String value) {
         try {
-            String host = Uri.parse(value).getHost();
-            if (host == null) return false;
+            Uri uri = Uri.parse(value == null ? "" : value.trim());
+            String host = uri.getHost();
+            if (host == null) return null;
             host = host.toLowerCase(Locale.ROOT);
-            return host.equals("youtu.be") || host.endsWith(".youtu.be")
+            boolean youtubeHost = host.equals("youtu.be") || host.endsWith(".youtu.be")
                     || host.equals("youtube.com") || host.endsWith(".youtube.com")
                     || host.equals("youtube-nocookie.com") || host.endsWith(".youtube-nocookie.com");
-        } catch (Exception ignored) { return false; }
+            if (!youtubeHost) return null;
+
+            String path = uri.getPath() == null ? "" : uri.getPath().toLowerCase(Locale.ROOT);
+            if (path.startsWith("/api/stats/")) {
+                String docId = uri.getQueryParameter("docid");
+                if (docId == null || !docId.matches("[A-Za-z0-9_-]{11}")) return null;
+                return "https://www.youtube.com/watch?v=" + docId;
+            }
+
+            String videoId = uri.getQueryParameter("v");
+            if (videoId == null || videoId.isEmpty()) {
+                List<String> segments = uri.getPathSegments();
+                if (segments != null && !segments.isEmpty()) {
+                    String last = segments.get(segments.size() - 1);
+                    if (path.matches("(?i).*/(?:shorts|live|embed|v)/[^/]+/?$")
+                            || "youtu.be".equalsIgnoreCase(host)) videoId = last;
+                }
+            }
+            if (videoId == null || !videoId.matches("[A-Za-z0-9_-]{11}")) return null;
+            return "https://www.youtube.com/watch?v=" + videoId;
+        } catch (Exception ignored) {
+            return null;
+        }
     }
 
     private static boolean isHttp(String value) {
