@@ -1184,7 +1184,7 @@ public class BrowserActivity extends Activity {
                 "function scanResources(v){try{var entries=performance.getEntriesByType('resource'),now=performance.now();" +
                 "var videoTracks=[],bestAudio=null;" +
                 "for(var i=0;i<entries.length;i++){var e=entries[i],u=e.name||'',l=u.toLowerCase();if(!/^https?:/i.test(u))continue;" +
-                "if(/(^|\/\/)(?:[^\/]*\.)?(?:doubleclick\.net|googlesyndication\.com|googleadservices\.com|adservice\.google\.com)(?:[:\/?#]|$)/i.test(u)||/\/ddm\/track(?:imp|clk)\//i.test(u))continue;" +
+                "if(l.indexOf('doubleclick.net')!==-1||l.indexOf('googlesyndication.com')!==-1||l.indexOf('googleadservices.com')!==-1||l.indexOf('adservice.google.com')!==-1||l.indexOf('/ddm/trackimp/')!==-1||l.indexOf('/ddm/trackclk/')!==-1)continue;" +
                 // For Threads, only consider resources requested during the currently playing visible post.
                 "if(isThreadsHost&&(e.startTime<activeSince||e.startTime>performance.now()+100))continue;" +
                 "if(isThreadsHost&&seenResources[u])continue;" +
