@@ -1552,7 +1552,11 @@ public class BrowserActivity extends Activity {
                     if (key == null || value == null || value.isEmpty()) continue;
                     String lower = key.toLowerCase(Locale.ROOT);
                     if (("user-agent".equals(lower) || "referer".equals(lower) || "origin".equals(lower)
-                            || "accept".equals(lower) || "accept-language".equals(lower))
+                            || "accept".equals(lower) || "accept-language".equals(lower)
+                            || "sec-fetch-site".equals(lower) || "sec-fetch-mode".equals(lower)
+                            || "sec-fetch-dest".equals(lower) || "sec-ch-ua".equals(lower)
+                            || "sec-ch-ua-mobile".equals(lower) || "sec-ch-ua-platform".equals(lower)
+                            || "priority".equals(lower))
                             && value.length() <= 2048 && !value.contains("\\r") && !value.contains("\\n")) {
                         result.put(lower, value);
                     }
@@ -2711,7 +2715,11 @@ public class BrowserActivity extends Activity {
                 if (key == null || value == null || value.isEmpty()) continue;
                 String lower = key.toLowerCase(Locale.ROOT);
                 if (("user-agent".equals(lower) || "referer".equals(lower) || "origin".equals(lower)
-                        || "accept".equals(lower) || "accept-language".equals(lower) || "cookie".equals(lower))
+                        || "accept".equals(lower) || "accept-language".equals(lower) || "cookie".equals(lower)
+                        || "sec-fetch-site".equals(lower) || "sec-fetch-mode".equals(lower)
+                        || "sec-fetch-dest".equals(lower) || "sec-ch-ua".equals(lower)
+                        || "sec-ch-ua-mobile".equals(lower) || "sec-ch-ua-platform".equals(lower)
+                        || "priority".equals(lower))
                         && value.length() <= ("cookie".equals(lower) ? 8192 : 2048)
                         && !value.contains("\\r") && !value.contains("\\n")) {
                     headers.put(lower, value);
