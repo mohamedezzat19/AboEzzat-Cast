@@ -49,7 +49,9 @@ public final class YoutubeDirectExtractor {
     public static String getStreamUserAgent() {
         return streamRequestUserAgent;
     }
-    private static final ExecutorService WORKER = Executors.newSingleThreadExecutor();
+    // Do not serialize page extractions: a slow/stale video must not block the
+    // newest YouTube page after the user navigates to another video.
+    private static final ExecutorService WORKER = Executors.newFixedThreadPool(3);
     private static final OkHttpClient HTTP = new OkHttpClient.Builder()
             .followRedirects(true).followSslRedirects(true)
             .connectTimeout(20, TimeUnit.SECONDS)
