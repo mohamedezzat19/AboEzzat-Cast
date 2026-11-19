@@ -1461,6 +1461,18 @@ public class BrowserActivity extends Activity {
         });
     }
 
+    private boolean isTikTokCdnVideoUrl(String value) {
+        if (value == null || value.trim().isEmpty()) return false;
+        try {
+            Uri uri = Uri.parse(value.trim());
+            String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase(Locale.ROOT);
+            String path = uri.getPath() == null ? "" : uri.getPath().toLowerCase(Locale.ROOT);
+            return host.endsWith("tiktok.com") && path.contains("/video/tos/");
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
     private java.util.Map<String, String> capturePlaybackRequestHeaders(WebResourceRequest request, String mediaUrl) {
         java.util.Map<String, String> result = new java.util.LinkedHashMap<>();
         if (request == null || !isTikTokCdnVideoUrl(mediaUrl)) return result;
