@@ -163,6 +163,10 @@ public class BrowserActivity extends Activity {
     private String lastDiscoveredTitle = "";
     // Only capture resources after the user activates a visible video player.
     private volatile String activePlaybackKey = "";
+    // Drama Live uses an isolated player frame; remember only the frame the user focused.
+    private volatile String activePlayerFrameUrl = "";
+    private volatile long activePlayerFrameActivatedAtMs = 0L;
+    private final Set<String> dramaLiveProbeRequests = Collections.synchronizedSet(new HashSet<String>());
     // Isolated manual capture window for generic embedded players; never armed by share-sheet routes.
     private volatile long manualSniffUntilMs = 0L;
     // Automatic generic capture is armed only for ordinary web players and TikTok LIVE.
@@ -170,6 +174,15 @@ public class BrowserActivity extends Activity {
     private volatile String youtubeExtractionInProgressFor = "";
     private volatile String youtubeExtractedFor = "";
     private volatile String youtubeCastPendingFor = "";
+
+    private boolean isDramaLivePage(String url) {
+        if (url == null || url.isEmpty()) return false;
+        try {
+            String host = Uri.parse(url).getHost();
+            return host != null && (host.equalsIgnoreCase("dramalive.cc")
+                    || host.toLowerCase(Locale.ROOT).endsWith(".dramalive.cc"));
+        } catch (Exception ignored) { return false; }
+    }
 
     private boolean isManualSniffActive() {
         return System.currentTimeMillis() <= manualSniffUntilMs;
@@ -898,6 +911,9 @@ public class BrowserActivity extends Activity {
 
                 // Ignore every page/list/thumbnail request until a specific visible
                 // player has been activated by the user in the browser.
+                boolean dramaLivePlayerActive = isDramaLivePage(requestPageUrl)
+                        && activePlaybackKey.startsWith("dramalive-frame:")
+                        && System.currentTimeMillis() - activePlayerFrameActivatedAtMs < 10 * 60 * 1000L;
                 if (!dedicatedSocialPage && view == activeWebView
                         && !activePlaybackKey.isEmpty()) {
                     boolean isJunk = lowerUrl.matches(".*\\.(jpg|jpeg|png|webp|gif|bmp|svg|ts|m4s|js|css)(?:[?#].*)?$")
@@ -919,6 +935,13 @@ public class BrowserActivity extends Activity {
                                     capturePlaybackRequestHeaders(request, reqUrl));
                         } else if (lowerUrl.matches(".*\\.mp4(?:[?#].*)?$")) {
                             probeAndAddMp4(reqUrl, lastDiscoveredTitle, lastDiscoveredPoster);
+                        } else if (dramaLivePlayerActive && "GET".equalsIgnoreCase(request.getMethod())
+                                && (reqUrl.equals(activePlayerFrameUrl)
+                                || lowerUrl.matches(".*(\\.json(?:[?#].*)?|/api/|/get\\.php|/player/|/embed/|/stream/|manifest|playlist|source=|file=).*"))) {
+                            Map<String, String> headers = request.getRequestHeaders() == null
+                                    ? null : new HashMap<>(request.getRequestHeaders());
+                            probeDramaLivePlayerDocument(reqUrl, activePlaybackKey, lastDiscoveredTitle,
+                                    lastDiscoveredPoster, headers);
                         } else if (isGenericAutoSniffActive()) {
                             // Generic fallback for embedded players on any movie site:
                             // cross-origin iframe requests are invisible to page JS, so use
@@ -993,6 +1016,9 @@ public class BrowserActivity extends Activity {
                 if (getCurrentWebView() == view && loadedUrl != null
                         && loadedUrl.startsWith("http")) {
                     activePlaybackKey = "";
+                    activePlayerFrameUrl = "";
+                    activePlayerFrameActivatedAtMs = 0L;
+                    dramaLiveProbeRequests.clear();
                     manualSniffUntilMs = 0L;
                     genericAutoSniffUntilMs = shouldAutoCaptureGenericPage(loadedUrl)
                             ? System.currentTimeMillis() + 10 * 60 * 1000L : 0L;
@@ -1381,7 +1407,11 @@ public class BrowserActivity extends Activity {
                 "if(w.__aboGenericActiveState){window.AboEzzatBridge.onActivePlaybackStopped(w.__aboGenericActiveState.key);w.__aboGenericActiveState=null;}" +
                 "return false;" +
                 "}catch(e){return false;}}" +
-                "function tick(){scan(window,[],true);}" +
+                "var isDramaLiveHost=/(^|\\.)dramalive\\.cc$/i.test(location.hostname||'');" +
+                "var dramaFrameKey='';" +
+                "function reportDramaLiveFrame(){try{if(!isDramaLiveHost)return;var f=document.activeElement;if(!f||!f.tagName||String(f.tagName).toLowerCase()!=='iframe')return;var r=f.getBoundingClientRect(),w=Math.max(0,Math.min(innerWidth,r.right)-Math.max(0,r.left)),h=Math.max(0,Math.min(innerHeight,r.bottom)-Math.max(0,r.top));if(w*h<12000)return;var u=f.src||f.getAttribute('src')||'';if(!/^https?:/i.test(u)||u==='about:blank')return;var k=u.split('#')[0];if(k!==dramaFrameKey){dramaFrameKey=k;var t=document.title||'Drama Live',p='';var m=document.querySelector('meta[property=\"og:image\"],meta[name=\"twitter:image\"]');if(m)p=m.content||'';if(window.AboEzzatBridge&&window.AboEzzatBridge.onActivePlayerFrameChanged)window.AboEzzatBridge.onActivePlayerFrameChanged(u,t,p);}}catch(e){}}" +
+                "if(isDramaLiveHost){document.addEventListener('focusin',function(e){if(e.target&&String(e.target.tagName||'').toLowerCase()==='iframe')setTimeout(reportDramaLiveFrame,120);},true);document.addEventListener('pointerdown',function(e){if(e.target&&String(e.target.tagName||'').toLowerCase()==='iframe')setTimeout(reportDramaLiveFrame,120);},true);window.addEventListener('blur',function(){setTimeout(reportDramaLiveFrame,80);},true);setInterval(reportDramaLiveFrame,500);}" +
+                "function tick(){scan(window,[],true);reportDramaLiveFrame();}" +
                 "document.addEventListener('playing',tick,true);document.addEventListener('play',tick,true);" +
                 "document.addEventListener('loadedmetadata',tick,true);document.addEventListener('canplay',tick,true);" +
                 "document.addEventListener('click',function(){setTimeout(tick,350);setTimeout(tick,900);},true);" +
@@ -1450,6 +1480,30 @@ public class BrowserActivity extends Activity {
             }
             clearCapturedMedia();
             extractYouTubeForPage(canonical, false);
+        }
+
+        @JavascriptInterface
+        public void onActivePlayerFrameChanged(String frameUrl, String title, String posterUrl) {
+            if (!isDramaLivePage(activePageUrl) || frameUrl == null || !frameUrl.startsWith("http")) return;
+            final String cleanFrameUrl = frameUrl.trim();
+            final String key = "dramalive-frame:" + cleanFrameUrl;
+            boolean changed = false;
+            synchronized (BrowserActivity.this) {
+                if (!key.equals(activePlaybackKey)) {
+                    activePlaybackKey = key;
+                    activePlayerFrameUrl = cleanFrameUrl;
+                    activePlayerFrameActivatedAtMs = System.currentTimeMillis();
+                    genericAutoSniffUntilMs = activePlayerFrameActivatedAtMs + 10 * 60 * 1000L;
+                    dramaLiveProbeRequests.clear();
+                    mp4ProbeRequests.clear();
+                    clearCapturedMedia();
+                    changed = true;
+                }
+                if (title != null && !title.trim().isEmpty()) lastDiscoveredTitle = title.trim();
+                if (posterUrl != null && !posterUrl.trim().isEmpty()) lastDiscoveredPoster = posterUrl.trim();
+            }
+            if (changed) probeDramaLivePlayerDocument(cleanFrameUrl, key, lastDiscoveredTitle,
+                    lastDiscoveredPoster, null);
         }
 
         @JavascriptInterface
@@ -1827,6 +1881,89 @@ public class BrowserActivity extends Activity {
                     .replaceAll("&byteend=\\d+", "");
             String label = type == 2 ? "🎵 مسار صوت (تم فحص MP4)" : "🎬 مسار فيديو (تم فحص MP4)";
             addCapturedMedia(clean, title, label, posterUrl, type);
+        });
+    }
+
+    // Drama Live's isolated player may expose only an iframe page or a JSON endpoint,
+    // not a normal <video src> in the top document. Inspect only the focused player frame
+    // and its stream/player endpoints, then extract real HLS/DASH/MP4 URLs from the response.
+    private void probeDramaLivePlayerDocument(final String endpointUrl, final String captureKey,
+                                               final String title, final String posterUrl,
+                                               final Map<String, String> requestHeaders) {
+        if (endpointUrl == null || !endpointUrl.startsWith("http") || captureKey == null
+                || !captureKey.equals(activePlaybackKey) || !isDramaLivePage(activePageUrl)) return;
+        final String dedupe = captureKey + "|" + endpointUrl;
+        if (!dramaLiveProbeRequests.add(dedupe)) return;
+        final Map<String, String> headers = requestHeaders == null
+                ? new HashMap<>() : new HashMap<>(requestHeaders);
+        AsyncTask.execute(() -> {
+            HttpURLConnection connection = null;
+            try {
+                connection = (HttpURLConnection) new URL(endpointUrl).openConnection();
+                connection.setInstanceFollowRedirects(true);
+                connection.setConnectTimeout(8000);
+                connection.setReadTimeout(8000);
+                connection.setRequestMethod("GET");
+                connection.setRequestProperty("Accept", "application/vnd.apple.mpegurl,application/x-mpegURL,application/dash+xml,application/json,text/plain,text/html,*/*");
+                connection.setRequestProperty("User-Agent", WebSettings.getDefaultUserAgent(BrowserActivity.this));
+                String cookie = CookieManager.getInstance().getCookie(endpointUrl);
+                if (cookie != null && !cookie.isEmpty()) connection.setRequestProperty("Cookie", cookie);
+                String referer = activePlayerFrameUrl == null || activePlayerFrameUrl.isEmpty()
+                        ? activePageUrl : activePlayerFrameUrl;
+                if (referer != null && !referer.isEmpty()) connection.setRequestProperty("Referer", referer);
+                for (Map.Entry<String, String> h : headers.entrySet()) {
+                    String name = h.getKey(), value = h.getValue();
+                    if (name == null || value == null || name.equalsIgnoreCase("Host")
+                            || name.equalsIgnoreCase("Content-Length") || name.equalsIgnoreCase("Cookie")
+                            || name.equalsIgnoreCase("Accept-Encoding") || name.equalsIgnoreCase("Connection")
+                            || name.equalsIgnoreCase("Referer") || name.equalsIgnoreCase("User-Agent")) continue;
+                    try { connection.setRequestProperty(name, value); } catch (Exception ignored) {}
+                }
+                int status = connection.getResponseCode();
+                if (status < 200 || status >= 300 || !captureKey.equals(activePlaybackKey)) return;
+                InputStream stream = connection.getInputStream();
+                java.io.ByteArrayOutputStream output = new java.io.ByteArrayOutputStream();
+                byte[] buffer = new byte[8192];
+                int total = 0, count;
+                while ((count = stream.read(buffer)) != -1 && total < 768 * 1024) {
+                    int take = Math.min(count, 768 * 1024 - total);
+                    output.write(buffer, 0, take);
+                    total += take;
+                }
+                stream.close();
+                String body = new String(output.toByteArray(), "UTF-8");
+                String trimmed = body.trim();
+                String realTitle = title == null || title.trim().isEmpty() ? "Drama Live" : title.trim();
+                String realPoster = posterUrl == null ? "" : posterUrl;
+                if (trimmed.startsWith("#EXTM3U") || trimmed.contains("\n#EXTM3U")) {
+                    if (captureKey.equals(activePlaybackKey)) {
+                        addCapturedMedia(endpointUrl, realTitle, "📡 بث HLS من مشغل Drama Live",
+                                realPoster, 1);
+                    }
+                    return;
+                }
+                String normalized = body.replace("\\/", "/").replace("\\u0026", "&")
+                        .replace("&amp;", "&").replace("\\u003a", ":");
+                java.util.regex.Matcher matcher = java.util.regex.Pattern
+                        .compile("https?://[^\\s\\\"'<>\\\\]+", java.util.regex.Pattern.CASE_INSENSITIVE)
+                        .matcher(normalized);
+                while (matcher.find()) {
+                    if (!captureKey.equals(activePlaybackKey)) return;
+                    String candidate = matcher.group().replaceAll("[),;]+$", "");
+                    int type = classifyCapturedMedia(candidate);
+                    if (type == 1 || type == 2) {
+                        addCapturedMedia(candidate, realTitle,
+                                type == 2 ? "🎵 صوت القناة من مشغل Drama Live"
+                                        : candidate.toLowerCase(Locale.ROOT).contains(".m3u8")
+                                        ? "📡 بث HLS من مشغل Drama Live" : "🎬 فيديو من مشغل Drama Live",
+                                realPoster, type);
+                    }
+                }
+            } catch (Exception e) {
+                Log.d(TAG, "Drama Live player endpoint probe failed: " + endpointUrl, e);
+            } finally {
+                if (connection != null) connection.disconnect();
+            }
         });
     }
 
