@@ -1135,22 +1135,21 @@ public class BrowserActivity extends Activity {
 
     private void injectAdKiller(WebView view) {
         String js = "(function(){try{" +
-                "if(!window.__aboYoutubeAdSpeedSkipV3){" +
+                "if(!window.__aboYoutubeAdSpeedSkipV4){" +
                 "try{if(window.__aboYoutubeSkipLoop)clearInterval(window.__aboYoutubeSkipLoop);}catch(e){}" +
                 "window.__aboYoutubeAdSpeedSkipFn=function(){try{" +
                 "var h=(location.hostname||'').toLowerCase();var isYT=/(^|\\.)youtube\\.com$/.test(h)||h==='youtu.be'||/(^|\\.)youtube-nocookie\\.com$/.test(h);if(!isYT)return;" +
                 "var p=document.getElementById('movie_player');var pc=p?String(p.className||''):'';" +
-                "var adActive=/(^|\\s)(ad-showing|ad-interrupting)(\\s|$)/i.test(pc)||!!document.querySelector('#player.ad-showing,#player.ad-interrupting,.ad-showing,.ad-interrupting,.ytp-ad-player-overlay,.ytm-ad-player-overlay,.ytp-ad-preview-container');" +
-                "var vids=document.querySelectorAll('#movie_player video,video.html5-main-video');" +
-                "for(var vi=0;vi<vids.length;vi++){var v=vids[vi];if(adActive){if(typeof v.__aboSavedPlaybackRate==='undefined')v.__aboSavedPlaybackRate=(v.playbackRate&&v.playbackRate>0)?v.playbackRate:1;if(typeof v.__aboSavedMuted==='undefined')v.__aboSavedMuted=!!v.muted;if(typeof v.__aboSavedVolume==='undefined')v.__aboSavedVolume=(typeof v.volume==='number')?v.volume:1;try{v.muted=true;v.playbackRate=16;v.defaultPlaybackRate=16;}catch(e){}}" +
+                "var adActive=/(^|\\s)(ad-showing|ad-interrupting)(\\s|$)/i.test(pc)||!!document.querySelector('#player.ad-showing,#player.ad-interrupting,.ad-showing,.ad-interrupting,.ytp-ad-player-overlay,.ytm-ad-player-overlay,.ytp-ad-preview-container,.ytp-ad-skip-button-container,.ytp-ad-module,.ytp-ad-text');" +
+                "var vids=document.querySelectorAll('#movie_player video,video.html5-main-video,ytm-player video');" +
+                "for(var vi=0;vi<vids.length;vi++){var v=vids[vi];if(adActive){if(typeof v.__aboSavedPlaybackRate==='undefined')v.__aboSavedPlaybackRate=(v.playbackRate&&v.playbackRate>0)?v.playbackRate:1;if(typeof v.__aboSavedMuted==='undefined')v.__aboSavedMuted=!!v.muted;if(typeof v.__aboSavedVolume==='undefined')v.__aboSavedVolume=(typeof v.volume==='number')?v.volume:1;try{v.muted=true;v.volume=0;v.playbackRate=16;v.defaultPlaybackRate=16;}catch(e){}}" +
                 "else if(typeof v.__aboSavedPlaybackRate!=='undefined'||typeof v.__aboSavedMuted!=='undefined'){try{if(typeof v.__aboSavedPlaybackRate!=='undefined'){v.playbackRate=v.__aboSavedPlaybackRate;v.defaultPlaybackRate=v.__aboSavedPlaybackRate;}if(typeof v.__aboSavedMuted!=='undefined')v.muted=v.__aboSavedMuted;if(typeof v.__aboSavedVolume!=='undefined')v.volume=v.__aboSavedVolume;}catch(e){}delete v.__aboSavedPlaybackRate;delete v.__aboSavedMuted;delete v.__aboSavedVolume;}}" +
                 "if(adActive&&p&&typeof p.setPlaybackRate==='function'){try{if(typeof p.__aboSavedPlayerRate==='undefined'){var rr=p.getPlaybackRate();p.__aboSavedPlayerRate=(rr&&rr>0)?rr:1;}p.setPlaybackRate(16);}catch(e){}}" +
                 "else if(!adActive&&p&&typeof p.__aboSavedPlayerRate!=='undefined'){try{p.setPlaybackRate(p.__aboSavedPlayerRate);}catch(e){}delete p.__aboSavedPlayerRate;}" +
-                "var nodes=document.querySelectorAll('.ytp-ad-skip-button,.ytp-ad-skip-button-modern,.ytp-skip-ad-button,.videoAdUiSkipButton,.ytm-skip-ad-button,.ytm-ad-skip-button,[class*=\\\"ad-skip\\\"] button,[class*=\\\"skip-ad\\\"] button');" +
-                "for(var i=0;i<nodes.length;i++){var b=nodes[i];if(!b||b.disabled||b.getAttribute('aria-disabled')==='true')continue;var st=getComputedStyle(b);if(!b.getClientRects().length||st.visibility==='hidden'||st.display==='none'||Number(st.opacity||1)<=0.05)continue;try{(b.matches('button')?b:(b.querySelector('button')||b)).click();}catch(e){}break;}" +
-                "var named=document.querySelectorAll('button[aria-label],[role=button][aria-label],button');for(var ni=0;ni<named.length;ni++){var nb=named[ni];var label=(nb.getAttribute('aria-label')||'')+' '+(nb.innerText||nb.textContent||'');if(/skip\\s*(?:ad|ads)|تخطي\\s*(?:الإعلان|الإعلانات)/i.test(label)&&!nb.disabled&&nb.getAttribute('aria-disabled')!=='true'&&nb.getClientRects().length){try{nb.click();}catch(e){}break;}}" +
+                "var nodes=document.querySelectorAll('.ytp-ad-skip-button,.ytp-ad-skip-button-modern,.ytp-skip-ad-button,.ytp-ad-skip-button-container button,.videoAdUiSkipButton,.ytm-skip-ad-button,.ytm-ad-skip-button,button[aria-label],[role=button][aria-label]');" +
+                "for(var i=0;i<nodes.length;i++){var b=nodes[i];if(!b||b.disabled||b.getAttribute('aria-disabled')==='true')continue;var cl=String(b.className||'');var label=(b.getAttribute('aria-label')||'')+' '+(b.innerText||b.textContent||'');var known=/ytp-ad-skip-button|ytp-skip-ad-button|videoAdUiSkipButton|ytm-skip-ad-button|ytm-ad-skip-button/.test(cl)||!!b.closest('.ytp-ad-skip-button-container');if(!known&&!/skip\\s*(?:ad|ads)|تخطي\\s*(?:الإعلان|الإعلانات)/i.test(label))continue;var st=getComputedStyle(b);if(!b.getClientRects().length||st.visibility==='hidden'||st.display==='none'||Number(st.opacity||1)<=0.05)continue;try{var target=b.matches('button')?b:(b.querySelector('button')||b);target.click();}catch(e){}break;}" +
                 "}catch(e){}};" +
-                "window.__aboYoutubeAdSpeedSkipV3=true;window.__aboYoutubeSkipLoop=setInterval(window.__aboYoutubeAdSpeedSkipFn,150);" +
+                "window.__aboYoutubeAdSpeedSkipV4=true;window.__aboYoutubeSkipLoop=setInterval(window.__aboYoutubeAdSpeedSkipFn,100);" +
                 "if(document.documentElement&&!window.__aboYoutubeAdSpeedSkipObserver){window.__aboYoutubeAdSpeedSkipObserver=new MutationObserver(function(){window.__aboYoutubeAdSpeedSkipFn();});window.__aboYoutubeAdSpeedSkipObserver.observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['class','aria-label','disabled']});}window.__aboYoutubeAdSpeedSkipFn();}" +
                 "if(window.__aboActiveCaptureInstalled)return;window.__aboActiveCaptureInstalled=true;" +
                 "var armed=false,activeKey='',activeSince=0,seenResources={};" +
@@ -1185,6 +1184,7 @@ public class BrowserActivity extends Activity {
                 "var videoTracks=[],bestAudio=null;" +
                 "for(var i=0;i<entries.length;i++){var e=entries[i],u=e.name||'',l=u.toLowerCase();if(!/^https?:/i.test(u))continue;" +
                 "if(l.indexOf('doubleclick.net')!==-1||l.indexOf('googlesyndication.com')!==-1||l.indexOf('googleadservices.com')!==-1||l.indexOf('adservice.google.com')!==-1||l.indexOf('/ddm/trackimp/')!==-1||l.indexOf('/ddm/trackclk/')!==-1)continue;" +
+                "if(l.indexOf('googlevideo.com')!==-1&&l.indexOf('/videoplayback')!==-1)continue;" +
                 // For Threads, only consider resources requested during the currently playing visible post.
                 "if(isThreadsHost&&(e.startTime<activeSince||e.startTime>performance.now()+100))continue;" +
                 "if(isThreadsHost&&seenResources[u])continue;" +
@@ -1392,6 +1392,9 @@ public class BrowserActivity extends Activity {
         @JavascriptInterface
         public void onCapturedAudioTrack(String mediaUrl, String title, String posterUrl) {
             if ((activePlaybackKey.isEmpty() && !isManualSniffActive() && !isGenericAutoSniffActive()) || mediaUrl == null || !mediaUrl.startsWith("http")) return;
+            String lower = mediaUrl.toLowerCase(Locale.ROOT);
+            if (isBlockedAdUrl(mediaUrl)
+                    || (lower.contains("googlevideo.com") && lower.contains("/videoplayback"))) return;
             String clean = mediaUrl.replaceAll("&bytestart=\\d+", "")
                     .replaceAll("&byteend=\\d+", "");
             String cleanTitle = title == null || title.trim().isEmpty() ? "فيديو قيد التشغيل" : title.trim();
@@ -2571,6 +2574,13 @@ public class BrowserActivity extends Activity {
 
     private void mergeAndCastToTv() {
         String youtubePage = getCurrentYouTubePageUrl();
+        // YouTube's browser resource list can contain ad/SABR transport requests.
+        // Always use NewPipe's verified video+audio pair for the current watch page;
+        // never merge arbitrary checked rows from the same page.
+        if (youtubePage != null) {
+            extractYouTubeForPage(youtubePage, true);
+            return;
+        }
         String videoTrackUrl = "";
         String audioTrackUrl = "";
         CapturedMedia bestVideo = null;
