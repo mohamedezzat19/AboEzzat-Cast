@@ -1351,7 +1351,8 @@ public class BrowserActivity extends Activity {
 
         @JavascriptInterface
         public void onActiveVideoTrack(String mediaUrl, String title, String posterUrl) {
-            if ((activePlaybackKey.isEmpty() && !isManualSniffActive() && !isGenericAutoSniffActive()) || mediaUrl == null || !mediaUrl.startsWith("http")) return;
+            if ((activePlaybackKey.isEmpty() && !isManualSniffActive() && !isGenericAutoSniffActive())
+                    || mediaUrl == null || !mediaUrl.startsWith("http") || isBlockedAdUrl(mediaUrl)) return;
             String clean = mediaUrl.replaceAll("&bytestart=\\d+", "")
                     .replaceAll("&byteend=\\d+", "");
             String cleanTitle = title == null || title.trim().isEmpty() ? "فيديو قيد التشغيل" : title.trim();
@@ -1369,7 +1370,8 @@ public class BrowserActivity extends Activity {
 
         @JavascriptInterface
         public void onCapturedVideoTrack(String mediaUrl, String title, String posterUrl) {
-            if ((activePlaybackKey.isEmpty() && !isManualSniffActive() && !isGenericAutoSniffActive()) || mediaUrl == null || !mediaUrl.startsWith("http")) return;
+            if ((activePlaybackKey.isEmpty() && !isManualSniffActive() && !isGenericAutoSniffActive())
+                    || mediaUrl == null || !mediaUrl.startsWith("http") || isBlockedAdUrl(mediaUrl)) return;
             String lower = mediaUrl.toLowerCase(Locale.ROOT);
             // YouTube SABR videoplayback URLs are transport requests, not verified standalone tracks.
             // They must never enter the generic captured-video list or be paired as audio/video.
@@ -1382,13 +1384,15 @@ public class BrowserActivity extends Activity {
 
         @JavascriptInterface
         public void onCapturedCandidateTrack(String mediaUrl, String title, String posterUrl) {
-            if ((activePlaybackKey.isEmpty() && !isManualSniffActive() && !isGenericAutoSniffActive()) || mediaUrl == null || !mediaUrl.startsWith("http")) return;
+            if ((activePlaybackKey.isEmpty() && !isManualSniffActive() && !isGenericAutoSniffActive())
+                    || mediaUrl == null || !mediaUrl.startsWith("http") || isBlockedAdUrl(mediaUrl)) return;
             probeAndAddMp4(mediaUrl, title, posterUrl);
         }
 
         @JavascriptInterface
         public void onCapturedUnknownVideoTrack(String mediaUrl, String title, String posterUrl) {
-            if (activePlaybackKey.isEmpty() && !isManualSniffActive() && !isGenericAutoSniffActive()) return;
+            if ((activePlaybackKey.isEmpty() && !isManualSniffActive() && !isGenericAutoSniffActive())
+                    || mediaUrl == null || !mediaUrl.startsWith("http") || isBlockedAdUrl(mediaUrl)) return;
             probeUnknownVideoByContentType(mediaUrl, title, posterUrl);
         }
 
@@ -2199,7 +2203,8 @@ public class BrowserActivity extends Activity {
                 "var es=w.performance&&w.performance.getEntriesByType?w.performance.getEntriesByType('resource'):[];" +
                 "for(var j=0;j<es.length;j++){var u=es[j].name||'',l=u.toLowerCase();if(!/^https?:/i.test(u))continue;" +
                 "if(l.indexOf('googlevideo.com')!==-1&&l.indexOf('/videoplayback')!==-1)continue;" +
-                "if(/\\.(jpg|jpeg|png|webp|gif|bmp|svg|ts|m4s|js|css)(?:[?#]|$)/i.test(l))continue;" +
+                "if(l.indexOf('doubleclick.net')!==-1||l.indexOf('googlesyndication.com')!==-1||l.indexOf('googleadservices.com')!==-1||l.indexOf('/ddm/trackimp/')!==-1||l.indexOf('/ddm/trackclk/')!==-1)continue;" +
+                "if(/\\.(jpg|jpeg|png|webp|gif|bmp|svg|ts|m4s|js|css)(?:[?#]|$)/i.test(l))continue;"
                 "var a=/mime(?:_|-)?type=audio|mime=audio|type=audio|content[_-]?type=audio|dash_ln_heaac|audio_dash|\\.(aac|m4a|mp3|opus|ogg)(?:[?#]|$)/i.test(l);" +
                 "var v=/mime(?:_|-)?type=video|mime=video|type=video|content[_-]?type=video|videoplayback|video\\/|\\.(m3u8|mpd|mp4|m4v|webm|flv|mov)(?:[?#]|$)/i.test(l);" +
                 "if(a)window.AboEzzatBridge.onCapturedAudioTrack(u,d.title||document.title,'');" +
