@@ -1184,6 +1184,7 @@ public class BrowserActivity extends Activity {
                 "function scanResources(v){try{var entries=performance.getEntriesByType('resource'),now=performance.now();" +
                 "var videoTracks=[],bestAudio=null;" +
                 "for(var i=0;i<entries.length;i++){var e=entries[i],u=e.name||'',l=u.toLowerCase();if(!/^https?:/i.test(u))continue;" +
+                "if(/(^|\/\/)(?:[^\/]*\.)?(?:doubleclick\.net|googlesyndication\.com|googleadservices\.com|adservice\.google\.com)(?:[:\/?#]|$)/i.test(u)||/\/ddm\/track(?:imp|clk)\//i.test(u))continue;" +
                 // For Threads, only consider resources requested during the currently playing visible post.
                 "if(isThreadsHost&&(e.startTime<activeSince||e.startTime>performance.now()+100))continue;" +
                 "if(isThreadsHost&&seenResources[u])continue;" +
@@ -1446,6 +1447,7 @@ public class BrowserActivity extends Activity {
         // YouTube googlevideo videoplayback requests can be SABR/UMP transport, not a standalone MP4.
         // Do not label them as video from the endpoint name alone; NewPipe extracts a fresh matched pair
         // from the canonical watch URL instead.
+        if (isBlockedAdUrl(mediaUrl)) return 0;
         if (lower.contains("googlevideo.com") && lower.contains("/videoplayback")) return 0;
         if (lower.matches(".*\\.(jpg|jpeg|png|webp|gif|bmp|svg|ts|m4s|js|css)(?:[?#].*)?$")) return 0;
 
@@ -1518,6 +1520,7 @@ public class BrowserActivity extends Activity {
     }
 
     private synchronized void addCapturedMedia(String url, String title, String format, String posterUrl, int mediaType) {
+        if (isBlockedAdUrl(url)) return;
         if ((mediaType != 1 && mediaType != 2) || (activePlaybackKey.isEmpty() && !isManualSniffActive() && !isGenericAutoSniffActive())) return;
         boolean added = false;
         synchronized (capturedList) {
@@ -1806,6 +1809,9 @@ public class BrowserActivity extends Activity {
 
     private boolean isBlockedAdUrl(String value) {
         if (value == null || value.trim().isEmpty()) return false;
+        String lowerValue = value.toLowerCase(Locale.ROOT);
+        if (lowerValue.contains("/ddm/trackimp/") || lowerValue.contains("/ddm/trackclk/")
+                || lowerValue.contains("/pagead/") || lowerValue.contains("/gampad/ads")) return true;
         try {
             Uri uri = Uri.parse(value);
             String host = uri.getHost();
@@ -2533,6 +2539,9 @@ public class BrowserActivity extends Activity {
 
     private Request buildReceiverPlayRequest(String endpoint, String videoUrl, String audioUrl) throws Exception {
         JSONObject payload = new JSONObject();
+        if (isBlockedAdUrl(videoUrl) || isBlockedAdUrl(audioUrl)) {
+            throw new IllegalArgumentException("تم استبعاد رابط إعلاني");
+        }
         if (videoUrl != null && !videoUrl.trim().isEmpty()) payload.put("url", videoUrl);
         if (audioUrl != null && !audioUrl.trim().isEmpty()) payload.put("audio", audioUrl);
         JSONObject headers = new JSONObject();
@@ -2825,6 +2834,10 @@ public class BrowserActivity extends Activity {
     private void castToTv(String mediaUrl) { castToTv(mediaUrl, null); }
 
     private void castToTv(String mediaUrl, String audioUrl) {
+        if (isBlockedAdUrl(mediaUrl) || isBlockedAdUrl(audioUrl)) {
+            Toast.makeText(this, "تم استبعاد رابط إعلاني ولا يمكن تشغيله", Toast.LENGTH_SHORT).show();
+            return;
+        }
         if (tvIp.isEmpty()) {
             Toast.makeText(this, "يرجى تعيين IP الشاشة أولاً", Toast.LENGTH_SHORT).show();
             return;
@@ -2905,7 +2918,7 @@ public class BrowserActivity extends Activity {
     }
 
     private void downloadMedia(String mediaUrl, boolean audioOnly, String hintedMime) {
-        if (mediaUrl == null || mediaUrl.trim().isEmpty()) {
+        if (mediaUrl == null || mediaUrl.trim().isEmpty() || isBlockedAdUrl(mediaUrl)) {
             Toast.makeText(this, "رابط التنزيل غير صالح", Toast.LENGTH_SHORT).show();
             return;
         }
