@@ -996,6 +996,7 @@ public class BrowserActivity extends Activity {
                 injectAdKiller(view);
                 injectTikTokLiveSniffer(view);
                 injectYouTubePageUrlTracker(view);
+                injectTikTokPageUrlTracker(view);
                 // YouTube extraction starts only after the player reports actual playback
                 // through JsBridge; keep page URL snapshots on the UI thread.
                 if (isGenericAutoSniffActive() && shouldAutoCaptureGenericPage(loadedUrl)) {
@@ -1161,8 +1162,10 @@ public class BrowserActivity extends Activity {
                 // Keep extended preload history only for Threads; preserve Instagram behavior.
                 "var isThreadsHost=/(?:threads\\.net|threads\\.com)$/i.test(location.hostname||'');" +
                 "var isYouTubeHost=/(?:^|\\.)youtube\\.com$/i.test(location.hostname||'')||/(?:^|\\.)youtube-nocookie\\.com$/i.test(location.hostname||'')||/^youtu\\.be$/i.test(location.hostname||'');" +
+                "var isTikTokHost=/(?:^|\\.)tiktok\\.com$/i.test(location.hostname||'');" +
+                "window.__aboTikTokRouteReset=function(){try{if(isTikTokHost){activeKey='';activeSince=performance.now();seenResources={};armed=true;if(performance.clearResourceTimings)performance.clearResourceTimings();}}catch(e){}};" +
                 "var isTikTokLivePage=/(?:^|\\.)tiktok\\.com$/i.test(location.hostname||'')&&/\\/live(?:[/?#]|$)/i.test(location.pathname||'');" +
-                "if(isThreadsHost||isTikTokLivePage){try{if(performance.setResourceTimingBufferSize)performance.setResourceTimingBufferSize(1500);}catch(e){}}" +
+                "if(isThreadsHost||isTikTokHost||isTikTokLivePage){try{if(performance.setResourceTimingBufferSize)performance.setResourceTimingBufferSize(1500);}catch(e){}}" +
                 "if(!isYouTubeHost){var style=document.getElementById('abo-ezzat-adblock');if(!style){style=document.createElement('style');style.id='abo-ezzat-adblock';" +
                 "style.innerHTML='.ytp-ad-overlay-container,.ytp-ad-message-container,ytd-promoted-sparkles-web-renderer,ytd-banner-promo-renderer,ytd-ad-slot-renderer,.ad-container,.ad-div,ytd-in-feed-ad-layout-renderer,ytm-promoted-sparkles-web-renderer,.ytp-ad-action-interstitial,[id^=\\\"google_ads_\\\"],iframe[src*=\\\"doubleclick\\\"]{display:none!important;width:0!important;height:0!important}';if(document.head)document.head.appendChild(style);}}" +
                 // YouTube: click only the native Skip Ad control once it is visible and enabled.
@@ -1192,7 +1195,7 @@ public class BrowserActivity extends Activity {
                 "if(l.indexOf('doubleclick.net')!==-1||l.indexOf('googlesyndication.com')!==-1||l.indexOf('googleadservices.com')!==-1||l.indexOf('adservice.google.com')!==-1||l.indexOf('/ddm/trackimp/')!==-1||l.indexOf('/ddm/trackclk/')!==-1)continue;" +
                 "if(l.indexOf('googlevideo.com')!==-1&&l.indexOf('/videoplayback')!==-1)continue;" +
                 // For Threads, only consider resources requested during the currently playing visible post.
-                "if(isThreadsHost&&(e.startTime<activeSince||e.startTime>performance.now()+100))continue;" +
+                "if((isThreadsHost||isTikTokHost)&&(e.startTime<activeSince||e.startTime>performance.now()+100))continue;" +
                 "if(isThreadsHost&&seenResources[u])continue;" +
                 // Threads may preload DASH audio early; Instagram and other sites keep the original 10s window.
                 "if(!(isThreadsHost||isTikTokLivePage)&&now-e.startTime>10000)continue;" +
@@ -1241,6 +1244,39 @@ public class BrowserActivity extends Activity {
     // changes history/location without a WebView onPageStarted callback. Report only the
     // actual visible YouTube watch URL so temporary googlevideo requests are never used
     // as the source page for extraction or casting.
+    private boolean isTikTokPageUrl(String value) {
+        if (value == null) return false;
+        try {
+            Uri uri = Uri.parse(value);
+            String host = uri.getHost();
+            return host != null && (host.equalsIgnoreCase("tiktok.com")
+                    || host.toLowerCase(Locale.ROOT).endsWith(".tiktok.com"));
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    private void injectTikTokPageUrlTracker(WebView view) {
+        if (view == null) return;
+        String js = "(function(){try{" +
+                "var h=(location.hostname||'').toLowerCase();if(h!=='tiktok.com'&&!h.endsWith('.tiktok.com'))return;" +
+                "function report(){try{if(document.visibilityState==='hidden')return;var u=String(location.href||'');" +
+                "if(u!==window.__aboLastReportedTikTokUrl){window.__aboLastReportedTikTokUrl=u;" +
+                "try{if(window.__aboTikTokRouteReset)window.__aboTikTokRouteReset();}catch(e){}" +
+                "var tm=document.querySelector('meta[property=\"og:title\"],meta[name=\"twitter:title\"]');" +
+                "var pm=document.querySelector('meta[property=\"og:image\"],meta[name=\"twitter:image\"]');" +
+                "var t=(tm&&tm.content)||document.title||'';var p=(pm&&pm.content)||'';" +
+                "if(window.AboEzzatBridge&&window.AboEzzatBridge.onTikTokPageChanged)window.AboEzzatBridge.onTikTokPageChanged(u,t,p);}}" +
+                "catch(e){}}" +
+                "if(!window.__aboTikTokUrlTracker){window.__aboTikTokUrlTracker=true;var ps=history.pushState,rs=history.replaceState;" +
+                "history.pushState=function(){var x=ps.apply(this,arguments);setTimeout(report,0);return x;};" +
+                "history.replaceState=function(){var x=rs.apply(this,arguments);setTimeout(report,0);return x;};" +
+                "window.addEventListener('popstate',report,true);window.addEventListener('hashchange',report,true);" +
+                "setInterval(report,300);}" +
+                "report();}catch(e){}})();";
+        view.evaluateJavascript(js, null);
+    }
+
     private void injectYouTubePageUrlTracker(WebView view) {
         if (view == null) return;
         String js = "(function(){try{" +
@@ -1305,6 +1341,36 @@ public class BrowserActivity extends Activity {
                 lastDiscoveredTitle = title.replace("Instagram: ", "").replace("on Instagram", "").trim();
             }
             if (posterUrl != null && !posterUrl.isEmpty()) lastDiscoveredPoster = posterUrl;
+        }
+
+        @JavascriptInterface
+        public void onTikTokPageChanged(String pageUrl, String pageTitle, String posterUrl) {
+            if (pageUrl == null || !pageUrl.startsWith("http")) return;
+            final WebView source = activeWebView;
+            if (source == null || !isTikTokPageUrl(pageUrl)) return;
+            final String reportedUrl = pageUrl.trim();
+            runOnUiThread(() -> {
+                if (source != getCurrentWebView()) return;
+                String currentUrl = source.getUrl();
+                if (currentUrl == null || !currentUrl.equals(reportedUrl)) return;
+                if (reportedUrl.equals(activePageUrl)) return;
+
+                // TikTok changes videos with History API calls, without a full WebView
+                // navigation. Treat each video route as a new capture generation.
+                activePageUrl = reportedUrl;
+                activePlaybackKey = "";
+                mp4ProbeRequests.clear();
+                lastDiscoveredTitle = pageTitle == null ? "" : pageTitle.trim();
+                lastDiscoveredPoster = posterUrl == null ? "" : posterUrl.trim();
+                clearCapturedMedia();
+                if (etUrl != null) etUrl.setText(reportedUrl);
+                if (currentTabIndex >= 0 && currentTabIndex < tabTitles.size()) {
+                    String title = source.getTitle();
+                    tabTitles.set(currentTabIndex, title == null || title.trim().isEmpty()
+                            ? reportedUrl : title.trim());
+                }
+                recordVisitedUrl(source, reportedUrl);
+            });
         }
 
         @JavascriptInterface
