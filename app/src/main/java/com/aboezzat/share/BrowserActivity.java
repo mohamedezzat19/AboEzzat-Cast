@@ -1237,7 +1237,7 @@ public class BrowserActivity extends Activity {
     private void injectYouTubePageUrlTracker(WebView view) {
         if (view == null) return;
         String js = "(function(){try{" +
-                "var h=(location.hostname||'').toLowerCase();if(!/(^|\\\\.)youtube\\\\.com$/.test(h)&&h!=='youtu.be'&&!/(^|\\\\.)youtube-nocookie\\\\.com$/.test(h))return;" +
+                "var h=(location.hostname||'').toLowerCase();if(!/(^|\\.)youtube\\.com$/.test(h)&&h!=='youtu.be'&&!/(^|\\.)youtube-nocookie\\.com$/.test(h))return;" +
                 "function report(){try{if(document.visibilityState==='hidden')return;var u=String(location.href||'');if(u!==window.__aboLastReportedYouTubeUrl){window.__aboLastReportedYouTubeUrl=u;if(window.AboEzzatBridge&&window.AboEzzatBridge.onYouTubePageChanged)window.AboEzzatBridge.onYouTubePageChanged(u);}}catch(e){}}" +
                 "if(!window.__aboYouTubeUrlTracker){window.__aboYouTubeUrlTracker=true;var p=history.pushState,r=history.replaceState;" +
                 "history.pushState=function(){var x=p.apply(this,arguments);setTimeout(report,0);return x;};" +
