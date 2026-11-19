@@ -1203,6 +1203,8 @@ public class BrowserActivity extends Activity {
                 "var armed=false,activeKey='',activeSince=0,seenResources={};" +
                 // Keep extended preload history only for Threads; preserve Instagram behavior.
                 "var isThreadsHost=/(?:threads\\.net|threads\\.com)$/i.test(location.hostname||'');" +
+                "var isInstagramHost=/(?:^|\\.)instagram\\.com$/i.test(location.hostname||'');" +
+                "function instagramInfo(u){try{var q=new URL(u).searchParams.get('efg');if(!q)return null;q=q.replace(/-/g,'+').replace(/_/g,'/');while(q.length%4)q+='=';var o=JSON.parse(atob(q));return {id:String(o.xpv_asset_id||o.video_id||''),tag:String(o.vencode_tag||'').toLowerCase()};}catch(e){return null;}}" +
                 "var isYouTubeHost=/(?:^|\\.)youtube\\.com$/i.test(location.hostname||'')||/(?:^|\\.)youtube-nocookie\\.com$/i.test(location.hostname||'')||/^youtu\\.be$/i.test(location.hostname||'');" +
                 "var isTikTokHost=/(?:^|\\.)tiktok\\.com$/i.test(location.hostname||'');" +
                 "window.__aboTikTokRouteReset=function(){try{if(isTikTokHost){activeKey='';activeSince=performance.now();seenResources={};armed=true;if(performance.clearResourceTimings)performance.clearResourceTimings();}}catch(e){}};" +
@@ -1232,7 +1234,8 @@ public class BrowserActivity extends Activity {
                 "var src=v.currentSrc||v.src||'';if(/^https?:/i.test(src))window.AboEzzatBridge.onActiveVideoTrack(src,t,p);" +
                 "}" +
                 "function scanResources(v){try{var entries=performance.getEntriesByType('resource'),now=performance.now();" +
-                "var videoTracks=[],bestAudio=null;" +
+                "var videoTracks=[],bestAudio=null,audioTracks=[];" +
+                "var activeInstagramInfo=isInstagramHost?instagramInfo(v.currentSrc||v.src||''):null;" +
                 "for(var i=0;i<entries.length;i++){var e=entries[i],u=e.name||'',l=u.toLowerCase();if(!/^https?:/i.test(u))continue;" +
                 "if(l.indexOf('doubleclick.net')!==-1||l.indexOf('googlesyndication.com')!==-1||l.indexOf('googleadservices.com')!==-1||l.indexOf('adservice.google.com')!==-1||l.indexOf('/ddm/trackimp/')!==-1||l.indexOf('/ddm/trackclk/')!==-1)continue;" +
                 "if(l.indexOf('googlevideo.com')!==-1&&l.indexOf('/videoplayback')!==-1)continue;" +
@@ -1242,17 +1245,23 @@ public class BrowserActivity extends Activity {
                 // Threads may preload DASH audio early; Instagram and other sites keep the original 10s window.
                 "if(!(isThreadsHost||isTikTokLivePage)&&now-e.startTime>10000)continue;" +
                 "if(/\\.(jpg|jpeg|png|webp|gif|bmp|svg|ts|m4s|js|css)(?:[?#]|$)/i.test(l))continue;" +
-                "var audio=/mime(?:_|-)?type=audio|mime=audio|type=audio|content[_-]?type=audio|dash_ln_heaac|audio_dash|\\.(aac|m4a|mp3|opus|ogg)(?:[?#]|$)/i.test(l);" +
+                "var ig= isInstagramHost?instagramInfo(u):null;" +
+                "var audio=/mime(?:_|-)?type=audio|mime=audio|type=audio|content[_-]?type=audio|dash_ln_heaac|audio_dash|\\.(aac|m4a|mp3|opus|ogg)(?:[?#]|$)/i.test(l)||(!!ig&&ig.tag.indexOf('_audio')>=0);" +
                 "var mp4Candidate=/\\.mp4(?:[?#]|$)/i.test(l);" +
-                "var video=/mime(?:_|-)?type=video|mime=video|type=video|content[_-]?type=video|video\\/tos|pull-|videoplayback|\\.(m4v|m3u8|mpd|webm|flv|mov)(?:[?#]|$)/i.test(l);" +
+                "var video=/mime(?:_|-)?type=video|mime=video|type=video|content[_-]?type=video|video\\/tos|pull-|videoplayback|\\.(m4v|m3u8|mpd|webm|flv|mov)(?:[?#]|$)/i.test(l)||(!!ig&&mp4Candidate&&!!ig.id&&ig.tag.indexOf('_audio')<0);" +
                 "if(!audio&&!video&&!mp4Candidate)continue;" +
                 "var score=(e.initiatorType==='video'||e.initiatorType==='media'?40:0)+(now-e.startTime<8000?20:0)+" +
                 "(/\\.(m3u8|mpd)(?:[?#]|$)/i.test(l)?25:0);" +
-                "var item={url:u,score:score,time:e.startTime};if(isThreadsHost)seenResources[u]=true;" +
-                "if(audio){if(!bestAudio||item.score>bestAudio.score||(item.score===bestAudio.score&&item.time>bestAudio.time))bestAudio=item;}" +
+                "var item={url:u,score:score,time:e.startTime,assetId:ig?ig.id:''};if(isThreadsHost)seenResources[u]=true;" +
+                "if(audio){if(isInstagramHost&&item.assetId)audioTracks.push(item);else if(!bestAudio||item.score>bestAudio.score||(item.score===bestAudio.score&&item.time>bestAudio.time))bestAudio=item;}" +
                 "else if(video&&!videoTracks.some(function(x){return x.url===u;})){videoTracks.push(item);}" +
-                "else if(mp4Candidate)window.AboEzzatBridge.onCapturedCandidateTrack(u,titleFor(v),posterFor(v));" +
+                "else if(mp4Candidate&&!isInstagramHost)window.AboEzzatBridge.onCapturedCandidateTrack(u,titleFor(v),posterFor(v));" +
                 "}" +
+                "if(isInstagramHost){var chosenId=activeInstagramInfo&&activeInstagramInfo.id?activeInstagramInfo.id:'';" +
+                "if(!chosenId){var groups={};for(var gi=0;gi<videoTracks.length;gi++){var vi=videoTracks[gi];if(!vi.assetId)continue;var g=groups[vi.assetId];if(!g||vi.score>g.score||(vi.score===g.score&&vi.time>g.time))groups[vi.assetId]=vi;}" +
+                "var bestGroup=null;for(var gid in groups){if(!bestGroup||groups[gid].score>bestGroup.score||(groups[gid].score===bestGroup.score&&groups[gid].time>bestGroup.time))bestGroup=groups[gid];}if(bestGroup)chosenId=bestGroup.assetId;}" +
+                "if(chosenId){videoTracks=videoTracks.filter(function(x){return x.assetId===chosenId;});audioTracks=audioTracks.filter(function(x){return x.assetId===chosenId;});}" +
+                "if(audioTracks.length){audioTracks.sort(function(a,b){return b.score-a.score||b.time-a.time;});bestAudio=audioTracks[0];}}" +
                 "videoTracks.sort(function(a,b){return b.score-a.score||b.time-a.time;});" +
                 "for(var j=0;j<Math.min(videoTracks.length,2);j++)window.AboEzzatBridge.onCapturedVideoTrack(videoTracks[j].url,titleFor(v),posterFor(v));" +
                 "if(bestAudio)window.AboEzzatBridge.onCapturedAudioTrack(bestAudio.url,titleFor(v),posterFor(v));" +
