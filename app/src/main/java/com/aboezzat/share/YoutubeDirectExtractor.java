@@ -10,6 +10,7 @@ import org.schabi.newpipe.extractor.exceptions.ReCaptchaException;
 import org.schabi.newpipe.extractor.stream.AudioStream;
 import org.schabi.newpipe.extractor.stream.AudioTrackType;
 import org.schabi.newpipe.extractor.stream.StreamInfo;
+import org.schabi.newpipe.extractor.stream.StreamType;
 import org.schabi.newpipe.extractor.stream.VideoStream;
 
 import okhttp3.MediaType;
@@ -114,6 +115,32 @@ public final class YoutubeDirectExtractor {
                 initialize();
                 StreamInfo info = StreamInfo.getInfo(pageUrl);
 
+                String videoUrl = null;
+                String audioUrl = null;
+                String quality = "غير محددة";
+
+                // Running YouTube LIVE streams are not ordinary video renditions.
+                // NewPipe exposes their playable HLS manifest separately; the raw
+                // video-only/audio DASH entries can be transport fragments and are
+                // explicitly documented as not playable for running live streams.
+                // Send the manifest as one item so Receiver/Media3 can keep its
+                // audio/video playlists synchronized while the broadcast continues.
+                if (info.getStreamType() == StreamType.LIVE_STREAM) {
+                    String liveHlsUrl = info.getHlsUrl();
+                    if (isHttp(liveHlsUrl)) {
+                        videoUrl = liveHlsUrl;
+                        quality = "بث مباشر HLS";
+                    } else {
+                        String liveDashUrl = info.getDashMpdUrl();
+                        if (isHttp(liveDashUrl)) {
+                            videoUrl = liveDashUrl;
+                            quality = "بث مباشر DASH احتياطي";
+                        }
+                    }
+                    if (videoUrl == null) {
+                        throw new IOException("تعذر استخراج قائمة تشغيل HLS صالحة لبث YouTube المباشر");
+                    }
+                } else {
                 List<VideoStream> videoOnly = new ArrayList<>(info.getVideoOnlyStreams());
                 videoOnly.removeIf(stream -> stream == null || !stream.isUrl()
                         || stream.getContent() == null || !isHttp(stream.getContent()));
@@ -121,10 +148,6 @@ public final class YoutubeDirectExtractor {
                 List<AudioStream> audioStreams = new ArrayList<>(info.getAudioStreams());
                 audioStreams.removeIf(stream -> stream == null || !stream.isUrl()
                         || stream.getContent() == null || !isHttp(stream.getContent()));
-
-                String videoUrl = null;
-                String audioUrl = null;
-                String quality = "غير محددة";
 
                 if (!videoOnly.isEmpty() && !audioStreams.isEmpty()) {
                     VideoStream video = chooseStableVideo(videoOnly);
@@ -150,6 +173,7 @@ public final class YoutubeDirectExtractor {
                         videoUrl = info.getHlsUrl();
                         quality = "HLS تلقائي";
                     }
+                }
                 }
 
                 if (videoUrl == null) throw new IOException(
