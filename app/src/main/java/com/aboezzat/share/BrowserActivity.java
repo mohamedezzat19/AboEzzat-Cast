@@ -2740,7 +2740,8 @@ public class BrowserActivity extends Activity {
                 endpoint = endpoint + ":8081";
             }
 
-            Request req = buildReceiverPlayRequest(endpoint, videoTrackUrl, audioTrackUrl);
+            Request req = buildReceiverPlayRequest(endpoint, videoTrackUrl, audioTrackUrl,
+                    bestVideo == null ? null : bestVideo.requestHeaders);
             final String receiverEndpoint = endpoint;
             AtomicBoolean requestHeadersSent = new AtomicBoolean(false);
             OkHttpClient trackedClient = client.newBuilder()
