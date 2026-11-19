@@ -2648,9 +2648,17 @@ public class BrowserActivity extends Activity {
         String referer = youtubePage;
         if (referer == null && current != null) referer = current.getUrl();
         if (referer != null && (referer.startsWith("http://") || referer.startsWith("https://"))) {
-            headers.put("referer", referer);
-            try { Uri refUri = Uri.parse(referer); headers.put("origin", refUri.getScheme() + "://" + refUri.getHost()); }
-            catch (Exception ignored) {}
+            // Preserve the exact TikTok media-request Referer/Origin captured from WebView.
+            // The current page URL is only a fallback for sources without captured headers.
+            if (!isTikTokCdnVideoUrl(videoUrl) || !headers.has("referer")) {
+                headers.put("referer", referer);
+            }
+            if (!isTikTokCdnVideoUrl(videoUrl) || !headers.has("origin")) {
+                try {
+                    Uri refUri = Uri.parse(referer);
+                    headers.put("origin", refUri.getScheme() + "://" + refUri.getHost());
+                } catch (Exception ignored) {}
+            }
         }
         if (youtubePage != null) payload.put("sourceUrl", youtubePage);
         payload.put("headers", headers);
