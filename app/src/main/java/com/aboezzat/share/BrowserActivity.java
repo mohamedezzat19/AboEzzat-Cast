@@ -931,7 +931,21 @@ public class BrowserActivity extends Activity {
                 navigationStartedAt.put(view, System.currentTimeMillis());
                 if (view == activeWebView) {
                     activePageUrl = loadedUrl == null ? "" : loadedUrl;
-                    activeYouTubeWatchUrl = canonicalYouTubeWatchUrl(loadedUrl);
+                    String previousYouTubePage = activeYouTubeWatchUrl;
+                    String nextYouTubePage = canonicalYouTubeWatchUrl(loadedUrl);
+                    activeYouTubeWatchUrl = nextYouTubePage == null ? "" : nextYouTubePage;
+                    if (!activeYouTubeWatchUrl.equals(previousYouTubePage)) {
+                        activePlaybackKey = "";
+                        synchronized (BrowserActivity.this) {
+                            youtubeExtractionInProgressFor = "";
+                            youtubeExtractedFor = "";
+                            youtubeCastPendingFor = "";
+                        }
+                        clearCapturedMedia();
+                        if (!activeYouTubeWatchUrl.isEmpty()) {
+                            extractYouTubeForPage(activeYouTubeWatchUrl, false);
+                        }
+                    }
                 }
                 if (loadedUrl != null && isYouTubePageUrl(loadedUrl)) {
                     // Use the actual system WebView Chromium version on YouTube;
@@ -961,9 +975,18 @@ public class BrowserActivity extends Activity {
             public void onPageFinished(final WebView view, String loadedUrl) {
                 super.onPageFinished(view, loadedUrl);
                 if (getCurrentWebView() == view) {
-                    activePageUrl = loadedUrl == null ? "" : loadedUrl;
-                    activeYouTubeWatchUrl = canonicalYouTubeWatchUrl(loadedUrl);
-                    etUrl.setText(loadedUrl.equals("about:home") ? "" : loadedUrl);
+                    // WebView may finish an older navigation after YouTube has already
+                    // moved to another video inside its SPA. Snapshot the current URL,
+                    // not the stale callback argument.
+                    String currentUrl = view.getUrl();
+                    activePageUrl = currentUrl == null ? "" : currentUrl;
+                    String currentYouTubePage = canonicalYouTubeWatchUrl(currentUrl);
+                    if (currentYouTubePage != null) {
+                        activeYouTubeWatchUrl = currentYouTubePage;
+                    } else if (!isYouTubePageUrl(currentUrl)) {
+                        activeYouTubeWatchUrl = "";
+                    }
+                    etUrl.setText(currentUrl == null || currentUrl.equals("about:home") ? "" : currentUrl);
                     tabTitles.set(currentTabIndex, view.getTitle() != null ? view.getTitle() : "علامة تبويب");
                 }
                 injectPopupAndOverlayBlocker(view);
@@ -1219,7 +1242,9 @@ public class BrowserActivity extends Activity {
                 "if(!window.__aboYouTubeUrlTracker){window.__aboYouTubeUrlTracker=true;var p=history.pushState,r=history.replaceState;" +
                 "history.pushState=function(){var x=p.apply(this,arguments);setTimeout(report,0);return x;};" +
                 "history.replaceState=function(){var x=r.apply(this,arguments);setTimeout(report,0);return x;};" +
-                "window.addEventListener('popstate',report,true);window.addEventListener('hashchange',report,true);setInterval(report,500);}" +
+                "window.addEventListener('popstate',report,true);window.addEventListener('hashchange',report,true);" +
+                "['yt-navigate-finish','yt-page-data-updated','yt-player-updated'].forEach(function(n){document.addEventListener(n,report,true);});" +
+                "setInterval(report,250);}" +
                 "report();}catch(e){}})();";
         view.evaluateJavascript(js, null);
     }
@@ -1280,7 +1305,19 @@ public class BrowserActivity extends Activity {
             // Ignore callbacks from hidden tabs or pages that are no longer YouTube.
             if (!isYouTubePageUrl(activePageUrl)) return;
             String canonical = canonicalYouTubeWatchUrl(pageUrl);
-            activeYouTubeWatchUrl = canonical == null ? "" : canonical;
+            if (canonical == null || canonical.equals(activeYouTubeWatchUrl)) return;
+
+            // A YouTube SPA can switch videos without a WebView navigation callback.
+            // Invalidate the old capture immediately and start extraction for the new ID.
+            activeYouTubeWatchUrl = canonical;
+            activePlaybackKey = "";
+            synchronized (BrowserActivity.this) {
+                youtubeExtractionInProgressFor = "";
+                youtubeExtractedFor = "";
+                youtubeCastPendingFor = "";
+            }
+            clearCapturedMedia();
+            extractYouTubeForPage(canonical, false);
         }
 
         @JavascriptInterface
@@ -2722,7 +2759,12 @@ public class BrowserActivity extends Activity {
             @Override public void onSuccess(String videoUrl, String audioUrl, String title, String quality) {
                 boolean shouldCast;
                 synchronized (BrowserActivity.this) {
-                    youtubeExtractionInProgressFor = "";
+                    // Ignore a slow result if the user has already opened another video.
+                    if (!pageUrl.equals(activeYouTubeWatchUrl)) {
+                        if (pageUrl.equals(youtubeExtractionInProgressFor)) youtubeExtractionInProgressFor = "";
+                        return;
+                    }
+                    if (pageUrl.equals(youtubeExtractionInProgressFor)) youtubeExtractionInProgressFor = "";
                     youtubeExtractedFor = pageUrl;
                     shouldCast = pageUrl.equals(youtubeCastPendingFor);
                     if (shouldCast) youtubeCastPendingFor = "";
@@ -2754,9 +2796,15 @@ public class BrowserActivity extends Activity {
             @Override public void onError(String reason) {
                 boolean shouldReport;
                 synchronized (BrowserActivity.this) {
-                    youtubeExtractionInProgressFor = "";
+                    // A failure for an older page must never replace/cast over the new video.
+                    if (!pageUrl.equals(activeYouTubeWatchUrl)) {
+                        if (pageUrl.equals(youtubeExtractionInProgressFor)) youtubeExtractionInProgressFor = "";
+                        if (pageUrl.equals(youtubeCastPendingFor)) youtubeCastPendingFor = "";
+                        return;
+                    }
+                    if (pageUrl.equals(youtubeExtractionInProgressFor)) youtubeExtractionInProgressFor = "";
                     shouldReport = castAfterExtraction || pageUrl.equals(youtubeCastPendingFor);
-                    youtubeCastPendingFor = "";
+                    if (pageUrl.equals(youtubeCastPendingFor)) youtubeCastPendingFor = "";
                 }
                 if (!shouldReport) return;
 
