@@ -2698,6 +2698,12 @@ public class BrowserActivity extends Activity {
         if (audioUrl != null && !audioUrl.trim().isEmpty()) payload.put("audio", audioUrl);
         JSONObject headers = new JSONObject();
         String youtubePage = getCurrentYouTubePageUrl();
+        // Preserve the original TikTok watch page with its signed CDN URL so the
+        // Receiver can resolve a fresh stream instead of replaying a detached Akamai URL.
+        String tiktokSourcePage = null;
+        if (youtubePage == null && isTikTokCdnVideoUrl(videoUrl) && isTikTokPageUrl(activePageUrl)) {
+            tiktokSourcePage = activePageUrl;
+        }
         // The extracted googlevideo URLs were resolved with NewPipe's Firefox
         // fallback UA. The Receiver must use the same UA for both video and
         // companion audio requests; sending the unrelated WebView UA can yield
@@ -2743,6 +2749,7 @@ public class BrowserActivity extends Activity {
             }
         }
         if (youtubePage != null) payload.put("sourceUrl", youtubePage);
+        else if (tiktokSourcePage != null) payload.put("sourceUrl", tiktokSourcePage);
         payload.put("headers", headers);
         RequestBody body = RequestBody.create(
                 MediaType.parse("application/json; charset=utf-8"), payload.toString());
