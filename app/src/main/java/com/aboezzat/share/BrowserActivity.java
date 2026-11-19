@@ -1253,13 +1253,12 @@ public class BrowserActivity extends Activity {
                 "var score=(e.initiatorType==='video'||e.initiatorType==='media'?40:0)+(now-e.startTime<8000?20:0)+" +
                 "(/\\.(m3u8|mpd)(?:[?#]|$)/i.test(l)?25:0);" +
                 "var item={url:u,score:score,time:e.startTime,assetId:ig?ig.id:''};if(isThreadsHost)seenResources[u]=true;" +
-                "if(audio){if(isInstagramHost&&item.assetId)audioTracks.push(item);else if(!bestAudio||item.score>bestAudio.score||(item.score===bestAudio.score&&item.time>bestAudio.time))bestAudio=item;}" +
+                "if(audio){if(isInstagramHost){if(item.assetId)audioTracks.push(item);}else if(!bestAudio||item.score>bestAudio.score||(item.score===bestAudio.score&&item.time>bestAudio.time))bestAudio=item;}" +
                 "else if(video&&!videoTracks.some(function(x){return x.url===u;})){videoTracks.push(item);}" +
                 "else if(mp4Candidate&&!isInstagramHost)window.AboEzzatBridge.onCapturedCandidateTrack(u,titleFor(v),posterFor(v));" +
                 "}" +
                 "if(isInstagramHost){var chosenId=activeInstagramInfo&&activeInstagramInfo.id?activeInstagramInfo.id:'';" +
-                "if(!chosenId){var groups={};for(var gi=0;gi<videoTracks.length;gi++){var vi=videoTracks[gi];if(!vi.assetId)continue;var g=groups[vi.assetId];if(!g||vi.score>g.score||(vi.score===g.score&&vi.time>g.time))groups[vi.assetId]=vi;}" +
-                "var bestGroup=null;for(var gid in groups){if(!bestGroup||groups[gid].score>bestGroup.score||(groups[gid].score===bestGroup.score&&groups[gid].time>bestGroup.time))bestGroup=groups[gid];}if(bestGroup)chosenId=bestGroup.assetId;}" +
+                "if(!chosenId){var ids={};for(var gi=0;gi<videoTracks.length;gi++){if(videoTracks[gi].assetId)ids[videoTracks[gi].assetId]=true;}var only=Object.keys(ids);if(only.length===1)chosenId=only[0];}" +
                 "if(!chosenId){var ids={};for(var ii=0;ii<videoTracks.length;ii++){if(videoTracks[ii].assetId)ids[videoTracks[ii].assetId]=true;}var only=Object.keys(ids);if(only.length===1)chosenId=only[0];}if(chosenId){videoTracks=videoTracks.filter(function(x){return x.assetId===chosenId;});audioTracks=audioTracks.filter(function(x){return x.assetId===chosenId;});}else{videoTracks=[];audioTracks=[];}" +
                 "if(audioTracks.length){audioTracks.sort(function(a,b){return b.score-a.score||b.time-a.time;});bestAudio=audioTracks[0];}}" +
                 "videoTracks.sort(function(a,b){return b.score-a.score||b.time-a.time;});" +
@@ -1273,7 +1272,7 @@ public class BrowserActivity extends Activity {
                 "var active=vids.filter(function(v){return !v.paused&&!v.ended&&v.readyState>=2&&visible(v);});" +
                 "active.sort(function(a,b){return area(b)-area(a);});" +
                 "if(!active.length){if(activeKey){var old=activeKey;activeKey='';window.AboEzzatBridge.onActivePlaybackStopped(old);}return;}" +
-                "var v=active[0],idx=vids.indexOf(v),key=(v.currentSrc||v.src||'')+'|'+idx;if(isInstagramHost){var ai=instagramInfo(v.currentSrc||v.src||'');var ar=v.closest('article')||v.parentElement;var ah=ar?ar.querySelector('a[href*="/reel/"],a[href*="/p/"]'):null;key='instagram:'+(ai&&ai.id?ai.id:(ah?(ah.getAttribute('href')||''):key));}" +
+                "var v=active[0],idx=vids.indexOf(v),key=(v.currentSrc||v.src||'')+'|'+idx;if(isInstagramHost){var ai=instagramInfo(v.currentSrc||v.src||'');var ar=v.closest('article')||v.parentElement;var ah=ar?ar.querySelector('a[href*=\\\"/reel/\\\"],a[href*=\\\"/p/\\\"]'):null;key='instagram:'+(ai&&ai.id?ai.id:(ah?(ah.getAttribute('href')||''):key));}" +
                 "if(!key||key==='|'+idx)return;bridgeStart(v,key);scanResources(v);" +
                 "}catch(e){}}" +
                 "function armFromTap(e){try{var x=e.clientX,y=e.clientY;if(e.changedTouches&&e.changedTouches.length){x=e.changedTouches[0].clientX;y=e.changedTouches[0].clientY;}" +
