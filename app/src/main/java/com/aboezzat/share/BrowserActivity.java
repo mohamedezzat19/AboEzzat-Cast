@@ -2754,7 +2754,7 @@ public class BrowserActivity extends Activity {
             try {
                 String pageCookie = CookieManager.getInstance().getCookie(tiktokSourcePage);
                 if (pageCookie != null && !pageCookie.isEmpty() && pageCookie.length() <= 8192
-                        && !pageCookie.contains("\\r") && !pageCookie.contains("\\n")) {
+                        && !pageCookie.contains("\r") && !pageCookie.contains("\n")) {
                     headers.put("cookie", pageCookie);
                 }
             } catch (Exception ignored) {}
