@@ -201,6 +201,9 @@ public class BrowserActivity extends Activity {
             Uri uri = Uri.parse(url);
             String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase();
             String path = uri.getPath() == null ? "" : uri.getPath().toLowerCase();
+            if (host.equals("youtube.com") || host.endsWith(".youtube.com")
+                    || host.equals("youtu.be") || host.equals("youtube-nocookie.com")
+                    || host.endsWith(".youtube-nocookie.com")) return false;
             if (host.equals("tiktok.com") || host.endsWith(".tiktok.com")) {
                 return path.matches(".*\\/live(?:\\/.*)?$");
             }
@@ -1259,7 +1262,7 @@ public class BrowserActivity extends Activity {
                 "}" +
                 "if(isInstagramHost){var chosenId=activeInstagramInfo&&activeInstagramInfo.id?activeInstagramInfo.id:'';" +
                 "if(!chosenId){var ids={};for(var gi=0;gi<videoTracks.length;gi++){if(videoTracks[gi].assetId)ids[videoTracks[gi].assetId]=true;}var only=Object.keys(ids);if(only.length===1)chosenId=only[0];}" +
-                "if(!chosenId){var ids={};for(var ii=0;ii<videoTracks.length;ii++){if(videoTracks[ii].assetId)ids[videoTracks[ii].assetId]=true;}var only=Object.keys(ids);if(only.length===1)chosenId=only[0];}if(chosenId){videoTracks=videoTracks.filter(function(x){return x.assetId===chosenId;});audioTracks=audioTracks.filter(function(x){return x.assetId===chosenId;});}else{videoTracks=[];audioTracks=[];}" +
+                "if(chosenId){videoTracks=videoTracks.filter(function(x){return x.assetId===chosenId;});audioTracks=audioTracks.filter(function(x){return x.assetId===chosenId;});}else{videoTracks=[];audioTracks=[];}" +
                 "if(audioTracks.length){audioTracks.sort(function(a,b){return b.score-a.score||b.time-a.time;});bestAudio=audioTracks[0];}}" +
                 "videoTracks.sort(function(a,b){return b.score-a.score||b.time-a.time;});" +
                 "for(var j=0;j<Math.min(videoTracks.length,isInstagramHost?1:2);j++)window.AboEzzatBridge.onCapturedVideoTrack(videoTracks[j].url,titleFor(v),posterFor(v));" +
@@ -1359,13 +1362,13 @@ public class BrowserActivity extends Activity {
                 "if(audio(l))window.AboEzzatBridge.onCapturedAudioTrack(u,title,poster||'');" +
                 "else if(video(l)){if(/\\.mp4(?:[?#]|$)/i.test(l))window.AboEzzatBridge.onCapturedCandidateTrack(u,title,poster||'');else window.AboEzzatBridge.onCapturedVideoTrack(u,title,poster||'');}" +
                 "}catch(e){}}" +
-                "function scan(w,seen){try{if(!w||seen.indexOf(w)!==-1)return false;seen.push(w);var d=w.document;if(!d)return false;" +
+                "function scan(w,seen,isTop){try{if(!w||seen.indexOf(w)!==-1)return false;seen.push(w);var d=w.document;if(!d)return false;" +
                 "var vs=[].slice.call(d.querySelectorAll('video'));" +
                 "var active=vs.filter(function(v){return !v.paused&&!v.ended&&v.readyState>=2&&visible(v);});" +
                 "active.sort(function(a,b){return area(b)-area(a);});" +
                 "if(active.length){var v=active[0],u=v.currentSrc||v.src||v.getAttribute('src')||'';if(/^https?:/i.test(u)){" +
                 "var title=d.title||document.title||'فيديو قيد التشغيل',poster=v.poster||'';var state=w.__aboGenericActiveState;" +
-                "var key=(w.location.href||'')+'|'+u+'|'+vs.indexOf(v);" +
+                "var key=isTop?(u+'|'+vs.indexOf(v)):((w.location.href||'')+'|'+u+'|'+vs.indexOf(v));" +
                 "if(!state||state.key!==key){state={key:key,since:(w.performance&&w.performance.now?w.performance.now():0)-1800,seen:{}};w.__aboGenericActiveState=state;" +
                 "window.AboEzzatBridge.onActiveVideoChanged(key,title,poster);}" +
                 "window.AboEzzatBridge.onMetaFound(title,poster);" +
@@ -1374,11 +1377,11 @@ public class BrowserActivity extends Activity {
                 "for(var i=0;i<es.length;i++){var e=es[i],ru=e.name||'',lo=ru.toLowerCase();if(!/^https?:/i.test(ru)||e.startTime<state.since||e.startTime>now+100||now-e.startTime>12000||state.seen[ru])continue;" +
                 "if(!audio(lo)&&!video(lo))continue;state.seen[ru]=true;send(ru,title,poster);}" +
                 "return true;}}" +
-                "var fs=d.querySelectorAll('iframe,frame');for(var k=0;k<fs.length;k++){try{if(fs[k].contentWindow&&scan(fs[k].contentWindow,seen))return true;}catch(e){}}" +
+                "var fs=d.querySelectorAll('iframe,frame');for(var k=0;k<fs.length;k++){try{if(fs[k].contentWindow&&scan(fs[k].contentWindow,seen,false))return true;}catch(e){}}" +
                 "if(w.__aboGenericActiveState){window.AboEzzatBridge.onActivePlaybackStopped(w.__aboGenericActiveState.key);w.__aboGenericActiveState=null;}" +
                 "return false;" +
                 "}catch(e){return false;}}" +
-                "function tick(){scan(window,[]);}" +
+                "function tick(){scan(window,[],true);}" +
                 "document.addEventListener('playing',tick,true);document.addEventListener('play',tick,true);" +
                 "document.addEventListener('loadedmetadata',tick,true);document.addEventListener('canplay',tick,true);" +
                 "document.addEventListener('click',function(){setTimeout(tick,350);setTimeout(tick,900);},true);" +
@@ -1502,7 +1505,7 @@ public class BrowserActivity extends Activity {
 
         @JavascriptInterface
         public void onCapturedVideoTrack(String mediaUrl, String title, String posterUrl) {
-            if ((activePlaybackKey.isEmpty() && !isManualSniffActive() && !isGenericAutoSniffActive())
+            if (activePlaybackKey.isEmpty()
                     || mediaUrl == null || !mediaUrl.startsWith("http") || isBlockedAdUrl(mediaUrl)) return;
             String lower = mediaUrl.toLowerCase(Locale.ROOT);
             // YouTube SABR videoplayback URLs are transport requests, not verified standalone tracks.
@@ -1516,21 +1519,21 @@ public class BrowserActivity extends Activity {
 
         @JavascriptInterface
         public void onCapturedCandidateTrack(String mediaUrl, String title, String posterUrl) {
-            if ((activePlaybackKey.isEmpty() && !isManualSniffActive() && !isGenericAutoSniffActive())
+            if (activePlaybackKey.isEmpty()
                     || mediaUrl == null || !mediaUrl.startsWith("http") || isBlockedAdUrl(mediaUrl)) return;
             probeAndAddMp4(mediaUrl, title, posterUrl);
         }
 
         @JavascriptInterface
         public void onCapturedUnknownVideoTrack(String mediaUrl, String title, String posterUrl) {
-            if ((activePlaybackKey.isEmpty() && !isManualSniffActive() && !isGenericAutoSniffActive())
+            if (activePlaybackKey.isEmpty()
                     || mediaUrl == null || !mediaUrl.startsWith("http") || isBlockedAdUrl(mediaUrl)) return;
             probeUnknownVideoByContentType(mediaUrl, title, posterUrl);
         }
 
         @JavascriptInterface
         public void onCapturedAudioTrack(String mediaUrl, String title, String posterUrl) {
-            if ((activePlaybackKey.isEmpty() && !isManualSniffActive() && !isGenericAutoSniffActive()) || mediaUrl == null || !mediaUrl.startsWith("http")) return;
+            if (activePlaybackKey.isEmpty() || mediaUrl == null || !mediaUrl.startsWith("http")) return;
             String lower = mediaUrl.toLowerCase(Locale.ROOT);
             if (isBlockedAdUrl(mediaUrl)
                     || (lower.contains("googlevideo.com") && lower.contains("/videoplayback"))) return;
@@ -1815,10 +1818,11 @@ public class BrowserActivity extends Activity {
     }
 
     private void probeAndAddMp4(final String mediaUrl, final String title, final String posterUrl) {
-        if (mediaUrl == null || isBlockedAdUrl(mediaUrl) || !mp4ProbeRequests.add(mediaUrl)) return;
+        if (mediaUrl == null || isBlockedAdUrl(mediaUrl) || activePlaybackKey.isEmpty() || !mp4ProbeRequests.add(mediaUrl)) return;
+        final String captureKey = activePlaybackKey;
         AsyncTask.execute(() -> {
             int type = Mp4TrackInspector.inspect(mediaUrl);
-            if (type == 0 || activePlaybackKey.isEmpty()) return;
+            if (type == 0 || !captureKey.equals(activePlaybackKey)) return;
             String clean = mediaUrl.replaceAll("&bytestart=\\d+", "")
                     .replaceAll("&byteend=\\d+", "");
             String label = type == 2 ? "🎵 مسار صوت (تم فحص MP4)" : "🎬 مسار فيديو (تم فحص MP4)";
@@ -1829,7 +1833,8 @@ public class BrowserActivity extends Activity {
     // Active HTML5 video elements sometimes use extension-less CDN URLs.
     // Confirm the response MIME type before offering such a URL to the user.
     private void probeUnknownVideoByContentType(final String mediaUrl, final String title, final String posterUrl) {
-        if (mediaUrl == null || isBlockedAdUrl(mediaUrl) || !mediaUrl.startsWith("http") || !mp4ProbeRequests.add("mime:" + mediaUrl)) return;
+        if (mediaUrl == null || isBlockedAdUrl(mediaUrl) || !mediaUrl.startsWith("http") || activePlaybackKey.isEmpty() || !mp4ProbeRequests.add("mime:" + mediaUrl)) return;
+        final String captureKey = activePlaybackKey;
         String lower = mediaUrl.toLowerCase(Locale.ROOT);
         if (lower.matches(".*\\.(jpg|jpeg|png|webp|gif|bmp|svg|ts|m4s|js|css)(?:[?#].*)?$")) return;
         AsyncTask.execute(() -> {
@@ -1852,7 +1857,7 @@ public class BrowserActivity extends Activity {
                     String type = mime.toLowerCase(Locale.ROOT).split(";")[0].trim();
                     int mediaType = type.startsWith("video/") || type.equals("application/vnd.apple.mpegurl")
                             || type.equals("application/x-mpegurl") || type.equals("application/dash+xml") ? 1 : 0;
-                    if (mediaType == 1 && !activePlaybackKey.isEmpty()) {
+                    if (mediaType == 1 && captureKey.equals(activePlaybackKey)) {
                         String clean = mediaUrl.replaceAll("&bytestart=\\d+", "").replaceAll("&byteend=\\d+", "");
                         addCapturedMedia(clean, title == null || title.trim().isEmpty() ? "فيديو قيد التشغيل" : title.trim(),
                                 type.contains("mpegurl") ? "📡 بث مباشر - m3u8" : type.contains("dash") ? "🎬 فيديو DASH" : "🎬 فيديو (تم فحص نوع الاستجابة)",
