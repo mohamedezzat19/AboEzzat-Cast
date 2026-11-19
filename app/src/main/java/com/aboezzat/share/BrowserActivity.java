@@ -837,14 +837,40 @@ public class BrowserActivity extends Activity {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 String targetUrl = request.getUrl().toString();
-                String lower = targetUrl.toLowerCase();
+                String lower = targetUrl.toLowerCase(Locale.ROOT);
+
+                // TikTok's mobile web feed emits AppsFlyer OneLink URLs when a user
+                // taps/swipes a feed item. Those links try to launch the native app
+                // (snssdk://) and can end in ERR_CONNECTION_RESET inside Android WebView.
+                // Keep the user in TikTok Web and let its own SPA/player handle the item.
+                String currentUrl = view == null ? activePageUrl : view.getUrl();
+                if (isTikTokPageUrl(currentUrl) && isTikTokAppRedirectUrl(targetUrl)) {
+                    Log.d(TAG, "Blocked TikTok app deep-link; staying in TikTok Web");
+                    return true;
+                }
 
                 // Stop known ad/redirect destinations before they replace the page.
-                // Explicit ad/tracking hosts (including DoubleClick impression URLs)
-                // are blocked on YouTube too; actual video streams use separate media hosts.
                 if (isBlockedAdUrl(targetUrl)) return true;
 
                 // Play Store / app schemes and other non-web links require consent.
+                if (isPlayStoreRedirect(targetUrl)
+                        || (!lower.startsWith("http://") && !lower.startsWith("https://"))) {
+                    showRedirectConsent(targetUrl, false);
+                    return true;
+                }
+                return false;
+            }
+
+            @Override
+            @SuppressWarnings("deprecation")
+            public boolean shouldOverrideUrlLoading(WebView view, String targetUrl) {
+                String lower = targetUrl == null ? "" : targetUrl.toLowerCase(Locale.ROOT);
+                String currentUrl = view == null ? activePageUrl : view.getUrl();
+                if (isTikTokPageUrl(currentUrl) && isTikTokAppRedirectUrl(targetUrl)) {
+                    Log.d(TAG, "Blocked TikTok app deep-link; staying in TikTok Web");
+                    return true;
+                }
+                if (isBlockedAdUrl(targetUrl)) return true;
                 if (isPlayStoreRedirect(targetUrl)
                         || (!lower.startsWith("http://") && !lower.startsWith("https://"))) {
                     showRedirectConsent(targetUrl, false);
@@ -1014,6 +1040,22 @@ public class BrowserActivity extends Activity {
             loadHomePage();
         } else {
             loadTargetUrl(url);
+        }
+    }
+
+    // Detect TikTok's app-install/deep-link tracking redirects without
+    // affecting ordinary external links opened from other websites.
+    private boolean isTikTokAppRedirectUrl(String value) {
+        if (value == null || value.trim().isEmpty()) return false;
+        try {
+            Uri uri = Uri.parse(value.trim());
+            String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
+            String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase(Locale.ROOT);
+            return host.equals("onelink.me") || host.endsWith(".onelink.me")
+                    || scheme.startsWith("snssdk") || scheme.equals("tiktok")
+                    || (scheme.equals("intent") && value.toLowerCase(Locale.ROOT).contains("snssdk"));
+        } catch (Exception ignored) {
+            return false;
         }
     }
 
