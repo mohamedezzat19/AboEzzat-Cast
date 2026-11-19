@@ -2748,6 +2748,17 @@ public class BrowserActivity extends Activity {
                 } catch (Exception ignored) {}
             }
         }
+        // TikTok's page-scoped session cookie may not be attached to the CDN host.
+        // Forward the WebView page cookie as a local Receiver request header, without logging it.
+        if (tiktokSourcePage != null && !headers.has("cookie")) {
+            try {
+                String pageCookie = CookieManager.getInstance().getCookie(tiktokSourcePage);
+                if (pageCookie != null && !pageCookie.isEmpty() && pageCookie.length() <= 8192
+                        && !pageCookie.contains("\\r") && !pageCookie.contains("\\n")) {
+                    headers.put("cookie", pageCookie);
+                }
+            } catch (Exception ignored) {}
+        }
         if (youtubePage != null) payload.put("sourceUrl", youtubePage);
         else if (tiktokSourcePage != null) payload.put("sourceUrl", tiktokSourcePage);
         payload.put("headers", headers);
