@@ -1621,7 +1621,7 @@ public class BrowserActivity extends Activity {
     }
 
     private void probeAndAddMp4(final String mediaUrl, final String title, final String posterUrl) {
-        if (mediaUrl == null || !mp4ProbeRequests.add(mediaUrl)) return;
+        if (mediaUrl == null || isBlockedAdUrl(mediaUrl) || !mp4ProbeRequests.add(mediaUrl)) return;
         AsyncTask.execute(() -> {
             int type = Mp4TrackInspector.inspect(mediaUrl);
             if (type == 0 || (activePlaybackKey.isEmpty() && !isManualSniffActive() && !isGenericAutoSniffActive())) return;
@@ -1635,7 +1635,7 @@ public class BrowserActivity extends Activity {
     // Active HTML5 video elements sometimes use extension-less CDN URLs.
     // Confirm the response MIME type before offering such a URL to the user.
     private void probeUnknownVideoByContentType(final String mediaUrl, final String title, final String posterUrl) {
-        if (mediaUrl == null || !mediaUrl.startsWith("http") || !mp4ProbeRequests.add("mime:" + mediaUrl)) return;
+        if (mediaUrl == null || isBlockedAdUrl(mediaUrl) || !mediaUrl.startsWith("http") || !mp4ProbeRequests.add("mime:" + mediaUrl)) return;
         String lower = mediaUrl.toLowerCase(Locale.ROOT);
         if (lower.matches(".*\\.(jpg|jpeg|png|webp|gif|bmp|svg|ts|m4s|js|css)(?:[?#].*)?$")) return;
         AsyncTask.execute(() -> {
@@ -2576,14 +2576,17 @@ public class BrowserActivity extends Activity {
         CapturedMedia bestVideo = null;
         CapturedMedia bestAudio = null;
 
+        // Only checked rows participate. Previously an unchecked audio row could
+        // still be selected as bestAudio, causing the main Cast button to send an
+        // unintended pair and fail while Cast Single Track worked.
         synchronized (capturedList) {
             for (CapturedMedia item : capturedList) {
+                if (!item.isSelected || isBlockedAdUrl(item.url)) continue;
                 if (item.mediaType == 1 && (bestVideo == null
-                        || (item.isSelected && !bestVideo.isSelected)
-                        || (item.isSelected == bestVideo.isSelected
-                            && capturedVideoQualityScore(item.url) > capturedVideoQualityScore(bestVideo.url)))) {
+                        || capturedVideoQualityScore(item.url) > capturedVideoQualityScore(bestVideo.url))) {
                     bestVideo = item;
-                } else if (item.mediaType == 2 && (bestAudio == null || item.isSelected)) {
+                } else if (item.mediaType == 2 && (bestAudio == null
+                        || capturedUrlConfidence(item.url, 2) > capturedUrlConfidence(bestAudio.url, 2))) {
                     bestAudio = item;
                 }
             }
@@ -2592,19 +2595,23 @@ public class BrowserActivity extends Activity {
         if (bestVideo != null) videoTrackUrl = bestVideo.url;
         if (bestAudio != null) audioTrackUrl = bestAudio.url;
 
-        // YouTube must use the dedicated NewPipe extractor as the primary
-        // source of a matched video/audio pair. Browser-sniffed googlevideo URLs
-        // can be stale, mismatched, or classified incorrectly even when two
-        // entries appear in the capture list. Captured tracks remain a fallback
-        // only if the dedicated extraction fails.
-        if (youtubePage != null) {
+        // If the current YouTube page has not produced a valid captured row yet,
+        // invoke NewPipe. Otherwise send the already verified selected stream.
+        if (videoTrackUrl.isEmpty() && youtubePage != null) {
             extractYouTubeForPage(youtubePage, true);
             return;
         }
-
         if (videoTrackUrl.isEmpty()) {
-            Toast.makeText(this, "تعذر العثور على مسار الفيديو للدمج", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "حدد مسار فيديو صالحاً للبث أولاً", Toast.LENGTH_SHORT).show();
             return;
+        }
+
+        // NewPipe exposes its matched audio as a companion field on the video row,
+        // not as a second checkbox. Keep that verified pair together.
+        if (audioTrackUrl.isEmpty() && bestVideo != null
+                && bestVideo.pairedAudioUrl != null && !bestVideo.pairedAudioUrl.trim().isEmpty()
+                && !isBlockedAdUrl(bestVideo.pairedAudioUrl)) {
+            audioTrackUrl = bestVideo.pairedAudioUrl;
         }
 
         if (audioTrackUrl.isEmpty()) {
