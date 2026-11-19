@@ -1233,7 +1233,7 @@ public class BrowserActivity extends Activity {
                 "function visible(v){return area(v)>Math.max(12000,(innerWidth*innerHeight)*0.025);}" +
                 "function bridgeStart(v,key){var t=titleFor(v),p=posterFor(v);" +
                 "if(isYouTubeHost){try{var yu=new URL(location.href),yi=yu.searchParams.get('v')||'';if(!yi){var yp=yu.pathname.match(/\\/(?:live|shorts|embed|v)\\/([A-Za-z0-9_-]{11})/);if(yp)yi=yp[1];if(yu.hostname==='youtu.be')yi=yu.pathname.split('/').filter(Boolean)[0]||'';}if(/^[A-Za-z0-9_-]{11}$/.test(yi))key='youtube:'+yi;}catch(e){}}" +
-                "if(key!==activeKey){activeKey=key;activeSince=performance.now()-4000;if(!isYouTubeHost)seenResources={};window.AboEzzatBridge.onActiveVideoChanged(key,t,p);}else if(isTikTokLivePage){window.AboEzzatBridge.onActiveVideoChanged(key,t,p);}" +
+                "if(key!==activeKey){activeKey=key;activeSince=performance.now()-((isThreadsHost||isInstagramHost)?4000:1800);if(!isYouTubeHost)seenResources={};window.AboEzzatBridge.onActiveVideoChanged(key,t,p);}else if(isTikTokLivePage){window.AboEzzatBridge.onActiveVideoChanged(key,t,p);}" +
                 "var src=v.currentSrc||v.src||'';if(!isInstagramHost&&/^https?:/i.test(src))window.AboEzzatBridge.onActiveVideoTrack(src,t,p);" +
                 "}" +
                 "function scanResources(v){try{var entries=performance.getEntriesByType('resource'),now=performance.now();" +
@@ -2382,29 +2382,8 @@ public class BrowserActivity extends Activity {
         clearCapturedMedia();
         Toast.makeText(this, "جاري فحص مشغل الموقع والتقاط مسارات الفيديو والصوت...", Toast.LENGTH_LONG).show();
 
-        String js = "javascript:(function(){try{" +
-                "var visited=[];" +
-                "function scan(w){try{if(!w||visited.indexOf(w)!==-1)return;visited.push(w);" +
-                "var d=w.document;if(d){" +
-                "var vs=[].slice.call(d.querySelectorAll('video'));" +
-                "vs.sort(function(a,b){var x=a.getBoundingClientRect(),y=b.getBoundingClientRect();return (y.width*y.height)-(x.width*x.height);});" +
-                "for(var i=0;i<vs.length;i++){var v=vs[i],u=v.currentSrc||v.src||'';if(/^https?:/i.test(u))window.AboEzzatBridge.onActiveVideoTrack(u,d.title||document.title,v.poster||'');}" +
-                "var es=w.performance&&w.performance.getEntriesByType?w.performance.getEntriesByType('resource'):[];" +
-                "for(var j=0;j<es.length;j++){var u=es[j].name||'',l=u.toLowerCase();if(!/^https?:/i.test(u))continue;" +
-                "if(l.indexOf('googlevideo.com')!==-1&&l.indexOf('/videoplayback')!==-1)continue;" +
-                "if(l.indexOf('doubleclick.net')!==-1||l.indexOf('googlesyndication.com')!==-1||l.indexOf('googleadservices.com')!==-1||l.indexOf('/ddm/trackimp/')!==-1||l.indexOf('/ddm/trackclk/')!==-1)continue;" +
-                "if(/\\.(jpg|jpeg|png|webp|gif|bmp|svg|ts|m4s|js|css)(?:[?#]|$)/i.test(l))continue;" +
-                "var a=/mime(?:_|-)?type=audio|mime=audio|type=audio|content[_-]?type=audio|dash_ln_heaac|audio_dash|\\.(aac|m4a|mp3|opus|ogg)(?:[?#]|$)/i.test(l);" +
-                "var v=/mime(?:_|-)?type=video|mime=video|type=video|content[_-]?type=video|videoplayback|video\\/|\\.(m3u8|mpd|mp4|m4v|webm|flv|mov)(?:[?#]|$)/i.test(l);" +
-                "if(a)window.AboEzzatBridge.onCapturedAudioTrack(u,d.title||document.title,'');" +
-                "else if(v){if(/\\.mp4(?:[?#]|$)/i.test(l))window.AboEzzatBridge.onCapturedCandidateTrack(u,d.title||document.title,'');" +
-                "else window.AboEzzatBridge.onCapturedVideoTrack(u,d.title||document.title,'');}" +
-                "}" +
-                "var fs=d.querySelectorAll('iframe,frame');for(var k=0;k<fs.length;k++){try{if(fs[k].contentWindow)scan(fs[k].contentWindow);}catch(e){}}" +
-                "}" +
-                "}catch(e){}}" +
-                "scan(window);" +
-                "}catch(e){}})()";
+        String js = "(function(){try{if(window.__aboArmActiveCapture)window.__aboArmActiveCapture();}" +
+                "catch(e){}})()";
         current.evaluateJavascript(js, null);
     }
 
