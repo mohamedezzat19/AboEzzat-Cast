@@ -858,7 +858,7 @@ public class BrowserActivity extends Activity {
                 String lowerUrl = reqUrl.toLowerCase();
 
                 String requestPageUrl = view == activeWebView ? activePageUrl : "";
-                if (!isYouTubePageUrl(requestPageUrl) && isBlockedAdUrl(reqUrl)) {
+                if (isBlockedAdUrl(reqUrl)) {
                     return new WebResourceResponse("text/plain", "UTF-8", new ByteArrayInputStream(new byte[0]));
                 }
 
@@ -1180,7 +1180,8 @@ public class BrowserActivity extends Activity {
                 "var h=Math.max(0,Math.min(innerHeight,r.bottom)-Math.max(0,r.top));return w*h;}catch(e){return 0;}}" +
                 "function visible(v){return area(v)>Math.max(12000,(innerWidth*innerHeight)*0.025);}" +
                 "function bridgeStart(v,key){var t=titleFor(v),p=posterFor(v);" +
-                "if(key!==activeKey){activeKey=key;activeSince=performance.now()-4000;seenResources={};window.AboEzzatBridge.onActiveVideoChanged(key,t,p);}else if(isTikTokLivePage){window.AboEzzatBridge.onActiveVideoChanged(key,t,p);}" +
+                "if(isYouTubeHost){try{var yu=new URL(location.href),yi=yu.searchParams.get('v')||'';if(!yi){var yp=yu.pathname.match(/\\/(?:live|shorts|embed|v)\\/([A-Za-z0-9_-]{11})/);if(yp)yi=yp[1];if(yu.hostname==='youtu.be')yi=yu.pathname.split('/').filter(Boolean)[0]||'';}if(/^[A-Za-z0-9_-]{11}$/.test(yi))key='youtube:'+yi;}catch(e){}}" +
+                "if(key!==activeKey){activeKey=key;activeSince=performance.now()-4000;if(!isYouTubeHost)seenResources={};window.AboEzzatBridge.onActiveVideoChanged(key,t,p);}else if(isTikTokLivePage){window.AboEzzatBridge.onActiveVideoChanged(key,t,p);}" +
                 "var src=v.currentSrc||v.src||'';if(/^https?:/i.test(src))window.AboEzzatBridge.onActiveVideoTrack(src,t,p);" +
                 "}" +
                 "function scanResources(v){try{var entries=performance.getEntriesByType('resource'),now=performance.now();" +
@@ -1327,20 +1328,27 @@ public class BrowserActivity extends Activity {
         @JavascriptInterface
         public void onActiveVideoChanged(String key, String title, String posterUrl) {
             if (key == null || key.isEmpty()) return;
+            String youtubePage = getCurrentYouTubePageUrl();
             synchronized (BrowserActivity.this) {
-                if (!key.equals(activePlaybackKey)) {
+                if (youtubePage != null) {
+                    // YouTube changes its internal media source while a LIVE playlist refreshes.
+                    // Keep one page-scoped playback identity so those refreshes never clear the list.
+                    activePlaybackKey = "youtube:" + youtubePage;
+                } else if (!key.equals(activePlaybackKey)) {
                     activePlaybackKey = key;
                     clearCapturedMedia();
                 }
                 if (title != null && !title.trim().isEmpty()) lastDiscoveredTitle = title.trim();
                 if (posterUrl != null && !posterUrl.trim().isEmpty()) lastDiscoveredPoster = posterUrl;
             }
-            String youtubePage = getCurrentYouTubePageUrl();
             if (youtubePage != null) extractYouTubeForPage(youtubePage, false);
         }
 
         @JavascriptInterface
         public void onActivePlaybackStopped(String key) {
+            // YouTube LIVE can briefly pause while its HLS/DASH playlist refreshes.
+            // Keep the last verified stream visible until the watch page itself changes.
+            if (getCurrentYouTubePageUrl() != null) return;
             synchronized (BrowserActivity.this) {
                 if (key != null && key.equals(activePlaybackKey)) {
                     activePlaybackKey = "";
@@ -2767,7 +2775,11 @@ public class BrowserActivity extends Activity {
     private void extractYouTubeForPage(String pageUrl, boolean castAfterExtraction) {
         if (!isYouTubePageUrl(pageUrl)) return;
         synchronized (this) {
-            if (castAfterExtraction) youtubeCastPendingFor = pageUrl;
+            if (castAfterExtraction) {
+                youtubeCastPendingFor = pageUrl;
+                // YouTube media URLs are signed and short-lived; refresh them on every cast request.
+                if (pageUrl.equals(youtubeExtractedFor)) youtubeExtractedFor = "";
+            }
             if (pageUrl.equals(youtubeExtractedFor)) {
                 if (castAfterExtraction) {
                     String video = null, audio = null;
@@ -2847,10 +2859,8 @@ public class BrowserActivity extends Activity {
                 // to Receiver; its YouTube-only path opens SmartTube without an app chooser.
                 runOnUiThread(() -> {
                     Toast.makeText(BrowserActivity.this,
-                            "تعذر استخراج رابط فيديو مباشر (" + reason + ")؛ سيتم إرسال رابط صفحة YouTube الأصلي.",
+                            "تعذر استخراج رابط فيديو أو بث مباشر قابل للتشغيل (" + reason + "). لم يتم إرسال صفحة YouTube إلى الشاشة.",
                             Toast.LENGTH_LONG).show();
-                    addCapturedPageLink(pageUrl, lastDiscoveredTitle);
-                    castToTv(pageUrl, null);
                 });
             }
         });
