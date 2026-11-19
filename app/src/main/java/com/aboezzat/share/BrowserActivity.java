@@ -2204,7 +2204,7 @@ public class BrowserActivity extends Activity {
                 "for(var j=0;j<es.length;j++){var u=es[j].name||'',l=u.toLowerCase();if(!/^https?:/i.test(u))continue;" +
                 "if(l.indexOf('googlevideo.com')!==-1&&l.indexOf('/videoplayback')!==-1)continue;" +
                 "if(l.indexOf('doubleclick.net')!==-1||l.indexOf('googlesyndication.com')!==-1||l.indexOf('googleadservices.com')!==-1||l.indexOf('/ddm/trackimp/')!==-1||l.indexOf('/ddm/trackclk/')!==-1)continue;" +
-                "if(/\\.(jpg|jpeg|png|webp|gif|bmp|svg|ts|m4s|js|css)(?:[?#]|$)/i.test(l))continue;"
+                "if(/\\.(jpg|jpeg|png|webp|gif|bmp|svg|ts|m4s|js|css)(?:[?#]|$)/i.test(l))continue;" +
                 "var a=/mime(?:_|-)?type=audio|mime=audio|type=audio|content[_-]?type=audio|dash_ln_heaac|audio_dash|\\.(aac|m4a|mp3|opus|ogg)(?:[?#]|$)/i.test(l);" +
                 "var v=/mime(?:_|-)?type=video|mime=video|type=video|content[_-]?type=video|videoplayback|video\\/|\\.(m3u8|mpd|mp4|m4v|webm|flv|mov)(?:[?#]|$)/i.test(l);" +
                 "if(a)window.AboEzzatBridge.onCapturedAudioTrack(u,d.title||document.title,'');" +
