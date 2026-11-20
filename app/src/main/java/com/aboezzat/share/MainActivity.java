@@ -1408,8 +1408,9 @@ private void showManualIpDialog() {
             title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
             top.addView(title, new LinearLayout.LayoutParams(0, -2, 1f));
             TextView status = new TextView(this);
-            status.setText("● جاري الفحص");
-            status.setTextColor(0xFFFBBF24);
+            boolean isActiveDevice = device.ip.equalsIgnoreCase(prefs.getString("tv_ip", "").trim());
+            status.setText(isActiveDevice ? "◆ نشط • جاري الفحص" : "● محفوظ • جاري الفحص");
+            status.setTextColor(isActiveDevice ? 0xFFFBBF24 : 0xFF94A3B8);
             status.setTextSize(11);
             top.addView(status);
             card.addView(top);
@@ -1423,13 +1424,27 @@ private void showManualIpDialog() {
             actions.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
             TextView edit = new TextView(this);
             edit.setText("تعديل");
-            edit.setTextColor(0xFF93C5FD);
-            edit.setPadding(12, 7, 12, 7);
+            edit.setTextColor(0xFFBFDBFE);
+            edit.setGravity(Gravity.CENTER);
+            edit.setPadding(18, 10, 18, 10);
+            GradientDrawable editBg = new GradientDrawable();
+            editBg.setColor(0xFF172554);
+            editBg.setCornerRadius(12);
+            editBg.setStroke(1, 0xFF3B82F6);
+            edit.setBackground(editBg);
             TextView delete = new TextView(this);
             delete.setText("حذف");
-            delete.setTextColor(0xFFFCA5A5);
-            delete.setPadding(12, 7, 4, 7);
-            actions.addView(edit);
+            delete.setTextColor(0xFFFECACA);
+            delete.setGravity(Gravity.CENTER);
+            delete.setPadding(18, 10, 18, 10);
+            GradientDrawable deleteBg = new GradientDrawable();
+            deleteBg.setColor(0xFF3F1D2A);
+            deleteBg.setCornerRadius(12);
+            deleteBg.setStroke(1, 0xFFB45369);
+            delete.setBackground(deleteBg);
+            LinearLayout.LayoutParams editParams = new LinearLayout.LayoutParams(-2, -2);
+            editParams.setMargins(0, 0, dp(12), 0);
+            actions.addView(edit, editParams);
             actions.addView(delete);
             card.addView(actions);
             card.setOnClickListener(v -> selectSavedReceiver(device, dialogRef[0]));
@@ -1451,8 +1466,9 @@ private void showManualIpDialog() {
                 boolean online = isReceiverOnline(device.ip);
                 runOnUiThread(() -> {
                     if (!isFinishing() && status.getParent() != null) {
-                        status.setText(online ? "● متصل" : "● غير متصل");
-                        status.setTextColor(online ? 0xFF4ADE80 : 0xFFFBBF24);
+                        boolean active = device.ip.equalsIgnoreCase(prefs.getString("tv_ip", "").trim());
+                        status.setText(online ? "● متصل" : (active ? "◆ نشط • غير متصل" : "● محفوظ"));
+                        status.setTextColor(online ? 0xFF4ADE80 : (active ? 0xFFFBBF24 : 0xFF94A3B8));
                     }
                 });
             });
@@ -1467,21 +1483,35 @@ private void showManualIpDialog() {
         add.setText("＋ إضافة جهاز");
         add.setTextColor(Color.WHITE);
         add.setGravity(Gravity.CENTER);
-        add.setPadding(14, 11, 14, 11);
-        add.setBackgroundColor(0xFF2563EB);
+        add.setPadding(16, 12, 16, 12);
+        GradientDrawable addBg = new GradientDrawable();
+        addBg.setColor(0xFF1D4ED8);
+        addBg.setCornerRadius(14);
+        addBg.setStroke(1, 0xFF60A5FA);
+        add.setBackground(addBg);
         TextView scan = new TextView(this);
-        scan.setText("بحث");
+        scan.setText("⌕  بحث");
         scan.setTextColor(0xFFBFDBFE);
         scan.setGravity(Gravity.CENTER);
-        scan.setPadding(16, 11, 16, 11);
-        footer.addView(add, new LinearLayout.LayoutParams(0, -2, 1f));
-        footer.addView(scan);
+        scan.setPadding(18, 12, 18, 12);
+        GradientDrawable scanBg = new GradientDrawable();
+        scanBg.setColor(0xFF1E293B);
+        scanBg.setCornerRadius(14);
+        scanBg.setStroke(1, 0xFF64748B);
+        scan.setBackground(scanBg);
+        LinearLayout.LayoutParams addParams = new LinearLayout.LayoutParams(0, -2, 1f);
+        addParams.setMargins(0, 0, dp(12), 0);
+        footer.addView(add, addParams);
+        footer.addView(scan, new LinearLayout.LayoutParams(-2, -2));
         root.addView(footer);
 
         AlertDialog dialog = new AlertDialog.Builder(this).setView(root)
                 .setNegativeButton("إغلاق", null).create();
         dialogRef[0] = dialog;
-        add.setOnClickListener(v -> showEditReceiverDialog(null));
+        add.setOnClickListener(v -> {
+            if (dialog.isShowing()) dialog.dismiss();
+            showEditReceiverDialog(null);
+        });
         scan.setOnClickListener(v -> {
             if (dialog.isShowing()) dialog.dismiss();
             scanForTvDevices();
@@ -1523,6 +1553,11 @@ private void showManualIpDialog() {
                                 item.name = deviceName;
                                 item.ip = deviceIp;
                             }
+                        }
+                        if (prefs.getString("tv_ip", "").trim().equalsIgnoreCase(existing.ip)) {
+                            prefs.edit().putString("tv_ip", deviceIp).apply();
+                            if (etTvIp != null) etTvIp.setText(deviceIp);
+                            updateReceiverStatus();
                         }
                     } else {
                         for (SavedReceiverDevice item : latest) {
