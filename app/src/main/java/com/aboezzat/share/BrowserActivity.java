@@ -3033,7 +3033,7 @@ public class BrowserActivity extends Activity {
                 private void finishSend() {
                     runOnUiThread(() -> {
                         if (requestHeadersSent.get()) {
-                            Toast.makeText(BrowserActivity.this, "✓ تم الإرسال", Toast.LENGTH_SHORT).show();
+                            Toast.makeText(BrowserActivity.this, "✅ تم الإرسال", Toast.LENGTH_SHORT).show();
                         }
                     });
                 }
@@ -3238,7 +3238,7 @@ public class BrowserActivity extends Activity {
                 private void finishSend() {
                     runOnUiThread(() -> {
                         if (requestHeadersSent.get()) {
-                            Toast.makeText(BrowserActivity.this, "✓ تم الإرسال", Toast.LENGTH_SHORT).show();
+                            Toast.makeText(BrowserActivity.this, "✅ تم الإرسال", Toast.LENGTH_SHORT).show();
                         }
                     });
                 }
