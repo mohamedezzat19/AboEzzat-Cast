@@ -1366,6 +1366,14 @@ private void showManualIpDialog() {
 
     private void showSavedReceiverDialog() {
         List<SavedReceiverDevice> devices = loadSavedReceiverDevices();
+        final String activeIp = prefs.getString("tv_ip", "").trim();
+        // Keep the currently selected receiver at the top; all other saved
+        // receivers remain below it in their existing saved order.
+        devices.sort((a, b) -> {
+            boolean aActive = a.ip.equalsIgnoreCase(activeIp);
+            boolean bActive = b.ip.equalsIgnoreCase(activeIp);
+            return Boolean.compare(bActive, aActive);
+        });
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(24, 18, 24, 14);
@@ -1408,8 +1416,8 @@ private void showManualIpDialog() {
             title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
             top.addView(title, new LinearLayout.LayoutParams(0, -2, 1f));
             TextView status = new TextView(this);
-            boolean isActiveDevice = device.ip.equalsIgnoreCase(prefs.getString("tv_ip", "").trim());
-            status.setText(isActiveDevice ? "◆ نشط • جاري الفحص" : "● محفوظ • جاري الفحص");
+            boolean isActiveDevice = device.ip.equalsIgnoreCase(activeIp);
+            status.setText(isActiveDevice ? "◆ نشط" : "● محفوظ");
             status.setTextColor(isActiveDevice ? 0xFFFBBF24 : 0xFF94A3B8);
             status.setTextSize(11);
             top.addView(status);
@@ -1467,8 +1475,12 @@ private void showManualIpDialog() {
                 runOnUiThread(() -> {
                     if (!isFinishing() && status.getParent() != null) {
                         boolean active = device.ip.equalsIgnoreCase(prefs.getString("tv_ip", "").trim());
-                        status.setText(online ? "● متصل" : (active ? "◆ نشط • غير متصل" : "● محفوظ"));
-                        status.setTextColor(online ? 0xFF4ADE80 : (active ? 0xFFFBBF24 : 0xFF94A3B8));
+                        // "متصل" is reserved for the selected active receiver
+                        // whose Receiver service actually answers on port 8081.
+                        status.setText(active ? (online ? "● متصل" : "◆ نشط")
+                                : "● محفوظ");
+                        status.setTextColor(active && online ? 0xFF4ADE80
+                                : (active ? 0xFFFBBF24 : 0xFF94A3B8));
                     }
                 });
             });
