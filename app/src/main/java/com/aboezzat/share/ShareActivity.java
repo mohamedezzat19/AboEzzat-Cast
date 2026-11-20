@@ -595,7 +595,7 @@ public class ShareActivity extends Activity {
                 private void finishSend() {
                     mainHandler.post(() -> {
                         if (requestHeadersSent.get()) {
-                            Toast.makeText(ShareActivity.this, "✓ تم الإرسال", Toast.LENGTH_SHORT).show();
+                            Toast.makeText(ShareActivity.this, "✅ تم الإرسال", Toast.LENGTH_SHORT).show();
                         }
                         finish();
                     });
