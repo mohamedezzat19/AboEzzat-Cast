@@ -149,15 +149,14 @@ public class ShareActivity extends Activity {
         // Do not wait for WebView media sniffing: forward this known URL to Receiver,
         // which will hand it to VLC (and use ExoPlayer if VLC is unavailable).
         if (isSwiftDataDramaLiveUrl(url)) {
-            Toast.makeText(this, "تم التعرف على رابط البث، جاري إرساله للشاشة…",
-                    Toast.LENGTH_LONG).show();
+
             sendToTv(targetTvIp, url, false, url);
             return;
         }
 
         if (lowerUrl.contains("youtube.com") || lowerUrl.contains("youtu.be")
                 || lowerUrl.contains("youtube-nocookie.com")) {
-            Toast.makeText(this, "جاري استخراج رابط YouTube المباشر على الهاتف...", Toast.LENGTH_SHORT).show();
+
             YoutubeDirectExtractor.extract(url, new YoutubeDirectExtractor.Callback() {
                 @Override public void onSuccess(String videoUrl, String audioUrl, String title, String quality) {
                     if (isFinishing() || videoUrl == null || videoUrl.trim().isEmpty()) return;
@@ -190,12 +189,11 @@ public class ShareActivity extends Activity {
         }
 
         if (lowerUrl.contains("tiktok.com")) {
-            Toast.makeText(this, "جاري استخراج فيديو تيك توك...", Toast.LENGTH_SHORT).show();
+
             handleTikTok(url);
             return;
         }
 
-        Toast.makeText(this, "جاري قنص الفيديو للشاشة...", Toast.LENGTH_SHORT).show();
         startPlatformSniffer(url, "generic");
     }
 
@@ -545,7 +543,7 @@ public class ShareActivity extends Activity {
         SharedPreferences currentPrefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
         String selectedReceiverIp = currentPrefs.getString("tv_ip", "").trim();
         if (selectedReceiverIp.isEmpty()) {
-            Toast.makeText(this, "يرجى تعيين عنوان IP الشاشة أولاً", Toast.LENGTH_LONG).show();
+            
             finish();
             return;
         }
@@ -594,55 +592,28 @@ public class ShareActivity extends Activity {
                     }).build();
 
             trackedClient.newCall(request).enqueue(new Callback() {
-                private void showResult(String message) {
+                private void finishSend() {
                     mainHandler.post(() -> {
-                        Toast.makeText(ShareActivity.this, "✓ تم الإرسال", Toast.LENGTH_SHORT).show();
+                        if (requestHeadersSent.get()) {
+                            Toast.makeText(ShareActivity.this, "✓ تم الإرسال", Toast.LENGTH_SHORT).show();
+                        }
                         finish();
                     });
                 }
 
                 @Override
                 public void onFailure(Call call, IOException error) {
-                    // The Receiver may start playback and close the original socket before
-                    // the sender receives the HTTP response. Its ping endpoint tells us
-                    // whether the Receiver is still reachable after that ambiguous failure.
-                    Request ping = new Request.Builder()
-                            .url(receiverEndpoint + "/?command=ping")
-                            .get()
-                            .build();
-                    client.newCall(ping).enqueue(new Callback() {
-                        @Override
-                        public void onFailure(Call pingCall, IOException pingError) {
-                            showResult("✓ تم الإرسال");
-                        }
-
-                        @Override
-                        public void onResponse(Call pingCall, Response pingResponse) {
-                            boolean receiverAlive = pingResponse.isSuccessful();
-                            pingResponse.close();
-                            if (receiverAlive && requestHeadersSent.get()) {
-                                showResult("✓ تم الإرسال");
-                            } else if (receiverAlive) {
-                                showResult("✓ تم الإرسال");
-                            } else {
-                                showResult("✓ تم الإرسال");
-                            }
-                        }
-                    });
+                    finishSend();
                 }
 
                 @Override
                 public void onResponse(Call call, Response response) {
-                    boolean accepted = response.isSuccessful();
                     response.close();
-                    showResult("✓ تم الإرسال");
+                    finishSend();
                 }
             });
         } catch (Exception e) {
-            mainHandler.post(() -> {
-                
-                finish();
-            });
+            finish();
         }
     }
 
