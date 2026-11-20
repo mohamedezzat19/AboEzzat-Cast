@@ -3030,51 +3030,23 @@ public class BrowserActivity extends Activity {
                     }).build();
 
             trackedClient.newCall(req).enqueue(new Callback() {
-                private void showResult(String message) {
-                    runOnUiThread(() -> Toast.makeText(
-                            BrowserActivity.this, message, Toast.LENGTH_SHORT).show());
-                }
-
-                private void confirmReceiverAfterAmbiguousFailure() {
-                    Request ping = new Request.Builder()
-                            .url(receiverEndpoint + "/?command=ping")
-                            .get()
-                            .build();
-                    client.newCall(ping).enqueue(new Callback() {
-                        @Override
-                        public void onFailure(Call pingCall, IOException pingError) {
-                            showResult("✓ تم الإرسال");
-                        }
-
-                        @Override
-                        public void onResponse(Call pingCall, Response pingResponse) {
-                            boolean receiverAlive = pingResponse.isSuccessful();
-                            pingResponse.close();
-                            if (receiverAlive && requestHeadersSent.get()) {
-                                showResult("✓ تم الإرسال");
-                            } else if (receiverAlive) {
-                                showResult("✓ تم الإرسال");
-                            } else {
-                                showResult("✓ تم الإرسال");
-                            }
+                private void finishSend() {
+                    runOnUiThread(() -> {
+                        if (requestHeadersSent.get()) {
+                            Toast.makeText(BrowserActivity.this, "✓ تم الإرسال", Toast.LENGTH_SHORT).show();
                         }
                     });
                 }
 
                 @Override
-                public void onFailure(Call call, IOException e) {
-                    confirmReceiverAfterAmbiguousFailure();
+                public void onFailure(Call call, IOException error) {
+                    finishSend();
                 }
 
                 @Override
                 public void onResponse(Call call, Response response) {
-                    boolean accepted = response.isSuccessful();
                     response.close();
-                    if (accepted) {
-                        showResult("✓ تم الإرسال");
-                    } else {
-                        confirmReceiverAfterAmbiguousFailure();
-                    }
+                    finishSend();
                 }
             });
         } catch (Exception e) {
@@ -3263,49 +3235,23 @@ public class BrowserActivity extends Activity {
                     }).build();
 
             trackedClient.newCall(req).enqueue(new Callback() {
-                private void showResult(String message) {
-                    runOnUiThread(() -> Toast.makeText(
-                            BrowserActivity.this, message, Toast.LENGTH_SHORT).show());
-                }
-
-                @Override
-                public void onFailure(Call call, IOException e) {
-                    // The Receiver can accept the URL and start playback, then the
-                    // connection may close before OkHttp receives the HTTP response.
-                    // For a GET request, sent headers mean the complete request was sent.
-                    if (requestHeadersSent.get()) {
-                        showResult("تم الإرسال والتشغيل بنجاح ✓");
-                        return;
-                    }
-
-                    Request ping = new Request.Builder()
-                            .url(receiverEndpoint + "/?command=ping")
-                            .get()
-                            .build();
-                    client.newCall(ping).enqueue(new Callback() {
-                        @Override
-                        public void onFailure(Call pingCall, IOException pingError) {
-                            showResult("تعذر الإرسال للشاشة، تأكد من الـ IP");
-                        }
-
-                        @Override
-                        public void onResponse(Call pingCall, Response pingResponse) {
-                            boolean receiverAlive = pingResponse.isSuccessful();
-                            pingResponse.close();
-                            showResult(receiverAlive
-                                    ? "الشاشة متصلة، لكن لم يصل طلب الوسائط"
-                                    : "تعذر تأكيد استقبال الوسائط");
+                private void finishSend() {
+                    runOnUiThread(() -> {
+                        if (requestHeadersSent.get()) {
+                            Toast.makeText(BrowserActivity.this, "✓ تم الإرسال", Toast.LENGTH_SHORT).show();
                         }
                     });
                 }
 
                 @Override
+                public void onFailure(Call call, IOException error) {
+                    finishSend();
+                }
+
+                @Override
                 public void onResponse(Call call, Response response) {
-                    boolean accepted = response.isSuccessful();
                     response.close();
-                    showResult(accepted
-                            ? "تم الإرسال والتشغيل بنجاح ✓"
-                            : "الشاشة رفضت طلب الوسائط");
+                    finishSend();
                 }
             });
         } catch (Exception e) {
