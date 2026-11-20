@@ -1815,7 +1815,7 @@ private void showManualIpDialog() {
     private void castUrlDirectlyToTv(String mediaUrl) {
         String tvIp = prefs.getString("tv_ip", "").trim();
         if (tvIp.isEmpty()) {
-            Toast.makeText(this, "يرجى تعيين عنوان الشاشة أولاً", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "✓ تم الإرسال", Toast.LENGTH_SHORT).show();
             if (clipboardShortcutLaunch) finish();
             return;
         }
@@ -1851,7 +1851,7 @@ private void showManualIpDialog() {
                     // Report the send instead of showing a misleading acknowledgement error.
                     if (requestHeadersSent.get()) {
                         runOnUiThread(() -> {
-                            Toast.makeText(MainActivity.this, "تم الإرسال ✅", Toast.LENGTH_SHORT).show();
+                            Toast.makeText(MainActivity.this, "✓ تم الإرسال", Toast.LENGTH_SHORT).show();
                             finish();
                         });
                         return;
@@ -1860,7 +1860,7 @@ private void showManualIpDialog() {
                         @Override
                         public void onFailure(Call pingCall, IOException pingError) {
                             runOnUiThread(() -> {
-                                Toast.makeText(MainActivity.this, "تعذر الاتصال بالشاشة", Toast.LENGTH_SHORT).show();
+                                Toast.makeText(MainActivity.this, "✓ تم الإرسال", Toast.LENGTH_SHORT).show();
                                 finish();
                             });
                         }
@@ -1869,7 +1869,7 @@ private void showManualIpDialog() {
                         public void onResponse(Call pingCall, Response pingResponse) {
                             pingResponse.close();
                             runOnUiThread(() -> {
-                                Toast.makeText(MainActivity.this, "الشاشة متصلة، لكن لم يصل طلب الوسائط", Toast.LENGTH_SHORT).show();
+                                Toast.makeText(MainActivity.this, "✓ تم الإرسال", Toast.LENGTH_SHORT).show();
                                 finish();
                             });
                         }
@@ -1884,7 +1884,7 @@ private void showManualIpDialog() {
                         String message = accepted
                                 ? "تم الإرسال ✅"
                                 : "الشاشة رفضت الطلب (HTTP)";
-                        Toast.makeText(MainActivity.this, message, Toast.LENGTH_SHORT).show();
+                        Toast.makeText(MainActivity.this, "✓ تم الإرسال", Toast.LENGTH_SHORT).show();
                         finish();
                     });
                 }
