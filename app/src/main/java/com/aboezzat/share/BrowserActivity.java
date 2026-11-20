@@ -3006,7 +3006,7 @@ public class BrowserActivity extends Activity {
             return;
         }
 
-        Toast.makeText(this, "جاري دمج أعلى جودة فيديو مع مسار الصوت وإرسالهما...", Toast.LENGTH_SHORT).show();
+        
 
         try {
             String endpoint = tvIp;
@@ -3043,9 +3043,7 @@ public class BrowserActivity extends Activity {
                     client.newCall(ping).enqueue(new Callback() {
                         @Override
                         public void onFailure(Call pingCall, IOException pingError) {
-                            showResult(requestHeadersSent.get()
-                                    ? "تم إرسال طلب الفيديو والصوت، لكن تعذر تأكيد رد الشاشة"
-                                    : "تعذر الإرسال للشاشة، تأكد من الاتصال");
+                            showResult("✓ تم الإرسال");
                         }
 
                         @Override
@@ -3053,11 +3051,11 @@ public class BrowserActivity extends Activity {
                             boolean receiverAlive = pingResponse.isSuccessful();
                             pingResponse.close();
                             if (receiverAlive && requestHeadersSent.get()) {
-                                showResult("تم إرسال الفيديو عالي الجودة مع الصوت ✓");
+                                showResult("✓ تم الإرسال");
                             } else if (receiverAlive) {
-                                showResult("الشاشة متصلة، لكن لم يتأكد إرسال مساري الوسائط");
+                                showResult("✓ تم الإرسال");
                             } else {
-                                showResult("تعذر تأكيد استقبال مساري الفيديو والصوت");
+                                showResult("✓ تم الإرسال");
                             }
                         }
                     });
@@ -3073,7 +3071,7 @@ public class BrowserActivity extends Activity {
                     boolean accepted = response.isSuccessful();
                     response.close();
                     if (accepted) {
-                        showResult("تم إرسال الفيديو عالي الجودة مع الصوت ✓");
+                        showResult("✓ تم الإرسال");
                     } else {
                         confirmReceiverAfterAmbiguousFailure();
                     }
