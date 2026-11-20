@@ -1836,7 +1836,7 @@ private void showManualIpDialog() {
                 private void finishSend() {
                     runOnUiThread(() -> {
                         if (requestHeadersSent.get()) {
-                            Toast.makeText(MainActivity.this, "✓ تم الإرسال", Toast.LENGTH_SHORT).show();
+                            Toast.makeText(MainActivity.this, "✅ تم الإرسال", Toast.LENGTH_SHORT).show();
                         }
                         finish();
                     });
@@ -2042,7 +2042,7 @@ private void showManualIpDialog() {
                 private void finishSend() {
                     if (!showToast || !requestHeadersSent.get()) return;
                     runOnUiThread(() -> Toast.makeText(
-                            MainActivity.this, "✓ تم الإرسال", Toast.LENGTH_SHORT).show());
+                            MainActivity.this, "✅ تم الإرسال", Toast.LENGTH_SHORT).show());
                 }
                 @Override public void onFailure(Call call, IOException error) { finishSend(); }
                 @Override public void onResponse(Call call, Response response) {
