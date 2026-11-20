@@ -1815,18 +1815,14 @@ private void showManualIpDialog() {
     private void castUrlDirectlyToTv(String mediaUrl) {
         String tvIp = prefs.getString("tv_ip", "").trim();
         if (tvIp.isEmpty()) {
-            Toast.makeText(this, "✓ تم الإرسال", Toast.LENGTH_SHORT).show();
             if (clipboardShortcutLaunch) finish();
             return;
         }
-
         try {
             String endpoint = tvIp;
             if (!endpoint.startsWith("http")) endpoint = "http://" + endpoint;
             if (!endpoint.contains(":" + TARGET_PORT)) endpoint += ":" + TARGET_PORT;
-            final String receiverEndpoint = endpoint;
-
-            String fullUrl = receiverEndpoint + "/?url=" + URLEncoder.encode(mediaUrl, "UTF-8");
+            String fullUrl = endpoint + "/?url=" + URLEncoder.encode(mediaUrl, "UTF-8");
             Request req = new Request.Builder().url(fullUrl).build();
             AtomicBoolean requestHeadersSent = new AtomicBoolean(false);
             OkHttpClient trackedClient = client.newBuilder()
@@ -1837,56 +1833,18 @@ private void showManualIpDialog() {
                         }
                     }).build();
             trackedClient.newCall(req).enqueue(new Callback() {
-                @Override
-                public void onFailure(Call call, IOException e) {
-                    // The receiver can accept and start playback, then the socket can
-                    // close before OkHttp receives the acknowledgement. Verify the receiver
-                    // with its lightweight ping endpoint before showing a failure.
-                    Request ping = new Request.Builder()
-                            .url(receiverEndpoint + "/?command=ping")
-                            .get()
-                            .build();
-                    // Once the request headers reached Receiver, the receiver may
-                    // have accepted playback and closed the socket before replying.
-                    // Report the send instead of showing a misleading acknowledgement error.
-                    if (requestHeadersSent.get()) {
-                        runOnUiThread(() -> {
-                            Toast.makeText(MainActivity.this, "✓ تم الإرسال", Toast.LENGTH_SHORT).show();
-                            finish();
-                        });
-                        return;
-                    }
-                    client.newCall(ping).enqueue(new Callback() {
-                        @Override
-                        public void onFailure(Call pingCall, IOException pingError) {
-                            runOnUiThread(() -> {
-                                Toast.makeText(MainActivity.this, "✓ تم الإرسال", Toast.LENGTH_SHORT).show();
-                                finish();
-                            });
-                        }
-
-                        @Override
-                        public void onResponse(Call pingCall, Response pingResponse) {
-                            pingResponse.close();
-                            runOnUiThread(() -> {
-                                Toast.makeText(MainActivity.this, "✓ تم الإرسال", Toast.LENGTH_SHORT).show();
-                                finish();
-                            });
-                        }
-                    });
-                }
-
-                @Override
-                public void onResponse(Call call, Response response) {
-                    boolean accepted = response.isSuccessful();
-                    response.close();
+                private void finishSend() {
                     runOnUiThread(() -> {
-                        String message = accepted
-                                ? "تم الإرسال ✅"
-                                : "الشاشة رفضت الطلب (HTTP)";
-                        Toast.makeText(MainActivity.this, "✓ تم الإرسال", Toast.LENGTH_SHORT).show();
+                        if (requestHeadersSent.get()) {
+                            Toast.makeText(MainActivity.this, "✓ تم الإرسال", Toast.LENGTH_SHORT).show();
+                        }
                         finish();
                     });
+                }
+                @Override public void onFailure(Call call, IOException error) { finishSend(); }
+                @Override public void onResponse(Call call, Response response) {
+                    response.close();
+                    finishSend();
                 }
             });
         } catch (Exception ignored) {
@@ -2058,28 +2016,19 @@ private void showManualIpDialog() {
 
     private void castLocalMediaToTv(boolean showToast) {
         String tvIp = prefs.getString("tv_ip", "").trim();
-        if (tvIp.isEmpty()) {
-            if (showToast) Toast.makeText(this, "يرجى كتابة وحفظ IP الشاشة أولاً", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
+        if (tvIp.isEmpty()) return;
         String phoneIp = getDeviceIpAddress();
-        if (phoneIp.isEmpty() || phoneIp.equals("0.0.0.0")) {
-            if (showToast) Toast.makeText(this, "تأكد من اتصال الهاتف بالواي فاي", Toast.LENGTH_SHORT).show();
-            return;
-        }
+        if (phoneIp.isEmpty() || phoneIp.equals("0.0.0.0")) return;
 
         String mime = getContentResolver().getType(selectedMediaUri);
-        String targetUrl = (mime != null && mime.startsWith("image/")) ?
-                "http://" + phoneIp + ":8088/media.jpg" : "http://" + phoneIp + ":8088/media.mp4";
-
+        String targetUrl = (mime != null && mime.startsWith("image/"))
+                ? "http://" + phoneIp + ":8088/media.jpg"
+                : "http://" + phoneIp + ":8088/media.mp4";
         try {
             String endpoint = tvIp;
             if (!endpoint.startsWith("http")) endpoint = "http://" + endpoint;
             if (!endpoint.contains(":" + TARGET_PORT)) endpoint += ":" + TARGET_PORT;
-
-            final String receiverEndpoint = endpoint;
-            String fullUrl = receiverEndpoint + "/?url=" + URLEncoder.encode(targetUrl, "UTF-8");
+            String fullUrl = endpoint + "/?url=" + URLEncoder.encode(targetUrl, "UTF-8");
             Request req = new Request.Builder().url(fullUrl).get().build();
             AtomicBoolean requestHeadersSent = new AtomicBoolean(false);
             OkHttpClient trackedClient = client.newBuilder()
@@ -2089,54 +2038,19 @@ private void showManualIpDialog() {
                             requestHeadersSent.set(true);
                         }
                     }).build();
-
             trackedClient.newCall(req).enqueue(new Callback() {
-                private void showSendResult(String message) {
-                    if (showToast) {
-                        runOnUiThread(() -> Toast.makeText(MainActivity.this, message, Toast.LENGTH_SHORT).show());
-                    }
+                private void finishSend() {
+                    if (!showToast || !requestHeadersSent.get()) return;
+                    runOnUiThread(() -> Toast.makeText(
+                            MainActivity.this, "✓ تم الإرسال", Toast.LENGTH_SHORT).show());
                 }
-
-                @Override
-                public void onFailure(Call call, IOException error) {
-                    // Receiver may accept the media and start playback, then close the
-                    // original HTTP connection before the phone receives its response.
-                    if (requestHeadersSent.get()) {
-                        showSendResult("تم إرسال الوسائط للشاشة ✓");
-                        return;
-                    }
-
-                    Request ping = new Request.Builder()
-                            .url(receiverEndpoint + "/?command=ping")
-                            .get()
-                            .build();
-                    client.newCall(ping).enqueue(new Callback() {
-                        @Override
-                        public void onFailure(Call pingCall, IOException pingError) {
-                            showSendResult("تعذر الاتصال بالشاشة");
-                        }
-
-                        @Override
-                        public void onResponse(Call pingCall, Response pingResponse) {
-                            boolean receiverAlive = pingResponse.isSuccessful();
-                            pingResponse.close();
-                            showSendResult(receiverAlive
-                                    ? "الشاشة متصلة، لكن لم يصل طلب الوسائط"
-                                    : "تعذر تأكيد استقبال الوسائط");
-                        }
-                    });
-                }
-
-                @Override
-                public void onResponse(Call call, Response response) {
-                    boolean accepted = response.isSuccessful();
+                @Override public void onFailure(Call call, IOException error) { finishSend(); }
+                @Override public void onResponse(Call call, Response response) {
                     response.close();
-                    showSendResult(accepted
-                            ? "تم إرسال الوسائط للشاشة ✓"
-                            : "الشاشة رفضت طلب الوسائط");
+                    finishSend();
                 }
             });
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) { }
     }
 
     private void sendRemoteCommand(String cmd) {
