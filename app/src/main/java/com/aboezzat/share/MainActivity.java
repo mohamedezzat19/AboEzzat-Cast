@@ -9,6 +9,12 @@ import android.content.Intent;
 import android.speech.RecognizerIntent;
 import android.content.SharedPreferences;
 import android.content.res.AssetFileDescriptor;
+import android.graphics.Color;
+import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
+import android.view.Gravity;
+import android.widget.LinearLayout;
+import android.widget.ScrollView;
 import android.net.Uri;
 import android.net.wifi.WifiManager;
 import android.os.AsyncTask;
@@ -55,6 +61,16 @@ public class MainActivity extends Activity {
     private static final int PICK_MEDIA_REQUEST = 101;
     private static final int PICK_SLIDESHOW_REQUEST = 102;
     private static final int VOICE_SEARCH_REQUEST = 103;
+
+    private static final String PREF_SAVED_RECEIVERS = "saved_receivers_json";
+    private static class SavedReceiverDevice {
+        String name;
+        String ip;
+        SavedReceiverDevice(String name, String ip) {
+            this.name = name == null ? "" : name;
+            this.ip = ip == null ? "" : ip;
+        }
+    }
 
     private DrawerLayout drawerLayout;
     private EditText etTvIp;
@@ -156,7 +172,7 @@ public class MainActivity extends Activity {
         String savedIp = prefs.getString("tv_ip", "");
         etTvIp.setText(savedIp);
         updateReceiverStatus();
-        tvStatusBadge.setOnClickListener(v -> scanForTvDevices());
+        tvStatusBadge.setOnClickListener(v -> showSavedReceiverDialog());
         tvStatusBadge.setOnLongClickListener(v -> { showManualIpDialog(); return true; });
         btnSearchClear.setOnClickListener(v -> {
             etHomeSearch.setText("");
@@ -1288,6 +1304,242 @@ private void showManualIpDialog() {
         }
     }
 
+
+    private List<SavedReceiverDevice> loadSavedReceiverDevices() {
+        List<SavedReceiverDevice> devices = new ArrayList<>();
+        String raw = prefs.getString(PREF_SAVED_RECEIVERS, "[]");
+        try {
+            org.json.JSONArray array = new org.json.JSONArray(raw);
+            for (int i = 0; i < array.length(); i++) {
+                org.json.JSONObject item = array.optJSONObject(i);
+                if (item == null) continue;
+                String name = item.optString("name", "").trim();
+                String ip = item.optString("ip", "").trim();
+                if (!ip.isEmpty() && !containsReceiverIp(devices, ip)) {
+                    devices.add(new SavedReceiverDevice(name.isEmpty() ? "شاشة " + (devices.size() + 1) : name, ip));
+                }
+            }
+        } catch (Exception ignored) { }
+        String selectedIp = prefs.getString("tv_ip", "").trim();
+        if (!selectedIp.isEmpty() && !containsReceiverIp(devices, selectedIp)) {
+            devices.add(0, new SavedReceiverDevice("الشاشة الحالية", selectedIp));
+            saveSavedReceiverDevices(devices);
+        }
+        return devices;
+    }
+
+    private boolean containsReceiverIp(List<SavedReceiverDevice> devices, String ip) {
+        for (SavedReceiverDevice device : devices) {
+            if (device.ip.equalsIgnoreCase(ip)) return true;
+        }
+        return false;
+    }
+
+    private void saveSavedReceiverDevices(List<SavedReceiverDevice> devices) {
+        org.json.JSONArray array = new org.json.JSONArray();
+        try {
+            for (SavedReceiverDevice device : devices) {
+                org.json.JSONObject item = new org.json.JSONObject();
+                item.put("name", device.name);
+                item.put("ip", device.ip);
+                array.put(item);
+            }
+        } catch (Exception ignored) { }
+        prefs.edit().putString(PREF_SAVED_RECEIVERS, array.toString()).apply();
+    }
+
+    private void selectSavedReceiver(SavedReceiverDevice device, AlertDialog dialog) {
+        prefs.edit().putString("tv_ip", device.ip).apply();
+        if (etTvIp != null) etTvIp.setText(device.ip);
+        updateReceiverStatus();
+        if (dialog != null) dialog.dismiss();
+    }
+
+    private boolean isReceiverOnline(String ip) {
+        try (Socket socket = new Socket()) {
+            socket.connect(new InetSocketAddress(ip, TARGET_PORT), 700);
+            return true;
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    private void showSavedReceiverDialog() {
+        List<SavedReceiverDevice> devices = loadSavedReceiverDevices();
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setPadding(24, 18, 24, 14);
+        root.setBackgroundColor(Color.rgb(15, 23, 42));
+
+        TextView heading = new TextView(this);
+        heading.setText("الأجهزة المحفوظة");
+        heading.setTextColor(Color.WHITE);
+        heading.setTextSize(19);
+        heading.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        heading.setPadding(4, 4, 4, 14);
+        root.addView(heading);
+
+        ScrollView scroll = new ScrollView(this);
+        LinearLayout list = new LinearLayout(this);
+        list.setOrientation(LinearLayout.VERTICAL);
+        if (devices.isEmpty()) {
+            TextView empty = new TextView(this);
+            empty.setText("مفيش أجهزة محفوظة لسه. اضغط «إضافة جهاز» لحفظ عنوان شاشة.");
+            empty.setTextColor(0xFFCBD5E1);
+            empty.setTextSize(14);
+            empty.setPadding(8, 18, 8, 18);
+            list.addView(empty);
+        }
+        final AlertDialog[] dialogRef = new AlertDialog[1];
+        for (SavedReceiverDevice device : devices) {
+            LinearLayout card = new LinearLayout(this);
+            card.setOrientation(LinearLayout.VERTICAL);
+            card.setPadding(14, 11, 14, 10);
+            GradientDrawable cardBg = new GradientDrawable();
+            cardBg.setColor(0xFF1E293B);
+            cardBg.setCornerRadius(16);
+            card.setBackground(cardBg);
+            LinearLayout top = new LinearLayout(this);
+            top.setGravity(Gravity.CENTER_VERTICAL);
+            TextView title = new TextView(this);
+            title.setText(device.name);
+            title.setTextColor(Color.WHITE);
+            title.setTextSize(15);
+            title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+            top.addView(title, new LinearLayout.LayoutParams(0, -2, 1f));
+            TextView status = new TextView(this);
+            status.setText("● جاري الفحص");
+            status.setTextColor(0xFFFBBF24);
+            status.setTextSize(11);
+            top.addView(status);
+            card.addView(top);
+            TextView ip = new TextView(this);
+            ip.setText(device.ip);
+            ip.setTextColor(0xFF94A3B8);
+            ip.setTextSize(12);
+            ip.setPadding(0, 4, 0, 8);
+            card.addView(ip);
+            LinearLayout actions = new LinearLayout(this);
+            actions.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
+            TextView edit = new TextView(this);
+            edit.setText("تعديل");
+            edit.setTextColor(0xFF93C5FD);
+            edit.setPadding(12, 7, 12, 7);
+            TextView delete = new TextView(this);
+            delete.setText("حذف");
+            delete.setTextColor(0xFFFCA5A5);
+            delete.setPadding(12, 7, 4, 7);
+            actions.addView(edit);
+            actions.addView(delete);
+            card.addView(actions);
+            card.setOnClickListener(v -> selectSavedReceiver(device, dialogRef[0]));
+            edit.setOnClickListener(v -> showEditReceiverDialog(device));
+            delete.setOnClickListener(v -> new AlertDialog.Builder(this)
+                    .setTitle("حذف الجهاز؟")
+                    .setMessage("سيتم حذف " + device.name + " من القائمة المحفوظة.")
+                    .setNegativeButton("إلغاء", null)
+                    .setPositiveButton("حذف", (d, w) -> {
+                        List<SavedReceiverDevice> latest = loadSavedReceiverDevices();
+                        latest.removeIf(item -> item.ip.equalsIgnoreCase(device.ip));
+                        saveSavedReceiverDevices(latest);
+                        showSavedReceiverDialog();
+                    }).show());
+            list.addView(card, new LinearLayout.LayoutParams(-1, -2));
+            View gap = new View(this);
+            list.addView(gap, new LinearLayout.LayoutParams(1, 8));
+            AsyncTask.execute(() -> {
+                boolean online = isReceiverOnline(device.ip);
+                runOnUiThread(() -> {
+                    if (!isFinishing() && status.getParent() != null) {
+                        status.setText(online ? "● متصل" : "● غير متصل");
+                        status.setTextColor(online ? 0xFF4ADE80 : 0xFFFBBF24);
+                    }
+                });
+            });
+        }
+        scroll.addView(list);
+        root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1f));
+
+        LinearLayout footer = new LinearLayout(this);
+        footer.setGravity(Gravity.CENTER);
+        footer.setPadding(0, 12, 0, 0);
+        TextView add = new TextView(this);
+        add.setText("＋ إضافة جهاز");
+        add.setTextColor(Color.WHITE);
+        add.setGravity(Gravity.CENTER);
+        add.setPadding(14, 11, 14, 11);
+        add.setBackgroundColor(0xFF2563EB);
+        TextView scan = new TextView(this);
+        scan.setText("بحث");
+        scan.setTextColor(0xFFBFDBFE);
+        scan.setGravity(Gravity.CENTER);
+        scan.setPadding(16, 11, 16, 11);
+        footer.addView(add, new LinearLayout.LayoutParams(0, -2, 1f));
+        footer.addView(scan);
+        root.addView(footer);
+
+        AlertDialog dialog = new AlertDialog.Builder(this).setView(root)
+                .setNegativeButton("إغلاق", null).create();
+        dialogRef[0] = dialog;
+        add.setOnClickListener(v -> showEditReceiverDialog(null));
+        scan.setOnClickListener(v -> {
+            if (dialog.isShowing()) dialog.dismiss();
+            scanForTvDevices();
+        });
+        dialog.show();
+        dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
+    }
+
+    private void showEditReceiverDialog(SavedReceiverDevice existing) {
+        LinearLayout form = new LinearLayout(this);
+        form.setOrientation(LinearLayout.VERTICAL);
+        form.setPadding(20, 8, 20, 4);
+        EditText name = new EditText(this);
+        name.setSingleLine(true);
+        name.setHint("اسم الشاشة (مثلاً: تلفزيون الصالة)");
+        name.setText(existing == null ? "" : existing.name);
+        EditText ip = new EditText(this);
+        ip.setSingleLine(true);
+        ip.setHint("عنوان IP أو اسم الجهاز");
+        ip.setText(existing == null ? "" : existing.ip);
+        form.addView(name);
+        form.addView(ip);
+        new AlertDialog.Builder(this)
+                .setTitle(existing == null ? "إضافة جهاز جديد" : "تعديل الجهاز")
+                .setView(form)
+                .setNegativeButton("إلغاء", null)
+                .setPositiveButton("حفظ", (dialog, which) -> {
+                    String deviceName = name.getText().toString().trim();
+                    String deviceIp = ip.getText().toString().trim();
+                    if (deviceIp.isEmpty()) {
+                        Toast.makeText(this, "اكتب عنوان IP أولاً", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    if (deviceName.isEmpty()) deviceName = "شاشة " + (loadSavedReceiverDevices().size() + 1);
+                    List<SavedReceiverDevice> latest = loadSavedReceiverDevices();
+                    if (existing != null) {
+                        for (SavedReceiverDevice item : latest) {
+                            if (item.ip.equalsIgnoreCase(existing.ip)) {
+                                item.name = deviceName;
+                                item.ip = deviceIp;
+                            }
+                        }
+                    } else {
+                        for (SavedReceiverDevice item : latest) {
+                            if (item.ip.equalsIgnoreCase(deviceIp)) {
+                                item.name = deviceName;
+                                saveSavedReceiverDevices(latest);
+                                showSavedReceiverDialog();
+                                return;
+                            }
+                        }
+                        latest.add(new SavedReceiverDevice(deviceName, deviceIp));
+                    }
+                    saveSavedReceiverDevices(latest);
+                    showSavedReceiverDialog();
+                }).show();
+    }
+
     private void scanForTvDevices() {
         tvStatusBadge.setText("🔍 جاري الفحص...");
         Toast.makeText(this, "جاري فحص الشبكة لاكتشاف الأجهزة المتاحة...", Toast.LENGTH_SHORT).show();
@@ -1324,18 +1576,14 @@ private void showManualIpDialog() {
     }
 
     private void showDeviceSelectionDialog(final List<String> devices) {
-        String[] deviceArray = devices.toArray(new String[0]);
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("اختر جهاز الاستقبال (منفذ 8081)");
-        builder.setItems(deviceArray, (dialog, which) -> {
-            String chosenIp = devices.get(which);
-            etTvIp.setText(chosenIp);
-            prefs.edit().putString("tv_ip", chosenIp).apply();
-            updateReceiverStatus();
-            Toast.makeText(MainActivity.this, "تم اختيار وحفظ: " + chosenIp, Toast.LENGTH_SHORT).show();
-        });
-        builder.setNegativeButton("إلغاء", null);
-        builder.show();
+        List<SavedReceiverDevice> saved = loadSavedReceiverDevices();
+        for (String ip : devices) {
+            if (!containsReceiverIp(saved, ip)) {
+                saved.add(new SavedReceiverDevice("Receiver " + ip.substring(ip.lastIndexOf('.') + 1), ip));
+            }
+        }
+        saveSavedReceiverDevices(saved);
+        showSavedReceiverDialog();
     }
 
     @Override
