@@ -2944,6 +2944,7 @@ public class BrowserActivity extends Activity {
     }
 
     private void mergeAndCastToTv() {
+        refreshSelectedReceiverIp();
         String youtubePage = getCurrentYouTubePageUrl();
         // YouTube's browser resource list can contain ad/SABR transport requests.
         // Always use NewPipe's verified video+audio pair for the current watch page;
@@ -3222,11 +3223,19 @@ public class BrowserActivity extends Activity {
         });
     }
 
+    private void refreshSelectedReceiverIp() {
+        SharedPreferences selectedPrefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
+        tvIp = selectedPrefs.getString("tv_ip", "").trim();
+    }
+
     private void castToTv(String mediaUrl) { castToTv(mediaUrl, null, null); }
 
     private void castToTv(String mediaUrl, String audioUrl) { castToTv(mediaUrl, audioUrl, null); }
 
     private void castToTv(String mediaUrl, String audioUrl, java.util.Map<String, String> capturedHeaders) {
+        // BrowserActivity may stay alive while the user changes the selected receiver
+        // from the home screen. Refresh the saved target for every actual cast.
+        refreshSelectedReceiverIp();
         if (isBlockedAdUrl(mediaUrl) || isBlockedAdUrl(audioUrl)) {
             Toast.makeText(this, "تم استبعاد رابط إعلاني ولا يمكن تشغيله", Toast.LENGTH_SHORT).show();
             return;
