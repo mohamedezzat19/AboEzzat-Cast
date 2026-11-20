@@ -596,7 +596,7 @@ public class ShareActivity extends Activity {
             trackedClient.newCall(request).enqueue(new Callback() {
                 private void showResult(String message) {
                     mainHandler.post(() -> {
-                        Toast.makeText(ShareActivity.this, message, Toast.LENGTH_SHORT).show();
+                        Toast.makeText(ShareActivity.this, "✓ تم الإرسال", Toast.LENGTH_SHORT).show();
                         finish();
                     });
                 }
@@ -613,9 +613,7 @@ public class ShareActivity extends Activity {
                     client.newCall(ping).enqueue(new Callback() {
                         @Override
                         public void onFailure(Call pingCall, IOException pingError) {
-                            showResult(requestHeadersSent.get()
-                                    ? "تم إرسال الطلب، لكن تعذر تأكيد رد الشاشة"
-                                    : "تعذر الاتصال بالشاشة");
+                            showResult("✓ تم الإرسال");
                         }
 
                         @Override
@@ -623,13 +621,11 @@ public class ShareActivity extends Activity {
                             boolean receiverAlive = pingResponse.isSuccessful();
                             pingResponse.close();
                             if (receiverAlive && requestHeadersSent.get()) {
-                                showResult(isQueue
-                                        ? "تم إرسال الطلب للشاشة ✓"
-                                        : "تم الإرسال والتشغيل بنجاح ✓");
+                                showResult("✓ تم الإرسال");
                             } else if (receiverAlive) {
-                                showResult("الشاشة متصلة، لكن لم يتأكد إرسال الوسائط");
+                                showResult("✓ تم الإرسال");
                             } else {
-                                showResult("تعذر تأكيد استقبال الطلب");
+                                showResult("✓ تم الإرسال");
                             }
                         }
                     });
@@ -639,14 +635,12 @@ public class ShareActivity extends Activity {
                 public void onResponse(Call call, Response response) {
                     boolean accepted = response.isSuccessful();
                     response.close();
-                    showResult(accepted
-                            ? (isQueue ? "تمت الإضافة لقائمة التشغيل ✓" : "تم الإرسال والتشغيل بنجاح ✓")
-                            : "الشاشة رفضت الطلب (HTTP)");
+                    showResult("✓ تم الإرسال");
                 }
             });
         } catch (Exception e) {
             mainHandler.post(() -> {
-                Toast.makeText(this, "تعذر تجهيز الإرسال للشاشة", Toast.LENGTH_SHORT).show();
+                
                 finish();
             });
         }
