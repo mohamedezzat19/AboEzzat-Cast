@@ -539,6 +539,18 @@ public class ShareActivity extends Activity {
 
     private void sendToTv(String tvIp, String mediaUrl, String audioUrl,
                           boolean isQueue, String sourceUrl) {
+        // Resolve the selected receiver at the moment the network request is created.
+        // Do not trust an IP snapshot captured earlier while TikTok/YouTube extraction
+        // was still running in the background.
+        SharedPreferences currentPrefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
+        String selectedReceiverIp = currentPrefs.getString("tv_ip", "").trim();
+        if (selectedReceiverIp.isEmpty()) {
+            Toast.makeText(this, "يرجى تعيين عنوان IP الشاشة أولاً", Toast.LENGTH_LONG).show();
+            finish();
+            return;
+        }
+        targetTvIp = selectedReceiverIp;
+        tvIp = selectedReceiverIp;
         try {
             if (!tvIp.startsWith("http://") && !tvIp.startsWith("https://")) {
                 tvIp = "http://" + tvIp;
