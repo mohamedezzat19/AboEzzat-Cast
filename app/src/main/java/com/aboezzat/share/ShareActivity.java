@@ -663,9 +663,7 @@ public class ShareActivity extends Activity {
                 if (mediaUrl != null && !mediaUrl.trim().isEmpty()) payload.put("url", mediaUrl);
                 if (audioUrl != null && !audioUrl.trim().isEmpty()) payload.put("audio", audioUrl);
                 if (sourceUrl != null && !sourceUrl.trim().isEmpty()) payload.put("sourceUrl", sourceUrl);
-                if (tikTokLiveCaptureActive && mediaUrl != null
-                        && (mediaUrl.toLowerCase(Locale.ROOT).contains("tiktok")
-                        || mediaUrl.toLowerCase(Locale.ROOT).contains("pull-"))) {
+                if (tikTokLiveCaptureActive && isTikTokLiveStreamUrl(mediaUrl)) {
                     JSONObject liveHeaders = new JSONObject();
                     synchronized (tikTokLiveRequestHeaders) {
                         for (Map.Entry<String, String> entry : tikTokLiveRequestHeaders.entrySet()) {
