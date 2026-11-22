@@ -171,6 +171,8 @@ public class BrowserActivity extends Activity {
     private volatile long manualSniffUntilMs = 0L;
     // Automatic generic capture is armed only for ordinary web players and TikTok LIVE.
     private volatile long genericAutoSniffUntilMs = 0L;
+    // Share-sheet TikTok LIVE links request an automatic cast after a verified live stream is found.
+    private volatile boolean tikTokLiveAutoCastPending = false;
     private volatile String youtubeExtractionInProgressFor = "";
     private volatile String youtubeExtractedFor = "";
     private volatile String youtubeCastPendingFor = "";
@@ -190,6 +192,34 @@ public class BrowserActivity extends Activity {
 
     private boolean isGenericAutoSniffActive() {
         return System.currentTimeMillis() <= genericAutoSniffUntilMs;
+    }
+
+    private boolean isTikTokLivePage(String url) {
+        if (url == null || !url.startsWith("http")) return false;
+        try {
+            Uri uri = Uri.parse(url);
+            String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase(Locale.ROOT);
+            String path = uri.getPath() == null ? "" : uri.getPath().toLowerCase(Locale.ROOT);
+            return (host.equals("tiktok.com") || host.endsWith(".tiktok.com"))
+                    && path.matches(".*/live(?:/.*)?$");
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    private boolean isTikTokLiveStreamCandidate(String mediaUrl) {
+        if (mediaUrl == null || mediaUrl.isEmpty()) return false;
+        String lower = mediaUrl.toLowerCase(Locale.ROOT);
+        if (lower.contains("pull-")) return true;
+        try {
+            Uri uri = Uri.parse(mediaUrl);
+            String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase(Locale.ROOT);
+            boolean tiktokCdn = host.contains("tiktok");
+            return tiktokCdn && (lower.matches(".*\\.(m3u8|flv)(?:[?#].*)?$")
+                    || (lower.contains("live") && (lower.contains("stream") || lower.contains("video"))));
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 
     // Threads and Instagram keep their own dedicated capture pipelines.
@@ -427,6 +457,8 @@ public class BrowserActivity extends Activity {
                 startUrl = getIntent().getData().toString();
             }
         }
+        tikTokLiveAutoCastPending = getIntent() != null
+                && getIntent().getBooleanExtra("auto_cast_tiktok_live", false);
         addNewTab(startUrl);
         if (getIntent() != null && getIntent().getBooleanExtra("open_fg_code_dialog", false)) {
             getIntent().removeExtra("open_fg_code_dialog");
@@ -909,13 +941,27 @@ public class BrowserActivity extends Activity {
                 // sniffers. Never let the generic network capture path touch their requests.
                 boolean dedicatedSocialPage = isThreadsOrInstagramPage(requestPageUrl);
 
+                // TikTok LIVE may play in a cross-origin frame, where JavaScript cannot
+                // establish activePlaybackKey. Permit only strong LIVE stream endpoints
+                // while the current page is a TikTok LIVE page.
+                boolean tikTokLiveNetworkCapture = view == activeWebView
+                        && isTikTokLivePage(requestPageUrl) && isGenericAutoSniffActive();
+
                 // Ignore every page/list/thumbnail request until a specific visible
-                // player has been activated by the user in the browser.
+                // player has been activated, except for the narrowly-scoped TikTok LIVE fallback.
                 boolean dramaLivePlayerActive = isDramaLivePage(requestPageUrl)
                         && activePlaybackKey.startsWith("dramalive-frame:")
                         && System.currentTimeMillis() - activePlayerFrameActivatedAtMs < 10 * 60 * 1000L;
                 if (!dedicatedSocialPage && view == activeWebView
-                        && !activePlaybackKey.isEmpty()) {
+                        && (!activePlaybackKey.isEmpty() || tikTokLiveNetworkCapture)) {
+                    if (tikTokLiveNetworkCapture && activePlaybackKey.isEmpty()
+                            && isTikTokLiveStreamCandidate(reqUrl)) {
+                        synchronized (BrowserActivity.this) {
+                            if (activePlaybackKey.isEmpty()) {
+                                activePlaybackKey = "tiktok-live:" + requestPageUrl;
+                            }
+                        }
+                    }
                     boolean isJunk = lowerUrl.matches(".*\\.(jpg|jpeg|png|webp|gif|bmp|svg|ts|m4s|js|css)(?:[?#].*)?$")
                             || lowerUrl.contains("preview") || lowerUrl.contains("thumbnail")
                             || lowerUrl.contains("google_ads") || lowerUrl.contains("ad-interrupting");
@@ -931,8 +977,33 @@ public class BrowserActivity extends Activity {
                                     : "🎬 فيديو";
                             String title = !lastDiscoveredTitle.isEmpty()
                                     ? lastDiscoveredTitle : "فيديو قيد التشغيل";
+                            Map<String, String> playbackHeaders =
+                                    capturePlaybackRequestHeaders(request, reqUrl);
                             addCapturedMedia(cleanMedia, title, format, lastDiscoveredPoster, type,
-                                    capturePlaybackRequestHeaders(request, reqUrl));
+                                    playbackHeaders);
+
+                            // Only a share-sheet request auto-casts. Manual browser visits
+                            // still expose the detected stream in the capture list.
+                            if (type == 1 && tikTokLiveNetworkCapture && tikTokLiveAutoCastPending
+                                    && isTikTokLiveStreamCandidate(cleanMedia)) {
+                                boolean shouldAutoCast = false;
+                                synchronized (BrowserActivity.this) {
+                                    if (tikTokLiveAutoCastPending) {
+                                        tikTokLiveAutoCastPending = false;
+                                        shouldAutoCast = true;
+                                    }
+                                }
+                                if (shouldAutoCast) {
+                                    final String liveUrl = cleanMedia;
+                                    final Map<String, String> liveHeaders = playbackHeaders;
+                                    runOnUiThread(() -> {
+                                        Toast.makeText(BrowserActivity.this,
+                                                "تم التقاط بث TikTok LIVE، جاري الإرسال للشاشة…",
+                                                Toast.LENGTH_SHORT).show();
+                                        castToTv(liveUrl, null, liveHeaders);
+                                    });
+                                }
+                            }
                         } else if (lowerUrl.matches(".*\\.mp4(?:[?#].*)?$")) {
                             probeAndAddMp4(reqUrl, lastDiscoveredTitle, lastDiscoveredPoster);
                         } else if (dramaLivePlayerActive && "GET".equalsIgnoreCase(request.getMethod())
@@ -1515,9 +1586,13 @@ public class BrowserActivity extends Activity {
                     // YouTube changes its internal media source while a LIVE playlist refreshes.
                     // Keep one page-scoped playback identity so those refreshes never clear the list.
                     activePlaybackKey = "youtube:" + youtubePage;
-                } else if (!key.equals(activePlaybackKey)) {
-                    activePlaybackKey = key;
-                    clearCapturedMedia();
+                } else {
+                    boolean keepTikTokLiveCapture = isTikTokLivePage(activePageUrl)
+                            && activePlaybackKey.startsWith("tiktok-live:");
+                    if (!keepTikTokLiveCapture && !key.equals(activePlaybackKey)) {
+                        activePlaybackKey = key;
+                        clearCapturedMedia();
+                    }
                 }
                 if (title != null && !title.trim().isEmpty()) lastDiscoveredTitle = title.trim();
                 if (posterUrl != null && !posterUrl.trim().isEmpty()) lastDiscoveredPoster = posterUrl;
