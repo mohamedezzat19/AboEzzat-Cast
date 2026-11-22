@@ -221,9 +221,18 @@ public class ShareActivity extends Activity {
 
     private boolean isTikTokLiveUrl(String value) {
         if (value == null) return false;
-        String lower = value.toLowerCase();
+        String lower = value.toLowerCase(Locale.ROOT);
         return lower.contains("live.tiktok.com")
                 || lower.matches(".*tiktok\\.com/@[^/]+/live(?:[/?#].*)?");
+    }
+
+    // A LIVE page may deliver its stream from a TikTok CDN host that does not
+    // contain the word "tiktok". Match the stream signatures consistently in
+    // both WebView interception and the JavaScript resource scanner.
+    private boolean isTikTokLiveStreamUrl(String value) {
+        if (value == null) return false;
+        String lower = value.toLowerCase(Locale.ROOT);
+        return lower.contains("pull-") || lower.contains(".m3u8") || lower.contains(".flv");
     }
 
     private boolean isTikTokShortShareUrl(String value) {
@@ -348,11 +357,7 @@ public class ShareActivity extends Activity {
             public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
                 String reqUrl = request.getUrl().toString();
                 if ("tiktok_live".equals(platformType)) {
-                    String lowerRequestUrl = reqUrl.toLowerCase(Locale.ROOT);
-                    boolean isLiveStreamRequest = lowerRequestUrl.contains("pull-")
-                            || (lowerRequestUrl.contains("tiktok")
-                            && (lowerRequestUrl.contains(".m3u8") || lowerRequestUrl.contains(".flv")));
-                    if (isLiveStreamRequest) {
+                    if (isTikTokLiveStreamUrl(reqUrl)) {
                         synchronized (tikTokLiveRequestHeaders) {
                             tikTokLiveRequestHeaders.clear();
                             Map<String, String> requestHeaders = request.getRequestHeaders();
@@ -494,8 +499,7 @@ public class ShareActivity extends Activity {
         if ("tiktok_live".equals(platformType)) {
             // LIVE capture is intentionally limited to stream-like TikTok resources.
             // Do not accept ordinary .mp4 video links in this branch.
-            matched = lower.contains("pull-")
-                    || (lower.contains("tiktok") && (lower.contains(".m3u8") || lower.contains(".flv")));
+            matched = isTikTokLiveStreamUrl(reqUrl);
         } else {
             matched = (lower.contains("pull-") && lower.contains("tiktokcdn.com"))
                     || (lower.contains("tiktokcdn.com") && (lower.contains(".flv") || lower.contains(".m3u8")))
