@@ -67,6 +67,7 @@ public class ShareActivity extends Activity {
     private boolean threadsCaptureTimerScheduled = false;
     private final Set<String> threadsMp4ProbeRequests = new HashSet<>();
     private final Map<String, String> tikTokLiveRequestHeaders = new HashMap<>();
+    private volatile boolean tikTokLiveCaptureActive = false;
     private final Runnable threadsCaptureTimeout = () -> finishThreadsCapture();
 
     @Override
@@ -191,6 +192,7 @@ public class ShareActivity extends Activity {
             // First attempt a fully hidden WebView capture: autoplay muted, detect the
             // LIVE HLS/FLV resource, and cast it without opening the visible browser.
             // Preserve the proven browser route as a fallback if background capture fails.
+            tikTokLiveCaptureActive = true;
             startPlatformSniffer(url, "tiktok_live", 45000L, true);
             return;
         }
@@ -260,6 +262,7 @@ public class ShareActivity extends Activity {
 
                 mainHandler.post(() -> {
                     if (isTikTokLiveUrl(resolvedUrl)) {
+                        tikTokLiveCaptureActive = true;
                         startPlatformSniffer(resolvedUrl, "tiktok_live", 45000L, true);
                     } else {
                         // Ordinary TikTok posts retain their original Tikwm route.
@@ -616,7 +619,7 @@ public class ShareActivity extends Activity {
                 if (mediaUrl != null && !mediaUrl.trim().isEmpty()) payload.put("url", mediaUrl);
                 if (audioUrl != null && !audioUrl.trim().isEmpty()) payload.put("audio", audioUrl);
                 if (sourceUrl != null && !sourceUrl.trim().isEmpty()) payload.put("sourceUrl", sourceUrl);
-                if (mediaUrl != null
+                if (tikTokLiveCaptureActive && mediaUrl != null
                         && (mediaUrl.toLowerCase(Locale.ROOT).contains("tiktok")
                         || mediaUrl.toLowerCase(Locale.ROOT).contains("pull-"))) {
                     JSONObject liveHeaders = new JSONObject();
@@ -630,7 +633,9 @@ public class ShareActivity extends Activity {
                         liveHeaders.put("user-agent", preferredUa.isEmpty()
                                 ? WebSettings.getDefaultUserAgent(ShareActivity.this) : preferredUa);
                     }
-                    if (!liveHeaders.has("referer")) liveHeaders.put("referer", sourceUrl == null ? "" : sourceUrl);
+                    if (!liveHeaders.has("referer") && sourceUrl != null && !sourceUrl.trim().isEmpty()) {
+                        liveHeaders.put("referer", sourceUrl);
+                    }
                     if (liveHeaders.length() > 0) payload.put("headers", liveHeaders);
                 }
                 if ((mediaUrl != null && mediaUrl.contains("googlevideo.com"))
