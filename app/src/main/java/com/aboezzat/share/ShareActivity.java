@@ -68,6 +68,11 @@ public class ShareActivity extends Activity {
     private final Set<String> threadsMp4ProbeRequests = new HashSet<>();
     private final Map<String, String> tikTokLiveRequestHeaders = new HashMap<>();
     private volatile boolean tikTokLiveCaptureActive = false;
+    // Prefer HLS for Receiver playback. Keep FLV as a delayed fallback in case
+    // TikTok does not expose an HLS rendition for this LIVE session.
+    private String pendingTikTokLiveFallbackUrl = "";
+    private Map<String, String> pendingTikTokLiveFallbackHeaders = java.util.Collections.emptyMap();
+    private final Runnable tikTokLiveFallbackRunnable = () -> sendPendingTikTokLiveFallback();
     private final Runnable threadsCaptureTimeout = () -> finishThreadsCapture();
 
     @Override
@@ -484,7 +489,7 @@ public class ShareActivity extends Activity {
     private synchronized void checkAndSendMedia(String reqUrl, String platformType) {
         if (isCaptured || reqUrl == null || reqUrl.isEmpty()) return;
 
-        String lower = reqUrl.toLowerCase();
+        String lower = reqUrl.toLowerCase(Locale.ROOT);
 
         if (lower.contains(".jpg") || lower.contains(".png") || lower.contains(".webp") ||
                 lower.contains(".js") || lower.contains(".css") || lower.contains("rsrc.php") ||
@@ -505,29 +510,61 @@ public class ShareActivity extends Activity {
             return;
         }
 
-        boolean matched = false;
         if ("tiktok_live".equals(platformType)) {
-            // LIVE capture is intentionally limited to stream-like TikTok resources.
-            // Do not accept ordinary .mp4 video links in this branch.
-            matched = isTikTokLiveStreamUrl(reqUrl);
-        } else {
-            matched = (lower.contains("pull-") && lower.contains("tiktokcdn.com"))
-                    || (lower.contains("tiktokcdn.com") && (lower.contains(".flv") || lower.contains(".m3u8")))
-                    || lower.contains(".mp4") || lower.contains(".m3u8")
-                    || lower.contains("video_playback") || lower.contains("&mime=video");
+            if (!isTikTokLiveStreamUrl(reqUrl)) return;
+
+            // HLS is the preferred LIVE format for Media3. TikTok can request
+            // FLV first, so do not lock capture to that first resource.
+            boolean hlsCandidate = lower.contains(".m3u8") || lower.contains("pull-hls");
+            if (hlsCandidate) {
+                isCaptured = true;
+                mainHandler.post(() -> {
+                    mainHandler.removeCallbacks(tikTokLiveFallbackRunnable);
+                    sendToTv(targetTvIp, reqUrl, false, "https://www.tiktok.com/",
+                            snapshotTikTokLiveRequestHeaders());
+                    destroyWebView();
+                });
+                return;
+            }
+
+            // Keep the first FLV/other pull-* rendition only as a fallback.
+            if (pendingTikTokLiveFallbackUrl.isEmpty()) {
+                pendingTikTokLiveFallbackUrl = reqUrl;
+                pendingTikTokLiveFallbackHeaders = snapshotTikTokLiveRequestHeaders();
+                mainHandler.postDelayed(tikTokLiveFallbackRunnable, 4500L);
+            }
+            return;
         }
+
+        boolean matched = (lower.contains("pull-") && lower.contains("tiktokcdn.com"))
+                || (lower.contains("tiktokcdn.com") && (lower.contains(".flv") || lower.contains(".m3u8")))
+                || lower.contains(".mp4") || lower.contains(".m3u8")
+                || lower.contains("video_playback") || lower.contains("&mime=video");
 
         if (matched) {
             isCaptured = true;
             mainHandler.post(() -> {
-                if ("tiktok_live".equals(platformType)) {
-                    sendToTv(targetTvIp, reqUrl, false, "https://www.tiktok.com/");
-                } else {
-                    sendToTv(targetTvIp, reqUrl, false);
-                }
+                sendToTv(targetTvIp, reqUrl, false);
                 destroyWebView();
             });
         }
+    }
+
+    private Map<String, String> snapshotTikTokLiveRequestHeaders() {
+        synchronized (tikTokLiveRequestHeaders) {
+            return new HashMap<>(tikTokLiveRequestHeaders);
+        }
+    }
+
+    private synchronized void sendPendingTikTokLiveFallback() {
+        if (isCaptured || pendingTikTokLiveFallbackUrl.isEmpty()) return;
+        isCaptured = true;
+        String fallbackUrl = pendingTikTokLiveFallbackUrl;
+        Map<String, String> fallbackHeaders = new HashMap<>(pendingTikTokLiveFallbackHeaders);
+        pendingTikTokLiveFallbackUrl = "";
+        pendingTikTokLiveFallbackHeaders = java.util.Collections.emptyMap();
+        sendToTv(targetTvIp, fallbackUrl, false, "https://www.tiktok.com/", fallbackHeaders);
+        destroyWebView();
     }
 
     private void probeThreadsMp4(final String mediaUrl) {
@@ -625,6 +662,7 @@ public class ShareActivity extends Activity {
     }
 
     private void destroyWebView() {
+        mainHandler.removeCallbacks(tikTokLiveFallbackRunnable);
         if (webView != null) {
             webView.stopLoading();
             webView.destroy();
@@ -646,6 +684,12 @@ public class ShareActivity extends Activity {
 
     private void sendToTv(String tvIp, String mediaUrl, String audioUrl,
                           boolean isQueue, String sourceUrl) {
+        sendToTv(tvIp, mediaUrl, audioUrl, isQueue, sourceUrl, null);
+    }
+
+    private void sendToTv(String tvIp, String mediaUrl, String audioUrl,
+                          boolean isQueue, String sourceUrl,
+                          Map<String, String> liveHeadersOverride) {
         // Resolve the selected receiver at the moment the network request is created.
         // Do not trust an IP snapshot captured earlier while TikTok/YouTube extraction
         // was still running in the background.
@@ -675,10 +719,10 @@ public class ShareActivity extends Activity {
                 if (sourceUrl != null && !sourceUrl.trim().isEmpty()) payload.put("sourceUrl", sourceUrl);
                 if (tikTokLiveCaptureActive && isTikTokLiveStreamUrl(mediaUrl)) {
                     JSONObject liveHeaders = new JSONObject();
-                    synchronized (tikTokLiveRequestHeaders) {
-                        for (Map.Entry<String, String> entry : tikTokLiveRequestHeaders.entrySet()) {
-                            liveHeaders.put(entry.getKey(), entry.getValue());
-                        }
+                    Map<String, String> headersToSend = liveHeadersOverride == null
+                            ? snapshotTikTokLiveRequestHeaders() : liveHeadersOverride;
+                    for (Map.Entry<String, String> entry : headersToSend.entrySet()) {
+                        liveHeaders.put(entry.getKey(), entry.getValue());
                     }
                     if (!liveHeaders.has("user-agent")) {
                         // Match the hidden TikTok LIVE WebView UA when the request
