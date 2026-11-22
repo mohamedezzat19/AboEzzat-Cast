@@ -363,7 +363,7 @@ public class ShareActivity extends Activity {
                                         || "sec-fetch-mode".equals(lower) || "sec-fetch-dest".equals(lower)
                                         || "sec-ch-ua".equals(lower) || "sec-ch-ua-mobile".equals(lower)
                                         || "sec-ch-ua-platform".equals(lower))
-                                        && value.length() <= 2048 && !value.contains("\\r") && !value.contains("\\n")) {
+                                        && value.length() <= 2048 && !value.contains("\r") && !value.contains("\n")) {
                                     tikTokLiveRequestHeaders.put(lower, value);
                                 }
                             }
