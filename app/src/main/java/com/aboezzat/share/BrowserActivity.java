@@ -210,7 +210,10 @@ public class BrowserActivity extends Activity {
     private boolean isTikTokLiveStreamCandidate(String mediaUrl) {
         if (mediaUrl == null || mediaUrl.isEmpty()) return false;
         String lower = mediaUrl.toLowerCase(Locale.ROOT);
-        if (lower.contains("pull-")) return true;
+        // Match the same extension-independent CDN signatures used by ShareActivity.
+        // TikTok LIVE CDNs may not contain "tiktok" in their hostname, so a valid
+        // HLS/FLV stream must not be rejected merely because the CDN is branded differently.
+        if (lower.contains("pull-") || lower.contains(".m3u8") || lower.contains(".flv")) return true;
         try {
             Uri uri = Uri.parse(mediaUrl);
             String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase(Locale.ROOT);
