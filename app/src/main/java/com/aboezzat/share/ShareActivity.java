@@ -348,29 +348,35 @@ public class ShareActivity extends Activity {
             public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
                 String reqUrl = request.getUrl().toString();
                 if ("tiktok_live".equals(platformType)) {
-                    synchronized (tikTokLiveRequestHeaders) {
-                        tikTokLiveRequestHeaders.clear();
-                        Map<String, String> requestHeaders = request.getRequestHeaders();
-                        if (requestHeaders != null) {
-                            for (Map.Entry<String, String> entry : requestHeaders.entrySet()) {
-                                String key = entry.getKey();
-                                String value = entry.getValue();
-                                if (key == null || value == null || value.isEmpty()) continue;
-                                String lower = key.toLowerCase(Locale.ROOT);
-                                if (("user-agent".equals(lower) || "referer".equals(lower)
-                                        || "origin".equals(lower) || "accept".equals(lower)
-                                        || "accept-language".equals(lower) || "sec-fetch-site".equals(lower)
-                                        || "sec-fetch-mode".equals(lower) || "sec-fetch-dest".equals(lower)
-                                        || "sec-ch-ua".equals(lower) || "sec-ch-ua-mobile".equals(lower)
-                                        || "sec-ch-ua-platform".equals(lower))
-                                        && value.length() <= 2048 && !value.contains("\r") && !value.contains("\n")) {
-                                    tikTokLiveRequestHeaders.put(lower, value);
+                    String lowerRequestUrl = reqUrl.toLowerCase(Locale.ROOT);
+                    boolean isLiveStreamRequest = lowerRequestUrl.contains("pull-")
+                            || (lowerRequestUrl.contains("tiktok")
+                            && (lowerRequestUrl.contains(".m3u8") || lowerRequestUrl.contains(".flv")));
+                    if (isLiveStreamRequest) {
+                        synchronized (tikTokLiveRequestHeaders) {
+                            tikTokLiveRequestHeaders.clear();
+                            Map<String, String> requestHeaders = request.getRequestHeaders();
+                            if (requestHeaders != null) {
+                                for (Map.Entry<String, String> entry : requestHeaders.entrySet()) {
+                                    String key = entry.getKey();
+                                    String value = entry.getValue();
+                                    if (key == null || value == null || value.isEmpty()) continue;
+                                    String lower = key.toLowerCase(Locale.ROOT);
+                                    if (("user-agent".equals(lower) || "referer".equals(lower)
+                                            || "origin".equals(lower) || "accept".equals(lower)
+                                            || "accept-language".equals(lower) || "sec-fetch-site".equals(lower)
+                                            || "sec-fetch-mode".equals(lower) || "sec-fetch-dest".equals(lower)
+                                            || "sec-ch-ua".equals(lower) || "sec-ch-ua-mobile".equals(lower)
+                                            || "sec-ch-ua-platform".equals(lower))
+                                            && value.length() <= 2048 && !value.contains("\r") && !value.contains("\n")) {
+                                        tikTokLiveRequestHeaders.put(lower, value);
+                                    }
                                 }
                             }
-                        }
-                        String cookie = CookieManager.getInstance().getCookie(reqUrl);
-                        if (cookie != null && !cookie.isEmpty() && cookie.length() <= 8192) {
-                            tikTokLiveRequestHeaders.put("cookie", cookie);
+                            String cookie = CookieManager.getInstance().getCookie(reqUrl);
+                            if (cookie != null && !cookie.isEmpty() && cookie.length() <= 8192) {
+                                tikTokLiveRequestHeaders.put("cookie", cookie);
+                            }
                         }
                     }
                 }
@@ -470,7 +476,11 @@ public class ShareActivity extends Activity {
         if (matched) {
             isCaptured = true;
             mainHandler.post(() -> {
-                sendToTv(targetTvIp, reqUrl, false);
+                if ("tiktok_live".equals(platformType)) {
+                    sendToTv(targetTvIp, reqUrl, false, "https://www.tiktok.com/");
+                } else {
+                    sendToTv(targetTvIp, reqUrl, false);
+                }
                 destroyWebView();
             });
         }
