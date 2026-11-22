@@ -521,8 +521,71 @@ public class BrowserActivity extends Activity {
             return true;
         });
         menu.getMenu().add("مسح الكوكيز وبيانات المواقع").setOnMenuItemClickListener(item -> { clearBrowserSiteData(); return true; });
+        menu.getMenu().add("وكيل المستخدم (User-Agent)").setOnMenuItemClickListener(item -> { showUserAgentDialog(); return true; });
         // FG Code must be added to the actual browser overflow menu used by the top-right button.
         menu.show();
+    }
+
+
+    private String getConfiguredUserAgent() {
+        SharedPreferences prefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
+        String configured = prefs.getString("browser_user_agent", "").trim();
+        if (!configured.isEmpty()) return configured;
+        return "Mozilla/5.0 (Linux; Android 14; Mobile; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.6478.122 Mobile Safari/537.36";
+    }
+
+    private void showUserAgentDialog() {
+        SharedPreferences prefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
+        String[] labels = {
+                "الإعدادات الافتراضية للتطبيق (WebView)",
+                "Chrome Android", "Chrome Windows", "Chrome macOS", "Safari iPhone",
+                "إضافة وكيل مستخدم مخصص"
+        };
+        String[] values = {
+                WebSettings.getDefaultUserAgent(this),
+                "Mozilla/5.0 (Linux; Android 14; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
+                "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+                ""
+        };
+        String current = getConfiguredUserAgent();
+        int selected = 1;
+        for (int i = 0; i < values.length - 1; i++) {
+            if (values[i].equals(current)) { selected = i; break; }
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("اختيار وكيل المستخدم")
+                .setSingleChoiceItems(labels, selected, (dialog, which) -> {
+                    if (which == labels.length - 1) {
+                        EditText input = new EditText(this);
+                        input.setSingleLine(false);
+                        input.setMinLines(2);
+                        input.setText(prefs.getString("browser_user_agent_custom", ""));
+                        input.setHint("الصق User-Agent هنا");
+                        new AlertDialog.Builder(this)
+                                .setTitle("وكيل مستخدم مخصص")
+                                .setView(input)
+                                .setNegativeButton("إلغاء", null)
+                                .setPositiveButton("حفظ", (d, w) -> {
+                                    String custom = input.getText().toString().trim();
+                                    if (custom.length() < 20 || custom.length() > 1024
+                                            || custom.contains("\\r") || custom.contains("\\n")) {
+                                        Toast.makeText(this, "وكيل المستخدم غير صالح", Toast.LENGTH_SHORT).show();
+                                        return;
+                                    }
+                                    prefs.edit().putString("browser_user_agent_custom", custom)
+                                            .putString("browser_user_agent", custom).apply();
+                                    Toast.makeText(this, "تم حفظ وكيل المستخدم المخصص", Toast.LENGTH_SHORT).show();
+                                }).show();
+                    } else {
+                        prefs.edit().putString("browser_user_agent", values[which]).apply();
+                        dialog.dismiss();
+                        Toast.makeText(this, "تم حفظ وكيل المستخدم: " + labels[which], Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setNegativeButton("إغلاق", null)
+                .show();
     }
 
     private void showBrowserHistoryDialog() {
@@ -743,7 +806,7 @@ public class BrowserActivity extends Activity {
 
         // Keep the established UA for existing sites. QFilm receives the current
         // Android WebView Chromium UA (without the WebView marker) for compatibility.
-        settings.setUserAgentString("Mozilla/5.0 (Linux; Android 14; Mobile; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.6478.122 Mobile Safari/537.36");
+        settings.setUserAgentString(getConfiguredUserAgent());
         settings.setGeolocationEnabled(true);
 
         CookieManager cookieManager = CookieManager.getInstance();
@@ -1082,7 +1145,7 @@ public class BrowserActivity extends Activity {
                 } else if (loadedUrl != null && loadedUrl.startsWith("http")) {
                     // Keep target=_blank and window.open destinations in this tab.
                     view.getSettings().setSupportMultipleWindows(false);
-                    view.getSettings().setUserAgentString("Mozilla/5.0 (Linux; Android 14; Mobile; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.6478.122 Mobile Safari/537.36");
+                    view.getSettings().setUserAgentString(getConfiguredUserAgent());
                 }
                 if (getCurrentWebView() == view && loadedUrl != null
                         && loadedUrl.startsWith("http")) {
@@ -2355,7 +2418,7 @@ public class BrowserActivity extends Activity {
             current.getSettings().setUserAgentString(getYouTubeCompatibleUserAgent());
         } else {
             current.getSettings().setSupportMultipleWindows(false);
-            current.getSettings().setUserAgentString("Mozilla/5.0 (Linux; Android 14; Mobile; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.6478.122 Mobile Safari/537.36");
+            current.getSettings().setUserAgentString(getConfiguredUserAgent());
         }
 
         Map<String, String> extraHeaders = new HashMap<>();

@@ -16,6 +16,7 @@ import android.webkit.JavascriptInterface;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
+import android.webkit.CookieManager;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
@@ -27,6 +28,8 @@ import java.net.URLEncoder;
 import java.util.Locale;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -63,6 +66,8 @@ public class ShareActivity extends Activity {
     private String threadsAudioUrl = "";
     private boolean threadsCaptureTimerScheduled = false;
     private final Set<String> threadsMp4ProbeRequests = new HashSet<>();
+    private final Map<String, String> tikTokLiveRequestHeaders = new HashMap<>();
+    private volatile boolean tikTokLiveCaptureActive = false;
     private final Runnable threadsCaptureTimeout = () -> finishThreadsCapture();
 
     @Override
@@ -184,9 +189,11 @@ public class ShareActivity extends Activity {
         }
 
         if (isTikTokLiveUrl(lowerUrl)) {
-            // Use the full browser capture pipeline; the hidden share WebView's short
-            // timeout can miss cross-origin TikTok LIVE player requests.
-            openTikTokLiveInBrowser(url);
+            // First attempt a fully hidden WebView capture: autoplay muted, detect the
+            // LIVE HLS/FLV resource, and cast it without opening the visible browser.
+            // Preserve the proven browser route as a fallback if background capture fails.
+            tikTokLiveCaptureActive = true;
+            startPlatformSniffer(url, "tiktok_live", 45000L, true);
             return;
         }
 
@@ -255,7 +262,8 @@ public class ShareActivity extends Activity {
 
                 mainHandler.post(() -> {
                     if (isTikTokLiveUrl(resolvedUrl)) {
-                        openTikTokLiveInBrowser(resolvedUrl);
+                        tikTokLiveCaptureActive = true;
+                        startPlatformSniffer(resolvedUrl, "tiktok_live", 45000L, true);
                     } else {
                         // Ordinary TikTok posts retain their original Tikwm route.
                         handleTikTok(shortUrl);
@@ -323,7 +331,10 @@ public class ShareActivity extends Activity {
         settings.setDatabaseEnabled(true);
         settings.setMediaPlaybackRequiresUserGesture(false);
 
-        settings.setUserAgentString("Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36");
+        String preferredUserAgent = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE)
+                .getString("browser_user_agent", "").trim();
+        settings.setUserAgentString(preferredUserAgent.isEmpty()
+                ? WebSettings.getDefaultUserAgent(this) : preferredUserAgent);
 
         webView.addJavascriptInterface(new Object() {
             @JavascriptInterface
@@ -336,6 +347,39 @@ public class ShareActivity extends Activity {
             @Override
             public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
                 String reqUrl = request.getUrl().toString();
+                if ("tiktok_live".equals(platformType)) {
+                    String lowerRequestUrl = reqUrl.toLowerCase(Locale.ROOT);
+                    boolean isLiveStreamRequest = lowerRequestUrl.contains("pull-")
+                            || (lowerRequestUrl.contains("tiktok")
+                            && (lowerRequestUrl.contains(".m3u8") || lowerRequestUrl.contains(".flv")));
+                    if (isLiveStreamRequest) {
+                        synchronized (tikTokLiveRequestHeaders) {
+                            tikTokLiveRequestHeaders.clear();
+                            Map<String, String> requestHeaders = request.getRequestHeaders();
+                            if (requestHeaders != null) {
+                                for (Map.Entry<String, String> entry : requestHeaders.entrySet()) {
+                                    String key = entry.getKey();
+                                    String value = entry.getValue();
+                                    if (key == null || value == null || value.isEmpty()) continue;
+                                    String lower = key.toLowerCase(Locale.ROOT);
+                                    if (("user-agent".equals(lower) || "referer".equals(lower)
+                                            || "origin".equals(lower) || "accept".equals(lower)
+                                            || "accept-language".equals(lower) || "sec-fetch-site".equals(lower)
+                                            || "sec-fetch-mode".equals(lower) || "sec-fetch-dest".equals(lower)
+                                            || "sec-ch-ua".equals(lower) || "sec-ch-ua-mobile".equals(lower)
+                                            || "sec-ch-ua-platform".equals(lower))
+                                            && value.length() <= 2048 && !value.contains("\r") && !value.contains("\n")) {
+                                        tikTokLiveRequestHeaders.put(lower, value);
+                                    }
+                                }
+                            }
+                            String cookie = CookieManager.getInstance().getCookie(reqUrl);
+                            if (cookie != null && !cookie.isEmpty() && cookie.length() <= 8192) {
+                                tikTokLiveRequestHeaders.put("cookie", cookie);
+                            }
+                        }
+                    }
+                }
                 checkAndSendMedia(reqUrl, platformType);
                 return super.shouldInterceptRequest(view, request);
             }
@@ -432,7 +476,11 @@ public class ShareActivity extends Activity {
         if (matched) {
             isCaptured = true;
             mainHandler.post(() -> {
-                sendToTv(targetTvIp, reqUrl, false);
+                if ("tiktok_live".equals(platformType)) {
+                    sendToTv(targetTvIp, reqUrl, false, "https://www.tiktok.com/");
+                } else {
+                    sendToTv(targetTvIp, reqUrl, false);
+                }
                 destroyWebView();
             });
         }
@@ -581,6 +629,25 @@ public class ShareActivity extends Activity {
                 if (mediaUrl != null && !mediaUrl.trim().isEmpty()) payload.put("url", mediaUrl);
                 if (audioUrl != null && !audioUrl.trim().isEmpty()) payload.put("audio", audioUrl);
                 if (sourceUrl != null && !sourceUrl.trim().isEmpty()) payload.put("sourceUrl", sourceUrl);
+                if (tikTokLiveCaptureActive && mediaUrl != null
+                        && (mediaUrl.toLowerCase(Locale.ROOT).contains("tiktok")
+                        || mediaUrl.toLowerCase(Locale.ROOT).contains("pull-"))) {
+                    JSONObject liveHeaders = new JSONObject();
+                    synchronized (tikTokLiveRequestHeaders) {
+                        for (Map.Entry<String, String> entry : tikTokLiveRequestHeaders.entrySet()) {
+                            liveHeaders.put(entry.getKey(), entry.getValue());
+                        }
+                    }
+                    if (!liveHeaders.has("user-agent")) {
+                        String preferredUa = currentPrefs.getString("browser_user_agent", "").trim();
+                        liveHeaders.put("user-agent", preferredUa.isEmpty()
+                                ? WebSettings.getDefaultUserAgent(ShareActivity.this) : preferredUa);
+                    }
+                    if (!liveHeaders.has("referer") && sourceUrl != null && !sourceUrl.trim().isEmpty()) {
+                        liveHeaders.put("referer", sourceUrl);
+                    }
+                    if (liveHeaders.length() > 0) payload.put("headers", liveHeaders);
+                }
                 if ((mediaUrl != null && mediaUrl.contains("googlevideo.com"))
                         || (audioUrl != null && audioUrl.contains("googlevideo.com"))) {
                     JSONObject headers = new JSONObject();
