@@ -518,10 +518,10 @@ public class ShareActivity extends Activity {
             boolean hlsCandidate = lower.contains(".m3u8") || lower.contains("pull-hls");
             if (hlsCandidate) {
                 isCaptured = true;
+                Map<String, String> hlsHeaders = snapshotTikTokLiveRequestHeaders();
                 mainHandler.post(() -> {
                     mainHandler.removeCallbacks(tikTokLiveFallbackRunnable);
-                    sendToTv(targetTvIp, reqUrl, false, "https://www.tiktok.com/",
-                            snapshotTikTokLiveRequestHeaders());
+                    sendToTv(targetTvIp, reqUrl, false, "https://www.tiktok.com/", hlsHeaders);
                     destroyWebView();
                 });
                 return;
