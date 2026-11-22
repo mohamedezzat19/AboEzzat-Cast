@@ -316,6 +316,13 @@ public class ShareActivity extends Activity {
         }
     }
 
+    // TikTok LIVE may expose a desktop autoplay/player flow that differs from
+    // its mobile WebView flow. Keep this override isolated to the hidden LIVE
+    // capture WebView; the user's browser UA preference remains unchanged elsewhere.
+    private String getTikTokLiveDesktopUserAgent() {
+        return "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
+    }
+
     @SuppressLint("SetJavaScriptEnabled")
     private void startPlatformSniffer(String url, final String platformType) {
         startPlatformSniffer(url, platformType, 16000L, false);
@@ -342,8 +349,11 @@ public class ShareActivity extends Activity {
 
         String preferredUserAgent = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE)
                 .getString("browser_user_agent", "").trim();
-        settings.setUserAgentString(preferredUserAgent.isEmpty()
-                ? WebSettings.getDefaultUserAgent(this) : preferredUserAgent);
+        String captureUserAgent = "tiktok_live".equals(platformType)
+                ? getTikTokLiveDesktopUserAgent()
+                : (preferredUserAgent.isEmpty()
+                    ? WebSettings.getDefaultUserAgent(this) : preferredUserAgent);
+        settings.setUserAgentString(captureUserAgent);
 
         webView.addJavascriptInterface(new Object() {
             @JavascriptInterface
@@ -671,9 +681,9 @@ public class ShareActivity extends Activity {
                         }
                     }
                     if (!liveHeaders.has("user-agent")) {
-                        String preferredUa = currentPrefs.getString("browser_user_agent", "").trim();
-                        liveHeaders.put("user-agent", preferredUa.isEmpty()
-                                ? WebSettings.getDefaultUserAgent(ShareActivity.this) : preferredUa);
+                        // Match the hidden TikTok LIVE WebView UA when the request
+                        // interceptor did not provide one.
+                        liveHeaders.put("user-agent", getTikTokLiveDesktopUserAgent());
                     }
                     if (!liveHeaders.has("referer") && sourceUrl != null && !sourceUrl.trim().isEmpty()) {
                         liveHeaders.put("referer", sourceUrl);
