@@ -178,13 +178,15 @@ public class ShareActivity extends Activity {
 
         // TikTok LIVE canonical links can be shared as vt.tiktok.com short URLs.
         // Resolve short links first so LIVE is detected without changing ordinary-video handling.
-        if (lowerUrl.contains("vt.tiktok.com") || lowerUrl.contains("vm.tiktok.com")) {
+        if (isTikTokShortShareUrl(url)) {
             resolveTikTokShortLink(url);
             return;
         }
 
         if (isTikTokLiveUrl(lowerUrl)) {
-            startPlatformSniffer(url, "tiktok_live", 5000L, true);
+            // Use the full browser capture pipeline; the hidden share WebView's short
+            // timeout can miss cross-origin TikTok LIVE player requests.
+            openTikTokLiveInBrowser(url);
             return;
         }
 
@@ -217,6 +219,20 @@ public class ShareActivity extends Activity {
                 || lower.matches(".*tiktok\\.com/@[^/]+/live(?:[/?#].*)?");
     }
 
+    private boolean isTikTokShortShareUrl(String value) {
+        if (value == null) return false;
+        try {
+            Uri uri = Uri.parse(value.trim());
+            String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase(Locale.ROOT);
+            String path = uri.getPath() == null ? "" : uri.getPath();
+            return host.equals("vt.tiktok.com") || host.equals("vm.tiktok.com")
+                    || ((host.equals("tiktok.com") || host.endsWith(".tiktok.com"))
+                    && path.matches("(?i)^/t/[^/]+/?$"));
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
     private void resolveTikTokShortLink(final String shortUrl) {
         Request request = new Request.Builder()
                 .url(shortUrl)
@@ -239,7 +255,7 @@ public class ShareActivity extends Activity {
 
                 mainHandler.post(() -> {
                     if (isTikTokLiveUrl(resolvedUrl)) {
-                        startPlatformSniffer(resolvedUrl, "tiktok_live", 5000L, true);
+                        openTikTokLiveInBrowser(resolvedUrl);
                     } else {
                         // Ordinary TikTok posts retain their original Tikwm route.
                         handleTikTok(shortUrl);
@@ -368,6 +384,7 @@ public class ShareActivity extends Activity {
             Intent browserIntent = new Intent(this, BrowserActivity.class);
             browserIntent.setAction(Intent.ACTION_VIEW);
             browserIntent.setData(Uri.parse(url));
+            browserIntent.putExtra("auto_cast_tiktok_live", true);
             startActivity(browserIntent);
         } catch (Exception e) {
             Toast.makeText(this, "تعذر فتح TikTok LIVE في المتصفح", Toast.LENGTH_SHORT).show();
