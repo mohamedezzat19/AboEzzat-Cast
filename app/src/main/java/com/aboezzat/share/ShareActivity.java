@@ -184,9 +184,10 @@ public class ShareActivity extends Activity {
         }
 
         if (isTikTokLiveUrl(lowerUrl)) {
-            // Use the full browser capture pipeline; the hidden share WebView's short
-            // timeout can miss cross-origin TikTok LIVE player requests.
-            openTikTokLiveInBrowser(url);
+            // First attempt a fully hidden WebView capture: autoplay muted, detect the
+            // LIVE HLS/FLV resource, and cast it without opening the visible browser.
+            // Preserve the proven browser route as a fallback if background capture fails.
+            startPlatformSniffer(url, "tiktok_live", 45000L, true);
             return;
         }
 
@@ -255,7 +256,7 @@ public class ShareActivity extends Activity {
 
                 mainHandler.post(() -> {
                     if (isTikTokLiveUrl(resolvedUrl)) {
-                        openTikTokLiveInBrowser(resolvedUrl);
+                        startPlatformSniffer(resolvedUrl, "tiktok_live", 45000L, true);
                     } else {
                         // Ordinary TikTok posts retain their original Tikwm route.
                         handleTikTok(shortUrl);
@@ -323,7 +324,10 @@ public class ShareActivity extends Activity {
         settings.setDatabaseEnabled(true);
         settings.setMediaPlaybackRequiresUserGesture(false);
 
-        settings.setUserAgentString("Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36");
+        String preferredUserAgent = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE)
+                .getString("browser_user_agent", "").trim();
+        settings.setUserAgentString(preferredUserAgent.isEmpty()
+                ? WebSettings.getDefaultUserAgent(this) : preferredUserAgent);
 
         webView.addJavascriptInterface(new Object() {
             @JavascriptInterface
