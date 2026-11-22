@@ -389,15 +389,45 @@ public class ShareActivity extends Activity {
                 super.onPageFinished(view, loadedUrl);
                 String js = "(function() { " +
                         "   try { " +
-                        "       var vids = document.getElementsByTagName('video'); " +
-                        "       for (var i = 0; i < vids.length; i++) { " +
-                        "           vids[i].muted = true; " +
-                        "           vids[i].play(); " +
-                        "           var src = vids[i].currentSrc || vids[i].src; " +
-                        "           if (src && src.startsWith('http')) { " +
-                        "               window.MediaSniffer.onMediaFound(src); " +
-                        "           } " +
-                        "       } " +
+                        "       if (window.__aboLiveSnifferStarted) return; " +
+                        "       window.__aboLiveSnifferStarted = true; " +
+                        "       var seen = {}; " +
+                        "       var report = function(url) { " +
+                        "           if (!url || typeof url !== 'string') return; " +
+                        "           if (!/^https?:\\/\\//i.test(url)) return; " +
+                        "           var low = url.toLowerCase(); " +
+                        "           if (low.indexOf('pull-') < 0 && low.indexOf('.m3u8') < 0 && low.indexOf('.flv') < 0) return; " +
+                        "           if (seen[url]) return; " +
+                        "           seen[url] = true; " +
+                        "           try { window.MediaSniffer.onMediaFound(url); } catch(e){} " +
+                        "       }; " +
+                        "       var scan = function() { " +
+                        "           try { " +
+                        "               var vids = document.getElementsByTagName('video'); " +
+                        "               for (var i = 0; i < vids.length; i++) { " +
+                        "                   var v = vids[i]; " +
+                        "                   v.muted = true; " +
+                        "                   v.defaultMuted = true; " +
+                        "                   v.playsInline = true; " +
+                        "                   v.setAttribute('muted', ''); " +
+                        "                   v.setAttribute('playsinline', ''); " +
+                        "                   report(v.currentSrc || v.src); " +
+                        "                   var sources = v.getElementsByTagName('source'); " +
+                        "                   for (var j = 0; j < sources.length; j++) report(sources[j].src); " +
+                        "                   if (v.paused) { var p = v.play(); if (p && p.catch) p.catch(function(){}); } " +
+                        "               } " +
+                        "               var entries = performance.getEntriesByType ? performance.getEntriesByType('resource') : []; " +
+                        "               for (var k = 0; k < entries.length; k++) report(entries[k].name); " +
+                        "           } catch(e){} " +
+                        "       }; " +
+                        "       scan(); " +
+                        "       var observer = new MutationObserver(function() { scan(); }); " +
+                        "       observer.observe(document.documentElement || document, { childList: true, subtree: true, attributes: true, attributeFilter: ['src'] }); " +
+                        "       document.addEventListener('loadedmetadata', scan, true); " +
+                        "       document.addEventListener('canplay', scan, true); " +
+                        "       document.addEventListener('playing', scan, true); " +
+                        "       var attempts = 0; " +
+                        "       var timer = setInterval(function() { scan(); attempts++; if (attempts >= 38) clearInterval(timer); }, 1100); " +
                         "   } catch(e){} " +
                         "})();";
                 view.evaluateJavascript(js, null);
