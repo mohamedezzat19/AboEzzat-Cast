@@ -16,6 +16,7 @@ import android.webkit.JavascriptInterface;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
+import android.webkit.CookieManager;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
@@ -27,6 +28,8 @@ import java.net.URLEncoder;
 import java.util.Locale;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -63,6 +66,7 @@ public class ShareActivity extends Activity {
     private String threadsAudioUrl = "";
     private boolean threadsCaptureTimerScheduled = false;
     private final Set<String> threadsMp4ProbeRequests = new HashSet<>();
+    private final Map<String, String> tikTokLiveRequestHeaders = new HashMap<>();
     private final Runnable threadsCaptureTimeout = () -> finishThreadsCapture();
 
     @Override
@@ -340,6 +344,33 @@ public class ShareActivity extends Activity {
             @Override
             public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
                 String reqUrl = request.getUrl().toString();
+                if ("tiktok_live".equals(platformType)) {
+                    synchronized (tikTokLiveRequestHeaders) {
+                        tikTokLiveRequestHeaders.clear();
+                        Map<String, String> requestHeaders = request.getRequestHeaders();
+                        if (requestHeaders != null) {
+                            for (Map.Entry<String, String> entry : requestHeaders.entrySet()) {
+                                String key = entry.getKey();
+                                String value = entry.getValue();
+                                if (key == null || value == null || value.isEmpty()) continue;
+                                String lower = key.toLowerCase(Locale.ROOT);
+                                if (("user-agent".equals(lower) || "referer".equals(lower)
+                                        || "origin".equals(lower) || "accept".equals(lower)
+                                        || "accept-language".equals(lower) || "sec-fetch-site".equals(lower)
+                                        || "sec-fetch-mode".equals(lower) || "sec-fetch-dest".equals(lower)
+                                        || "sec-ch-ua".equals(lower) || "sec-ch-ua-mobile".equals(lower)
+                                        || "sec-ch-ua-platform".equals(lower))
+                                        && value.length() <= 2048 && !value.contains("\\r") && !value.contains("\\n")) {
+                                    tikTokLiveRequestHeaders.put(lower, value);
+                                }
+                            }
+                        }
+                        String cookie = CookieManager.getInstance().getCookie(reqUrl);
+                        if (cookie != null && !cookie.isEmpty() && cookie.length() <= 8192) {
+                            tikTokLiveRequestHeaders.put("cookie", cookie);
+                        }
+                    }
+                }
                 checkAndSendMedia(reqUrl, platformType);
                 return super.shouldInterceptRequest(view, request);
             }
@@ -585,6 +616,23 @@ public class ShareActivity extends Activity {
                 if (mediaUrl != null && !mediaUrl.trim().isEmpty()) payload.put("url", mediaUrl);
                 if (audioUrl != null && !audioUrl.trim().isEmpty()) payload.put("audio", audioUrl);
                 if (sourceUrl != null && !sourceUrl.trim().isEmpty()) payload.put("sourceUrl", sourceUrl);
+                if (mediaUrl != null
+                        && (mediaUrl.toLowerCase(Locale.ROOT).contains("tiktok")
+                        || mediaUrl.toLowerCase(Locale.ROOT).contains("pull-"))) {
+                    JSONObject liveHeaders = new JSONObject();
+                    synchronized (tikTokLiveRequestHeaders) {
+                        for (Map.Entry<String, String> entry : tikTokLiveRequestHeaders.entrySet()) {
+                            liveHeaders.put(entry.getKey(), entry.getValue());
+                        }
+                    }
+                    if (!liveHeaders.has("user-agent")) {
+                        String preferredUa = currentPrefs.getString("browser_user_agent", "").trim();
+                        liveHeaders.put("user-agent", preferredUa.isEmpty()
+                                ? WebSettings.getDefaultUserAgent(ShareActivity.this) : preferredUa);
+                    }
+                    if (!liveHeaders.has("referer")) liveHeaders.put("referer", sourceUrl == null ? "" : sourceUrl);
+                    if (liveHeaders.length() > 0) payload.put("headers", liveHeaders);
+                }
                 if ((mediaUrl != null && mediaUrl.contains("googlevideo.com"))
                         || (audioUrl != null && audioUrl.contains("googlevideo.com"))) {
                     JSONObject headers = new JSONObject();
