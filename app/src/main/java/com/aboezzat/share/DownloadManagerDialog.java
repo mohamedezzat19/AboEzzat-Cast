@@ -161,7 +161,7 @@ final class DownloadManagerDialog {
         root.addView(clearCompleted, clearParams);
         clearCompleted.setOnClickListener(v -> clearCompleted());
 
-        dialog = new AlertDialog.Builder(activity).setView(root)
+        dialog = new AlertDialog.Builder(activity, R.style.ModernDialogTheme).setView(root)
                 .setNegativeButton("إغلاق", null).create();
         dialog.setOnDismissListener(d -> HANDLER.removeCallbacks(refreshTask));
     }
@@ -398,7 +398,7 @@ final class DownloadManagerDialog {
             options.add("عرض التفاصيل");
             options.add("إزالة من القائمة");
         }
-        new AlertDialog.Builder(activity).setTitle(item.optString("title", "التنزيل"))
+        new AlertDialog.Builder(activity, R.style.ModernDialogTheme).setTitle(item.optString("title", "التنزيل"))
                 .setItems(options.toArray(new String[0]), (d, which) -> {
                     String choice = options.get(which);
                     if ("فتح الملف".equals(choice)) openFile(item);
@@ -490,7 +490,7 @@ final class DownloadManagerDialog {
                 + "\nالمرحلة: " + item.optString("stage", "—")
                 + "\nتاريخ الإضافة: " + formatDate(item.optLong("created", item.optLong("id", 0)))
                 + (item.optString("error", "").isEmpty() ? "" : "\nسبب الفشل: " + item.optString("error"));
-        new AlertDialog.Builder(activity).setTitle("تفاصيل التنزيل").setMessage(details)
+        new AlertDialog.Builder(activity, R.style.ModernDialogTheme).setTitle("تفاصيل التنزيل").setMessage(details)
                 .setPositiveButton("حسنًا", null).show();
     }
 
