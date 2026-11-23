@@ -79,6 +79,9 @@ public class ShareActivity extends Activity {
     private boolean threadsCaptureTimerScheduled = false;
     private final Set<String> threadsMp4ProbeRequests = new HashSet<>();
     private final Map<String, String> tikTokLiveRequestHeaders = new HashMap<>();
+    // Separate request headers for ordinary TikTok VOD/CDN captures.
+    private final Map<String, String> tikTokRequestHeaders = new HashMap<>();
+    private volatile String tikTokRequestSourceUrl = "";
     private volatile boolean tikTokLiveCaptureActive = false;
     private volatile String tikTokLiveSourceUrl = "";
     // Wait for the player to actually start before accepting a TikTok CDN URL.
@@ -252,6 +255,57 @@ public class ShareActivity extends Activity {
         return lower.contains("pull-") || lower.contains(".m3u8") || lower.contains(".flv");
     }
 
+    // TikTok VOD can use a signed /video/tos/ URL whose MP4 type is declared
+    // in the query string instead of a literal .mp4 file extension.
+    private boolean isTikTokVodVideoUrl(String value) {
+        if (value == null || value.trim().isEmpty()) return false;
+        try {
+            Uri uri = Uri.parse(value);
+            String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase(Locale.ROOT);
+            String path = uri.getPath() == null ? "" : uri.getPath().toLowerCase(Locale.ROOT);
+            String query = uri.getEncodedQuery() == null ? "" : uri.getEncodedQuery().toLowerCase(Locale.ROOT);
+            boolean tiktokHost = host.equals("tiktok.com") || host.endsWith(".tiktok.com")
+                    || host.equals("tiktokcdn.com") || host.endsWith(".tiktokcdn.com");
+            boolean videoPath = path.contains("/video/tos/");
+            boolean explicitMp4 = query.contains("mime_type=video_mp4")
+                    || query.contains("mime-type=video_mp4")
+                    || path.matches(".*\\\\.mp4$");
+            return "https".equalsIgnoreCase(uri.getScheme()) && tiktokHost
+                    && videoPath && explicitMp4;
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    private void captureTikTokRequestHeaders(WebResourceRequest request, String mediaUrl) {
+        if (request == null || mediaUrl == null) return;
+        synchronized (tikTokRequestHeaders) {
+            Map<String, String> requestHeaders = request.getRequestHeaders();
+            if (requestHeaders != null) {
+                for (Map.Entry<String, String> entry : requestHeaders.entrySet()) {
+                    String key = entry.getKey();
+                    String value = entry.getValue();
+                    if (key == null || value == null || value.isEmpty()) continue;
+                    String lower = key.toLowerCase(Locale.ROOT);
+                    if (("user-agent".equals(lower) || "referer".equals(lower)
+                            || "origin".equals(lower) || "accept".equals(lower)
+                            || "accept-language".equals(lower) || "sec-fetch-site".equals(lower)
+                            || "sec-fetch-mode".equals(lower) || "sec-fetch-dest".equals(lower)
+                            || "sec-ch-ua".equals(lower) || "sec-ch-ua-mobile".equals(lower)
+                            || "sec-ch-ua-platform".equals(lower))
+                            && value.length() <= 2048 && !value.contains("\\r") && !value.contains("\\n")) {
+                        tikTokRequestHeaders.put(lower, value);
+                    }
+                }
+            }
+            String cookie = CookieManager.getInstance().getCookie(mediaUrl);
+            if (cookie != null && !cookie.isEmpty() && cookie.length() <= 8192
+                    && !cookie.contains("\\r") && !cookie.contains("\\n")) {
+                tikTokRequestHeaders.put("cookie", cookie);
+            }
+        }
+    }
+
     private boolean isTikTokShortShareUrl(String value) {
         if (value == null) return false;
         try {
@@ -276,12 +330,10 @@ public class ShareActivity extends Activity {
         client.newCall(request).enqueue(new Callback() {
             @Override
             public void onFailure(Call call, IOException e) {
-                // Keep short-link resolution and capture fully in the background.
-                mainHandler.post(() -> {
-                    tikTokLiveSourceUrl = shortUrl;
-                    tikTokLiveCaptureActive = true;
-                    startPlatformSniffer(shortUrl, "tiktok_live", 45000L, false);
-                });
+                // A failed redirect lookup does not prove the short link is LIVE.
+                // Keep the normal TikTok resolver/fallback route so VOD shares are
+                // not incorrectly forced into the LIVE-only capture branch.
+                mainHandler.post(() -> handleTikTok(shortUrl));
             }
 
             @Override
@@ -304,6 +356,10 @@ public class ShareActivity extends Activity {
     }
 
     private void handleTikTok(final String url) {
+        tikTokRequestSourceUrl = url;
+        synchronized (tikTokRequestHeaders) {
+            tikTokRequestHeaders.clear();
+        }
         try {
             String apiUrl = "https://www.tikwm.com/api/?url=" + URLEncoder.encode(url, "UTF-8");
             Request request = new Request.Builder().url(apiUrl).build();
@@ -451,6 +507,10 @@ public class ShareActivity extends Activity {
             @Override
             public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
                 String reqUrl = request.getUrl().toString();
+                if ("generic".equals(platformType)
+                        && (isTikTokVodVideoUrl(reqUrl) || isTikTokLiveStreamUrl(reqUrl))) {
+                    captureTikTokRequestHeaders(request, reqUrl);
+                }
                 if ("tiktok_live".equals(platformType)) {
                     if (isTikTokLiveStreamUrl(reqUrl)) {
                         updateTikTokDiagnosticStatus("تم رصد طلب فيديو من TikTok CDN. جاري التقاط بياناته...");
@@ -730,7 +790,10 @@ public class ShareActivity extends Activity {
             // Do not accept ordinary .mp4 video links in this branch.
             matched = isTikTokLiveStreamUrl(reqUrl);
         } else {
-            matched = (lower.contains("pull-") && lower.contains("tiktokcdn.com"))
+            // Keep existing generic media signatures, and explicitly recognize
+            // TikTok's signed /video/tos/...?...mime_type=video_mp4 URLs.
+            matched = isTikTokVodVideoUrl(reqUrl)
+                    || (lower.contains("pull-") && lower.contains("tiktokcdn.com"))
                     || (lower.contains("tiktokcdn.com") && (lower.contains(".flv") || lower.contains(".m3u8")))
                     || lower.contains(".mp4") || lower.contains(".m3u8")
                     || lower.contains("video_playback") || lower.contains("&mime=video");
@@ -748,6 +811,20 @@ public class ShareActivity extends Activity {
                         sourceUrl = "https://www.tiktok.com/";
                     }
                     sendToTv(targetTvIp, reqUrl, false, sourceUrl);
+                } else if (isTikTokVodVideoUrl(reqUrl) || isTikTokLiveStreamUrl(reqUrl)) {
+                    Map<String, String> capturedHeaders = new HashMap<>();
+                    synchronized (tikTokRequestHeaders) {
+                        capturedHeaders.putAll(tikTokRequestHeaders);
+                    }
+                    if (!capturedHeaders.containsKey("user-agent")) {
+                        String ua = WebSettings.getDefaultUserAgent(ShareActivity.this);
+                        if (ua != null && !ua.trim().isEmpty()) capturedHeaders.put("user-agent", ua);
+                    }
+                    String sourceUrl = tikTokRequestSourceUrl;
+                    if (sourceUrl == null || sourceUrl.trim().isEmpty()) sourceUrl = "https://www.tiktok.com/";
+                    if (!capturedHeaders.containsKey("referer")) capturedHeaders.put("referer", sourceUrl);
+                    if (!capturedHeaders.containsKey("origin")) capturedHeaders.put("origin", "https://www.tiktok.com");
+                    sendToTv(targetTvIp, reqUrl, null, false, sourceUrl, capturedHeaders);
                 } else {
                     sendToTv(targetTvIp, reqUrl, false);
                 }
@@ -896,6 +973,11 @@ public class ShareActivity extends Activity {
 
     private void sendToTv(String tvIp, String mediaUrl, String audioUrl,
                           boolean isQueue, String sourceUrl) {
+        sendToTv(tvIp, mediaUrl, audioUrl, isQueue, sourceUrl, null);
+    }
+
+    private void sendToTv(String tvIp, String mediaUrl, String audioUrl,
+                          boolean isQueue, String sourceUrl, Map<String, String> mediaHeaders) {
         // Resolve the selected receiver at the moment the network request is created.
         // Do not trust an IP snapshot captured earlier while TikTok/YouTube extraction
         // was still running in the background.
@@ -942,6 +1024,20 @@ public class ShareActivity extends Activity {
                         liveHeaders.put("origin", "https://www.tiktok.com");
                     }
                     if (liveHeaders.length() > 0) payload.put("headers", liveHeaders);
+                } else if (mediaHeaders != null && !mediaHeaders.isEmpty()) {
+                    JSONObject supplied = new JSONObject();
+                    String[] allowed = {"user-agent", "referer", "origin", "accept", "accept-language", "cookie",
+                            "sec-fetch-site", "sec-fetch-mode", "sec-fetch-dest", "sec-ch-ua",
+                            "sec-ch-ua-mobile", "sec-ch-ua-platform"};
+                    for (String key : allowed) {
+                        String value = mediaHeaders.get(key);
+                        int max = "cookie".equals(key) ? 8192 : 2048;
+                        if (value != null && !value.isEmpty() && value.length() <= max
+                                && !value.contains("\\r") && !value.contains("\\n")) {
+                            supplied.put(key, value);
+                        }
+                    }
+                    if (supplied.length() > 0) payload.put("headers", supplied);
                 }
                 if ((mediaUrl != null && mediaUrl.contains("googlevideo.com"))
                         || (audioUrl != null && audioUrl.contains("googlevideo.com"))) {
