@@ -1787,7 +1787,15 @@ public class BrowserActivity extends Activity {
             Uri uri = Uri.parse(value.trim());
             String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase(Locale.ROOT);
             String path = uri.getPath() == null ? "" : uri.getPath().toLowerCase(Locale.ROOT);
-            return host.endsWith("tiktok.com") && path.contains("/video/tos/");
+            // Standard TikTok VOD CDN URLs use /video/tos/. TikTok LIVE
+            // streams use pull-*.tiktokcdn.com/stage/stream-*.flv or .m3u8.
+            boolean standardTikTokVideo = (host.equals("tiktok.com") || host.endsWith(".tiktok.com"))
+                    && path.contains("/video/tos/");
+            boolean tiktokLiveCdn = (host.equals("tiktokcdn.com") || host.endsWith(".tiktokcdn.com"))
+                    && host.startsWith("pull-")
+                    && path.contains("/stage/stream-")
+                    && (path.endsWith(".flv") || path.endsWith(".m3u8"));
+            return standardTikTokVideo || tiktokLiveCdn;
         } catch (Exception ignored) {
             return false;
         }
