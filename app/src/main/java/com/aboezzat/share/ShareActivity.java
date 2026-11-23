@@ -12,6 +12,10 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.ViewGroup;
+import android.view.Gravity;
+import android.widget.Button;
+import android.widget.LinearLayout;
+import android.widget.TextView;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
@@ -57,6 +61,9 @@ public class ShareActivity extends Activity {
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private WebView webView;
+    private FrameLayout rootLayout;
+    private TextView tikTokDiagnosticStatus;
+    private boolean isTikTokDiagnosticVisible = false;
     private boolean isCaptured = false;
     private String targetTvIp = "";
     // Threads can expose video and audio as separate DASH resources. Collect both
@@ -75,7 +82,7 @@ public class ShareActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        FrameLayout rootLayout = new FrameLayout(this);
+        rootLayout = new FrameLayout(this);
         rootLayout.setBackgroundColor(Color.TRANSPARENT);
         ProgressBar progressBar = new ProgressBar(this);
         FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
@@ -360,6 +367,9 @@ public class ShareActivity extends Activity {
             mainHandler.removeCallbacks(threadsCaptureTimeout);
         }
         webView = new WebView(this);
+        if ("tiktok_live".equals(platformType)) {
+            showTikTokDiagnosticWindow(webView);
+        }
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
@@ -391,10 +401,36 @@ public class ShareActivity extends Activity {
 
         webView.setWebViewClient(new WebViewClient() {
             @Override
+            public void onPageStarted(WebView view, String pageUrl, android.graphics.Bitmap favicon) {
+                super.onPageStarted(view, pageUrl, favicon);
+                if ("tiktok_live".equals(platformType)) {
+                    updateTikTokDiagnosticStatus("TikTok LIVE: جاري تحميل الصفحة...");
+                }
+            }
+
+            @Override
+            public void onPageFinished(WebView view, String loadedUrl) {
+                super.onPageFinished(view, loadedUrl);
+                if ("tiktok_live".equals(platformType)) {
+                    updateTikTokDiagnosticStatus("الصفحة اتحملت. جاري فحص مشغل اللايف والتقاط رابط البث...");
+                }
+            }
+
+            @Override
+            public void onReceivedError(WebView view, WebResourceRequest request,
+                                        android.webkit.WebResourceError error) {
+                super.onReceivedError(view, request, error);
+                if ("tiktok_live".equals(platformType) && request.isForMainFrame()) {
+                    updateTikTokDiagnosticStatus("حصل خطأ أثناء تحميل صفحة TikTok. تقدر تشوف الصفحة وتحاول تاني.");
+                }
+            }
+
+            @Override
             public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
                 String reqUrl = request.getUrl().toString();
                 if ("tiktok_live".equals(platformType)) {
                     if (isTikTokLiveStreamUrl(reqUrl)) {
+                        updateTikTokDiagnosticStatus("تم رصد طلب فيديو من TikTok CDN. جاري التقاط بياناته...");
                         synchronized (tikTokLiveRequestHeaders) {
                             // Preserve headers already captured from the initial media request;
                             // later FLV/HLS segment requests may omit Referer or client hints.
@@ -484,6 +520,12 @@ public class ShareActivity extends Activity {
 
         mainHandler.postDelayed(() -> {
             if (!isCaptured) {
+                if ("tiktok_live".equals(platformType) && isTikTokDiagnosticVisible) {
+                    // Keep the same visible WebView alive so the user can inspect
+                    // login prompts/player state and late CDN requests.
+                    updateTikTokDiagnosticStatus("لسه ما التقطناش رابط البث بعد. الصفحة مفتوحة للمراقبة؛ استنى ظهور اللايف أو رسالة تسجيل الدخول.");
+                    return;
+                }
                 // Ignore any late WebView resource callbacks after falling back.
                 isCaptured = true;
                 destroyWebView();
@@ -497,6 +539,65 @@ public class ShareActivity extends Activity {
                 }
             }
         }, timeoutMs);
+    }
+
+    private void showTikTokDiagnosticWindow(WebView liveWebView) {
+        isTikTokDiagnosticVisible = true;
+        rootLayout.removeAllViews();
+        rootLayout.setBackgroundColor(Color.rgb(13, 18, 30));
+
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setBackgroundColor(Color.rgb(13, 18, 30));
+
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        header.setPadding(16, 12, 12, 12);
+        header.setBackgroundColor(Color.rgb(24, 34, 52));
+
+        TextView title = new TextView(this);
+        title.setText("تشخيص TikTok LIVE");
+        title.setTextColor(Color.WHITE);
+        title.setTextSize(16);
+        title.setTypeface(null, android.graphics.Typeface.BOLD);
+        header.addView(title, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        Button closeButton = new Button(this);
+        closeButton.setText("إغلاق");
+        closeButton.setOnClickListener(v -> {
+            tikTokLiveCaptureActive = false;
+            isCaptured = true;
+            destroyWebView();
+            finish();
+        });
+        header.addView(closeButton, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        tikTokDiagnosticStatus = new TextView(this);
+        tikTokDiagnosticStatus.setText("جاري فتح صفحة TikTok LIVE...");
+        tikTokDiagnosticStatus.setTextColor(Color.WHITE);
+        tikTokDiagnosticStatus.setTextSize(14);
+        tikTokDiagnosticStatus.setPadding(16, 12, 16, 12);
+        tikTokDiagnosticStatus.setBackgroundColor(Color.rgb(35, 48, 70));
+
+        panel.addView(header, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        panel.addView(tikTokDiagnosticStatus, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        panel.addView(liveWebView, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        rootLayout.addView(panel, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+    }
+
+    private void updateTikTokDiagnosticStatus(String message) {
+        mainHandler.post(() -> {
+            if (tikTokDiagnosticStatus != null && !isFinishing()) {
+                tikTokDiagnosticStatus.setText(message);
+            }
+        });
     }
 
     private void openTikTokLiveInBrowser(String url) {
@@ -550,6 +651,10 @@ public class ShareActivity extends Activity {
 
         if (matched) {
             isCaptured = true;
+            if ("tiktok_live".equals(platformType)) {
+                updateTikTokDiagnosticStatus("تم التقاط رابط TikTok LIVE (" +
+                        (lower.contains(".m3u8") ? "HLS" : "FLV") + "). جاري الإرسال للريسيفر...");
+            }
             mainHandler.post(() -> {
                 if ("tiktok_live".equals(platformType)) {
                     String sourceUrl = tikTokLiveSourceUrl;
