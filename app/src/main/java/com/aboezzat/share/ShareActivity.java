@@ -319,8 +319,11 @@ public class ShareActivity extends Activity {
     // TikTok LIVE may expose a desktop autoplay/player flow that differs from
     // its mobile WebView flow. Keep this override isolated to the hidden LIVE
     // capture WebView; the user's browser UA preference remains unchanged elsewhere.
-    private String getTikTokLiveDesktopUserAgent() {
-        return "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
+    // Match TikTok LIVE capture to the actual Android WebView used by the browser.
+    private String getTikTokLiveUserAgent() {
+        String ua = WebSettings.getDefaultUserAgent(this);
+        if (ua == null) return "";
+        return ua.replace("; wv", "").replace("Version/4.0 ", "").trim();
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -347,10 +350,18 @@ public class ShareActivity extends Activity {
         settings.setDatabaseEnabled(true);
         settings.setMediaPlaybackRequiresUserGesture(false);
 
+        // WebViews in this app share a persistent cookie store; accept TikTok's
+        // first-party and embedded-player cookies for the signed-in browser session.
+        CookieManager cookieManager = CookieManager.getInstance();
+        cookieManager.setAcceptCookie(true);
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+            cookieManager.setAcceptThirdPartyCookies(webView, true);
+        }
+
         String preferredUserAgent = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE)
                 .getString("browser_user_agent", "").trim();
         String captureUserAgent = "tiktok_live".equals(platformType)
-                ? getTikTokLiveDesktopUserAgent()
+                ? getTikTokLiveUserAgent()
                 : (preferredUserAgent.isEmpty()
                     ? WebSettings.getDefaultUserAgent(this) : preferredUserAgent);
         settings.setUserAgentString(captureUserAgent);
@@ -402,6 +413,9 @@ public class ShareActivity extends Activity {
             @Override
             public void onPageFinished(WebView view, String loadedUrl) {
                 super.onPageFinished(view, loadedUrl);
+                if (loadedUrl != null && loadedUrl.toLowerCase(Locale.ROOT).contains("tiktok")) {
+                    CookieManager.getInstance().flush();
+                }
                 String js = "(function() { " +
                         "   try { " +
                         "       if (window.__aboLiveSnifferStarted) return; " +
@@ -683,7 +697,7 @@ public class ShareActivity extends Activity {
                     if (!liveHeaders.has("user-agent")) {
                         // Match the hidden TikTok LIVE WebView UA when the request
                         // interceptor did not provide one.
-                        liveHeaders.put("user-agent", getTikTokLiveDesktopUserAgent());
+                        liveHeaders.put("user-agent", getTikTokLiveUserAgent());
                     }
                     if (!liveHeaders.has("referer") && sourceUrl != null && !sourceUrl.trim().isEmpty()) {
                         liveHeaders.put("referer", sourceUrl);
