@@ -537,6 +537,14 @@ public class BrowserActivity extends Activity {
         return "Mozilla/5.0 (Linux; Android 14; Mobile; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.6478.122 Mobile Safari/537.36";
     }
 
+    // TikTok LIVE uses this device's Android Chromium identity even when
+    // the browser-wide preference is configured as Windows or macOS.
+    private String getTikTokCompatibleUserAgent() {
+        String userAgent = WebSettings.getDefaultUserAgent(this);
+        if (userAgent == null || userAgent.trim().isEmpty()) return getConfiguredUserAgent();
+        return userAgent.replaceAll(";\\s*wv", "").replace("Version/4.0 ", "").trim();
+    }
+
     private void showUserAgentDialog() {
         SharedPreferences prefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
         String[] labels = {
@@ -958,6 +966,9 @@ public class BrowserActivity extends Activity {
                 // (snssdk://) and can end in ERR_CONNECTION_RESET inside Android WebView.
                 // Keep the user in TikTok Web and let its own SPA/player handle the item.
                 String currentUrl = view == null ? activePageUrl : view.getUrl();
+                if (view != null && isTikTokPageUrl(targetUrl)) {
+                    view.getSettings().setUserAgentString(getTikTokCompatibleUserAgent());
+                }
                 if (isTikTokPageUrl(currentUrl) && isTikTokAppRedirectUrl(targetUrl)) {
                     Log.d(TAG, "Blocked TikTok app deep-link; staying in TikTok Web");
                     return true;
@@ -980,6 +991,9 @@ public class BrowserActivity extends Activity {
             public boolean shouldOverrideUrlLoading(WebView view, String targetUrl) {
                 String lower = targetUrl == null ? "" : targetUrl.toLowerCase(Locale.ROOT);
                 String currentUrl = view == null ? activePageUrl : view.getUrl();
+                if (view != null && isTikTokPageUrl(targetUrl)) {
+                    view.getSettings().setUserAgentString(getTikTokCompatibleUserAgent());
+                }
                 if (isTikTokPageUrl(currentUrl) && isTikTokAppRedirectUrl(targetUrl)) {
                     Log.d(TAG, "Blocked TikTok app deep-link; staying in TikTok Web");
                     return true;
@@ -1136,7 +1150,9 @@ public class BrowserActivity extends Activity {
                         youtubeCastPendingFor = "";
                     }
                 }
-                if (loadedUrl != null && isYouTubePageUrl(loadedUrl)) {
+                if (loadedUrl != null && isTikTokPageUrl(loadedUrl)) {
+                    view.getSettings().setUserAgentString(getTikTokCompatibleUserAgent());
+                } else if (loadedUrl != null && isYouTubePageUrl(loadedUrl)) {
                     // Use the actual system WebView Chromium version on YouTube;
                     // the old hard-coded Chrome 126 UA can trigger unsupported-player behavior.
                     view.getSettings().setUserAgentString(getYouTubeCompatibleUserAgent());
@@ -1187,6 +1203,7 @@ public class BrowserActivity extends Activity {
                 injectPopupAndOverlayBlocker(view);
                 injectAdKiller(view);
                 injectTikTokLiveSniffer(view);
+                if (isTikTokLivePage(view.getUrl())) injectTikTokLiveAutoplay(view);
                 injectYouTubePageUrlTracker(view);
                 injectTikTokPageUrlTracker(view);
                 // YouTube extraction starts only after the player reports actual playback
@@ -1344,6 +1361,23 @@ public class BrowserActivity extends Activity {
     private void injectTikTokLiveSniffer(WebView view) {
         // The shared active-player tracker below also handles TikTok LIVE URLs.
         injectAdKiller(view);
+    }
+
+    // TikTok LIVE may load its page while its HTML5 player remains paused.
+    // Try browser-permitted muted autoplay and tap only an explicit Play control.
+    private void injectTikTokLiveAutoplay(WebView view) {
+        if (view == null) return;
+        String js = "(function(){try{" +
+                "if(window.__aboTikTokLiveAutoplayV1)return;window.__aboTikTokLiveAutoplayV1=true;" +
+                "var attempts=0;function start(){try{var vids=document.querySelectorAll('video');" +
+                "for(var i=0;i<vids.length;i++){var v=vids[i];try{v.autoplay=true;v.muted=true;v.playsInline=true;v.setAttribute('playsinline','');" +
+                "if(v.paused&&!v.ended&&v.readyState>=1){var p=v.play();if(p&&p.catch)p.catch(function(){});}}catch(e){}}" +
+                "var bs=document.querySelectorAll('[data-e2e*=\\\"play\\\"],button[aria-label],[role=button][aria-label]');" +
+                "for(var j=0;j<bs.length;j++){var b=bs[j],label=((b.getAttribute('aria-label')||'')+' '+(b.innerText||b.textContent||'')).trim();" +
+                "if(/^(play|play video|تشغيل|استئناف)(\\\\s|$)/i.test(label)&&!b.disabled){try{b.click();}catch(e){}break;}}" +
+                "}catch(e){}}start();var timer=setInterval(function(){start();if(++attempts>=120)clearInterval(timer);},500);" +
+                "}catch(e){}})();";
+        view.evaluateJavascript(js, null);
     }
 
     private void injectAdKiller(WebView view) {
@@ -1819,9 +1853,17 @@ public class BrowserActivity extends Activity {
                             || "sec-fetch-dest".equals(lower) || "sec-ch-ua".equals(lower)
                             || "sec-ch-ua-mobile".equals(lower) || "sec-ch-ua-platform".equals(lower)
                             || "priority".equals(lower))
-                            && value.length() <= 2048 && !value.contains("\\r") && !value.contains("\\n")) {
+                            && value.length() <= 2048 && !value.contains("\r") && !value.contains("\n")) {
                         result.put(lower, value);
                     }
+                }
+            }
+            // If WebView omits User-Agent from the request snapshot, preserve the
+            // actual identity configured on the active WebView.
+            if (!result.containsKey("user-agent") && activeWebView != null) {
+                String actualUserAgent = activeWebView.getSettings().getUserAgentString();
+                if (actualUserAgent != null && !actualUserAgent.trim().isEmpty()) {
+                    result.put("user-agent", actualUserAgent);
                 }
             }
             // WebView does not expose Cookie in every request-header snapshot.
@@ -2418,9 +2460,12 @@ public class BrowserActivity extends Activity {
         }
 
         etUrl.setText(target);
-        // Apply compatibility before the first document script runs. This is scoped
-        // to QFilm only so existing Facebook/Instagram/TikTok behavior is unchanged.
-        if (isQFilmUrl(target)) {
+        // Set TikTok's Android identity before its first document request.
+        // All other sites retain their configured User-Agent behavior.
+        if (isTikTokPageUrl(target)) {
+            current.getSettings().setSupportMultipleWindows(false);
+            current.getSettings().setUserAgentString(getTikTokCompatibleUserAgent());
+        } else if (isQFilmUrl(target)) {
             current.getSettings().setSupportMultipleWindows(false);
             current.getSettings().setUserAgentString(getQFilmCompatibleUserAgent());
         } else if (isYouTubePageUrl(target)) {
@@ -3053,7 +3098,7 @@ public class BrowserActivity extends Activity {
                         || "sec-ch-ua-mobile".equals(lower) || "sec-ch-ua-platform".equals(lower)
                         || "priority".equals(lower))
                         && value.length() <= ("cookie".equals(lower) ? 8192 : 2048)
-                        && !value.contains("\\r") && !value.contains("\\n")) {
+                        && !value.contains("\r") && !value.contains("\n")) {
                     headers.put(lower, value);
                 }
             }
