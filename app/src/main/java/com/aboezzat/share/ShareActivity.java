@@ -787,14 +787,14 @@ public class ShareActivity extends Activity {
                 }
                 mainHandler.post(() -> {
                     if (tikTokDiagnosticUrl != null) {
-                        tikTokDiagnosticUrl.setText("الرابط الملتقط (" + streamType + "):\\n" + candidate);
+                        tikTokDiagnosticUrl.setText("الرابط الملتقط (" + streamType + "):\n" + candidate);
                     }
                     if (tikTokDiagnosticAgent != null) {
                         String liveUa = getTikTokLiveUserAgent();
                         boolean desktopUa = liveUa.toLowerCase(Locale.ROOT).contains("windows nt");
                         tikTokDiagnosticAgent.setText((desktopUa ? "نوع المتصفح: Desktop / Windows" :
-                                "نوع المتصفح: Mobile / Android") + "\\n" + requestContext
-                                + "\\nUser-Agent: " + liveUa);
+                                "نوع المتصفح: Mobile / Android") + "\n" + requestContext
+                                + "\nUser-Agent: " + liveUa);
                     }
                     if (tikTokSendButton != null) tikTokSendButton.setEnabled(true);
                     updateTikTokDiagnosticStatus("اللايف بدأ فعليًا، وانتظرنا 3 ثوانٍ للتأكد من استقرار التشغيل. الرابط جاهز للمراجعة؛ لم يتم إرساله للريسيفر.");
