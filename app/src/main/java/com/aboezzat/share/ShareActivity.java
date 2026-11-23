@@ -68,6 +68,7 @@ public class ShareActivity extends Activity {
     private final Set<String> threadsMp4ProbeRequests = new HashSet<>();
     private final Map<String, String> tikTokLiveRequestHeaders = new HashMap<>();
     private volatile boolean tikTokLiveCaptureActive = false;
+    private volatile String tikTokLiveSourceUrl = "";
     private final Runnable threadsCaptureTimeout = () -> finishThreadsCapture();
 
     @Override
@@ -192,6 +193,7 @@ public class ShareActivity extends Activity {
             // First attempt a fully hidden WebView capture: autoplay muted, detect the
             // LIVE HLS/FLV resource, and cast it without opening the visible browser.
             // Preserve the proven browser route as a fallback if background capture fails.
+            tikTokLiveSourceUrl = url;
             tikTokLiveCaptureActive = true;
             startPlatformSniffer(url, "tiktok_live", 45000L, true);
             return;
@@ -271,6 +273,7 @@ public class ShareActivity extends Activity {
 
                 mainHandler.post(() -> {
                     if (isTikTokLiveUrl(resolvedUrl)) {
+                        tikTokLiveSourceUrl = resolvedUrl;
                         tikTokLiveCaptureActive = true;
                         startPlatformSniffer(resolvedUrl, "tiktok_live", 45000L, true);
                     } else {
@@ -535,7 +538,11 @@ public class ShareActivity extends Activity {
             isCaptured = true;
             mainHandler.post(() -> {
                 if ("tiktok_live".equals(platformType)) {
-                    sendToTv(targetTvIp, reqUrl, false, "https://www.tiktok.com/");
+                    String sourceUrl = tikTokLiveSourceUrl;
+                    if (sourceUrl == null || sourceUrl.trim().isEmpty()) {
+                        sourceUrl = "https://www.tiktok.com/";
+                    }
+                    sendToTv(targetTvIp, reqUrl, false, sourceUrl);
                 } else {
                     sendToTv(targetTvIp, reqUrl, false);
                 }
