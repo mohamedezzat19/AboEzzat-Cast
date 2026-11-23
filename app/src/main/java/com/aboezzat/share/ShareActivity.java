@@ -63,8 +63,12 @@ public class ShareActivity extends Activity {
     private WebView webView;
     private FrameLayout rootLayout;
     private TextView tikTokDiagnosticStatus;
+    private TextView tikTokDiagnosticUrl;
+    private TextView tikTokDiagnosticAgent;
+    private Button tikTokSendButton;
     private boolean isTikTokDiagnosticVisible = false;
     private boolean isCaptured = false;
+    private String pendingTikTokLiveUrl = "";
     private String targetTvIp = "";
     // Threads can expose video and audio as separate DASH resources. Collect both
     // before sending so the Receiver receives a synchronized A/V pair.
@@ -559,10 +563,31 @@ public class ShareActivity extends Activity {
         header.addView(title, new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
+        tikTokSendButton = new Button(this);
+        tikTokSendButton.setText("إرسال للريسيفر للتجربة");
+        tikTokSendButton.setEnabled(false);
+        tikTokSendButton.setOnClickListener(v -> {
+            String capturedUrl = pendingTikTokLiveUrl;
+            if (capturedUrl == null || capturedUrl.trim().isEmpty()) {
+                updateTikTokDiagnosticStatus("لسه مفيش رابط اتلقط لإرساله.");
+                return;
+            }
+            tikTokSendButton.setEnabled(false);
+            updateTikTokDiagnosticStatus("جاري إرسال الرابط الذي اخترته للريسيفر...");
+            String sourceUrl = tikTokLiveSourceUrl;
+            if (sourceUrl == null || sourceUrl.trim().isEmpty()) {
+                sourceUrl = "https://www.tiktok.com/";
+            }
+            sendToTv(targetTvIp, capturedUrl, false, sourceUrl);
+        });
+        header.addView(tikTokSendButton, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
         Button closeButton = new Button(this);
-        closeButton.setText("إغلاق");
+        closeButton.setText("إغلاق بدون إرسال");
         closeButton.setOnClickListener(v -> {
             tikTokLiveCaptureActive = false;
+            pendingTikTokLiveUrl = "";
             isCaptured = true;
             destroyWebView();
             finish();
@@ -581,6 +606,46 @@ public class ShareActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         panel.addView(tikTokDiagnosticStatus, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        tikTokDiagnosticUrl = new TextView(this);
+        tikTokDiagnosticUrl.setText("الرابط الملتقط: لم يتم الالتقاط بعد");
+        tikTokDiagnosticUrl.setTextColor(Color.rgb(180, 225, 255));
+        tikTokDiagnosticUrl.setTextSize(12);
+        tikTokDiagnosticUrl.setTextIsSelectable(true);
+        tikTokDiagnosticUrl.setPadding(16, 8, 16, 8);
+        panel.addView(tikTokDiagnosticUrl, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        tikTokDiagnosticAgent = new TextView(this);
+        String liveUa = getTikTokLiveUserAgent();
+        boolean desktopUa = liveUa.toLowerCase(Locale.ROOT).contains("windows nt");
+        tikTokDiagnosticAgent.setText((desktopUa ? "نوع المتصفح: Desktop / Windows" :
+                "نوع المتصفح: Mobile / Android") + "\nUser-Agent: " + liveUa);
+        tikTokDiagnosticAgent.setTextColor(Color.LTGRAY);
+        tikTokDiagnosticAgent.setTextSize(11);
+        tikTokDiagnosticAgent.setTextIsSelectable(true);
+        tikTokDiagnosticAgent.setPadding(16, 4, 16, 8);
+        panel.addView(tikTokDiagnosticAgent, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        Button copyUrlButton = new Button(this);
+        copyUrlButton.setText("نسخ الرابط الملتقط");
+        copyUrlButton.setOnClickListener(v -> {
+            if (pendingTikTokLiveUrl == null || pendingTikTokLiveUrl.isEmpty()) {
+                Toast.makeText(this, "لم يتم التقاط رابط بعد", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            android.content.ClipboardManager clipboard = (android.content.ClipboardManager)
+                    getSystemService(CLIPBOARD_SERVICE);
+            if (clipboard != null) {
+                clipboard.setPrimaryClip(android.content.ClipData.newPlainText(
+                        "TikTok LIVE URL", pendingTikTokLiveUrl));
+                Toast.makeText(this, "تم نسخ الرابط", Toast.LENGTH_SHORT).show();
+            }
+        });
+        panel.addView(copyUrlButton, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
         panel.addView(liveWebView, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
         rootLayout.addView(panel, new FrameLayout.LayoutParams(
@@ -647,19 +712,24 @@ public class ShareActivity extends Activity {
         if (matched) {
             isCaptured = true;
             if ("tiktok_live".equals(platformType)) {
-                updateTikTokDiagnosticStatus("تم التقاط رابط TikTok LIVE (" +
-                        (lower.contains(".m3u8") ? "HLS" : "FLV") + "). جاري الإرسال للريسيفر...");
+                pendingTikTokLiveUrl = reqUrl;
+                final String streamType = lower.contains(".m3u8") ? "HLS" : "FLV";
+                final String capturedUrl = reqUrl;
+                mainHandler.post(() -> {
+                    if (tikTokDiagnosticUrl != null) {
+                        tikTokDiagnosticUrl.setText("الرابط الملتقط (" + streamType + "):\n" + capturedUrl);
+                    }
+                    if (tikTokSendButton != null) {
+                        tikTokSendButton.setEnabled(true);
+                    }
+                    updateTikTokDiagnosticStatus("تم التقاط رابط البث بنجاح. الرابط ظاهر بالتفصيل، ولم يتم إرساله. افحص صفحة اللايف، وبعدها قرر تبعته للريسيفر للتجربة أم لا.");
+                });
+                // TikTok LIVE capture is manual-review only: never send or close
+                // the diagnostic WebView automatically after finding a stream.
+                return;
             }
             mainHandler.post(() -> {
-                if ("tiktok_live".equals(platformType)) {
-                    String sourceUrl = tikTokLiveSourceUrl;
-                    if (sourceUrl == null || sourceUrl.trim().isEmpty()) {
-                        sourceUrl = "https://www.tiktok.com/";
-                    }
-                    sendToTv(targetTvIp, reqUrl, false, sourceUrl);
-                } else {
-                    sendToTv(targetTvIp, reqUrl, false);
-                }
+                sendToTv(targetTvIp, reqUrl, false);
                 destroyWebView();
             });
         }
