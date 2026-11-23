@@ -967,7 +967,12 @@ public class BrowserActivity extends Activity {
                 // Keep the user in TikTok Web and let its own SPA/player handle the item.
                 String currentUrl = view == null ? activePageUrl : view.getUrl();
                 if (view != null && isTikTokPageUrl(targetUrl)) {
+                    // Apply the Android TikTok UA before the first network request.
+                    // Returning false here can let WebView start navigation with the
+                    // previous browser-wide (possibly desktop) identity.
                     view.getSettings().setUserAgentString(getTikTokCompatibleUserAgent());
+                    view.loadUrl(targetUrl);
+                    return true;
                 }
                 if (isTikTokPageUrl(currentUrl) && isTikTokAppRedirectUrl(targetUrl)) {
                     Log.d(TAG, "Blocked TikTok app deep-link; staying in TikTok Web");
@@ -993,6 +998,8 @@ public class BrowserActivity extends Activity {
                 String currentUrl = view == null ? activePageUrl : view.getUrl();
                 if (view != null && isTikTokPageUrl(targetUrl)) {
                     view.getSettings().setUserAgentString(getTikTokCompatibleUserAgent());
+                    view.loadUrl(targetUrl);
+                    return true;
                 }
                 if (isTikTokPageUrl(currentUrl) && isTikTokAppRedirectUrl(targetUrl)) {
                     Log.d(TAG, "Blocked TikTok app deep-link; staying in TikTok Web");
