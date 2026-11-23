@@ -380,7 +380,7 @@ public class ShareActivity extends Activity {
                                 // Historical TikTok VOD route: send the extracted play URL
                                 // immediately using GET /?url=..., without the newer JSON
                                 // /play envelope or captured browser headers.
-                                sendTikTokLegacyToTv(targetTvIp, play);
+                                sendToTv(targetTvIp, play, false, url);
                                 return;
                             }
                         }
