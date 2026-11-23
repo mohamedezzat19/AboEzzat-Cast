@@ -379,7 +379,17 @@ public class ShareActivity extends Activity {
             mainHandler.removeCallbacks(threadsCaptureTimeout);
         }
         webView = new WebView(this);
-        // TikTok LIVE capture remains invisible; no browser or diagnostic page is shown.
+        // Keep the capture WebView attached so Chromium actually loads the page,
+        // executes the sniffer and requests media. A detached WebView can sit in
+        // a permanent loading state and never expose FLV/HLS requests.
+        FrameLayout.LayoutParams captureParams = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+        rootLayout.addView(webView, 0, captureParams);
+        webView.setAlpha(0.01f);
+        webView.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        webView.setFocusable(false);
+        webView.setFocusableInTouchMode(false);
+        // The capture page stays visually hidden; the existing progress indicator remains above it.
         isTikTokDiagnosticVisible = false;
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
@@ -740,7 +750,11 @@ public class ShareActivity extends Activity {
                 updateTikTokDiagnosticStatus(tikTokLivePlaybackStarted
                         ? "رصدنا رابط البث. بنتأكد إن تشغيل اللايف استقر قبل إظهار زر الإرسال..."
                         : "رصدنا رابطًا من TikTok CDN، لكن مش هنعتبره جاهزًا. مستنيين مشغل اللايف يبدأ فعليًا...");
-                if (tikTokLivePlaybackStarted) scheduleTikTokLiveCandidateCapture();
+                // A real TikTok CDN FLV/HLS request is sufficient evidence to
+                // start the auto-send settle timer; do not wait for a DOM 'playing'
+                // event that may never fire in a background WebView.
+                tikTokLivePlaybackStarted = true;
+                scheduleTikTokLiveCandidateCapture();
                 return;
             }
 
@@ -753,8 +767,7 @@ public class ShareActivity extends Activity {
     }
 
     private synchronized void scheduleTikTokLiveCandidateCapture() {
-        if (isCaptured || !tikTokLivePlaybackStarted
-                || tikTokLiveCandidateUrl == null || tikTokLiveCandidateUrl.isEmpty()
+        if (isCaptured || tikTokLiveCandidateUrl == null || tikTokLiveCandidateUrl.isEmpty()
                 || tikTokLiveCandidateFinalize != null) return;
 
         // Let rotating signed CDN URLs settle, then automatically send the newest
@@ -762,8 +775,7 @@ public class ShareActivity extends Activity {
         tikTokLiveCandidateFinalize = () -> {
             synchronized (ShareActivity.this) {
                 tikTokLiveCandidateFinalize = null;
-                if (isCaptured || !tikTokLivePlaybackStarted
-                        || tikTokLiveCandidateUrl == null || tikTokLiveCandidateUrl.isEmpty()) return;
+                if (isCaptured || tikTokLiveCandidateUrl == null || tikTokLiveCandidateUrl.isEmpty()) return;
                 isCaptured = true;
                 final String candidate = tikTokLiveCandidateUrl;
                 String sourceUrl = tikTokLiveSourceUrl;
