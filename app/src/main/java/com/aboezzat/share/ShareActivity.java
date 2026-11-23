@@ -396,15 +396,11 @@ public class ShareActivity extends Activity {
         }
     }
 
-    // TikTok LIVE has its own User-Agent preference, independent from the
-    // regular browser and all other platforms.
+    // Use the requested Android Chrome identity only for the hidden TikTok LIVE
+    // capture WebView and the matching Receiver request headers. The normal browser
+    // and every other platform keep their own User-Agent unchanged.
     private String getTikTokLiveUserAgent() {
-        String configured = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE)
-                .getString("tiktok_live_user_agent", "").trim();
-        if (!configured.isEmpty()) return configured;
-        String ua = WebSettings.getDefaultUserAgent(this);
-        if (ua == null) return "";
-        return ua.replaceAll(";\\s*wv", "").replace("Version/4.0 ", "").trim();
+        return "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36";
     }
 
     @SuppressLint("SetJavaScriptEnabled")
