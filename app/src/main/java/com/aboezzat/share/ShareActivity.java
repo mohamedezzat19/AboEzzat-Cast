@@ -736,12 +736,12 @@ public class ShareActivity extends Activity {
                 // Treat the CDN URL as a candidate only. A request may appear before
                 // the player starts; wait for actual playback and a 3-second settle.
                 if (!reqUrl.equals(tikTokLiveCandidateUrl)) {
+                    // TikTok may rotate signed FLV/HLS request URLs while the same
+                    // live player is running. Keep the newest candidate, but do not
+                    // restart the settle timer for every CDN request; otherwise a
+                    // continuously active stream can postpone capture forever.
                     tikTokLiveCandidateUrl = reqUrl;
                     tikTokLiveCandidateGeneration++;
-                    if (tikTokLiveCandidateFinalize != null) {
-                        mainHandler.removeCallbacks(tikTokLiveCandidateFinalize);
-                        tikTokLiveCandidateFinalize = null;
-                    }
                 }
                 updateTikTokDiagnosticStatus(tikTokLivePlaybackStarted
                         ? "رصدنا رابط البث. بنتأكد إن تشغيل اللايف استقر قبل إظهار زر الإرسال..."
