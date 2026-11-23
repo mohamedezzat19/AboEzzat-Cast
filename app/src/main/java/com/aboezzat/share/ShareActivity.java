@@ -322,7 +322,7 @@ public class ShareActivity extends Activity {
     private void resolveTikTokShortLink(final String shortUrl) {
         Request request = new Request.Builder()
                 .url(shortUrl)
-                .header("User-Agent", "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 Chrome/122.0.0.0 Mobile Safari/537.36")
+                .header("User-Agent", getConfiguredBrowserUserAgent())
                 .get()
                 .build();
 
@@ -403,7 +403,7 @@ public class ShareActivity extends Activity {
         settings.setDomStorageEnabled(true);
         settings.setDatabaseEnabled(true);
         settings.setMediaPlaybackRequiresUserGesture(false);
-        settings.setUserAgentString("Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36");
+        settings.setUserAgentString(getConfiguredBrowserUserAgent());
 
         webView.addJavascriptInterface(new Object() {
             @JavascriptInterface
@@ -487,11 +487,24 @@ public class ShareActivity extends Activity {
         }
     }
 
-    // Use the requested Android Chrome identity only for the hidden TikTok LIVE
-    // capture WebView and the matching Receiver request headers. The normal browser
-    // and every other platform keep their own User-Agent unchanged.
+    // TikTok LIVE has its own saved User-Agent preference, independent from
+    // the normal browser preference. Keep Android Chrome 122 as the legacy default.
     private String getTikTokLiveUserAgent() {
+        String configured = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE)
+                .getString("tiktok_live_user_agent", "").trim();
+        if (!configured.isEmpty()) return configured;
         return "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36";
+    }
+
+    // Normal browser/TikTok VOD capture follows the browser's own saved selection.
+    private String getConfiguredBrowserUserAgent() {
+        String configured = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE)
+                .getString("browser_user_agent", "").trim();
+        if (!configured.isEmpty()) return configured;
+        String systemDefault = WebSettings.getDefaultUserAgent(this);
+        return systemDefault == null || systemDefault.trim().isEmpty()
+                ? "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36"
+                : systemDefault;
     }
 
     // Historical TikTok LIVE capture: a detached hidden WebView, Android Chrome 122,
@@ -507,8 +520,7 @@ public class ShareActivity extends Activity {
         settings.setDomStorageEnabled(true);
         settings.setDatabaseEnabled(true);
         settings.setMediaPlaybackRequiresUserGesture(false);
-        settings.setUserAgentString(
-                "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36");
+        settings.setUserAgentString(getTikTokLiveUserAgent());
 
         webView.addJavascriptInterface(new Object() {
             @JavascriptInterface
@@ -612,12 +624,9 @@ public class ShareActivity extends Activity {
             cookieManager.setAcceptThirdPartyCookies(webView, true);
         }
 
-        String preferredUserAgent = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE)
-                .getString("browser_user_agent", "").trim();
         String captureUserAgent = "tiktok_live".equals(platformType)
                 ? getTikTokLiveUserAgent()
-                : (preferredUserAgent.isEmpty()
-                    ? WebSettings.getDefaultUserAgent(this) : preferredUserAgent);
+                : getConfiguredBrowserUserAgent();
         settings.setUserAgentString(captureUserAgent);
 
         webView.addJavascriptInterface(new Object() {
@@ -997,7 +1006,7 @@ public class ShareActivity extends Activity {
                         capturedHeaders.putAll(tikTokRequestHeaders);
                     }
                     if (!capturedHeaders.containsKey("user-agent")) {
-                        String ua = WebSettings.getDefaultUserAgent(ShareActivity.this);
+                        String ua = getConfiguredBrowserUserAgent();
                         if (ua != null && !ua.trim().isEmpty()) capturedHeaders.put("user-agent", ua);
                     }
                     String sourceUrl = tikTokRequestSourceUrl;
