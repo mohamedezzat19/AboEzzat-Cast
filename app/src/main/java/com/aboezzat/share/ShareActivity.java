@@ -293,14 +293,14 @@ public class ShareActivity extends Activity {
                             || "sec-fetch-mode".equals(lower) || "sec-fetch-dest".equals(lower)
                             || "sec-ch-ua".equals(lower) || "sec-ch-ua-mobile".equals(lower)
                             || "sec-ch-ua-platform".equals(lower))
-                            && value.length() <= 2048 && !value.contains("\\r") && !value.contains("\\n")) {
+                            && value.length() <= 2048 && !value.contains("\r") && !value.contains("\n")) {
                         tikTokRequestHeaders.put(lower, value);
                     }
                 }
             }
             String cookie = CookieManager.getInstance().getCookie(mediaUrl);
             if (cookie != null && !cookie.isEmpty() && cookie.length() <= 8192
-                    && !cookie.contains("\\r") && !cookie.contains("\\n")) {
+                    && !cookie.contains("\r") && !cookie.contains("\n")) {
                 tikTokRequestHeaders.put("cookie", cookie);
             }
         }
@@ -330,10 +330,13 @@ public class ShareActivity extends Activity {
         client.newCall(request).enqueue(new Callback() {
             @Override
             public void onFailure(Call call, IOException e) {
-                // A failed redirect lookup does not prove the short link is LIVE.
-                // Keep the normal TikTok resolver/fallback route so VOD shares are
-                // not incorrectly forced into the LIVE-only capture branch.
-                mainHandler.post(() -> handleTikTok(shortUrl));
+                // If a short-link redirect cannot be resolved, let the hidden
+                // WebView resolve it and capture either VOD MP4 or LIVE FLV/HLS.
+                tikTokRequestSourceUrl = shortUrl;
+                synchronized (tikTokRequestHeaders) {
+                    tikTokRequestHeaders.clear();
+                }
+                mainHandler.post(() -> startPlatformSniffer(shortUrl, "generic", 45000L, false));
             }
 
             @Override
@@ -1033,7 +1036,7 @@ public class ShareActivity extends Activity {
                         String value = mediaHeaders.get(key);
                         int max = "cookie".equals(key) ? 8192 : 2048;
                         if (value != null && !value.isEmpty() && value.length() <= max
-                                && !value.contains("\\r") && !value.contains("\\n")) {
+                                && !value.contains("\r") && !value.contains("\n")) {
                             supplied.put(key, value);
                         }
                     }
