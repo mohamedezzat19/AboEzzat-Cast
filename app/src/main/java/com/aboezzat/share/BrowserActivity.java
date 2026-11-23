@@ -636,7 +636,7 @@ public class BrowserActivity extends Activity {
                                 .setPositiveButton("حفظ", (d, w) -> {
                                     String custom = input.getText().toString().trim();
                                     if (custom.length() < 20 || custom.length() > 1024
-                                            || custom.indexOf('\\r') >= 0 || custom.indexOf('\\n') >= 0) {
+                                            || custom.indexOf('\r') >= 0 || custom.indexOf('\n') >= 0) {
                                         Toast.makeText(this, "وكيل المستخدم غير صالح", Toast.LENGTH_SHORT).show();
                                         return;
                                     }
