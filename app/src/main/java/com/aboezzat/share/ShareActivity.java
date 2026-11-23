@@ -737,31 +737,20 @@ public class ShareActivity extends Activity {
         }
 
         if (matched) {
-            if ("tiktok_live".equals(platformType)) {
-                // Treat the CDN URL as a candidate only. A request may appear before
-                // the player starts; wait for actual playback and a 3-second settle.
-                if (!reqUrl.equals(tikTokLiveCandidateUrl)) {
-                    // TikTok may rotate signed FLV/HLS request URLs while the same
-                    // live player is running. Keep the newest candidate, but do not
-                    // restart the settle timer for every CDN request; otherwise a
-                    // continuously active stream can postpone capture forever.
-                    tikTokLiveCandidateUrl = reqUrl;
-                    tikTokLiveCandidateGeneration++;
-                }
-                updateTikTokDiagnosticStatus(tikTokLivePlaybackStarted
-                        ? "رصدنا رابط البث. بنتأكد إن تشغيل اللايف استقر قبل إظهار زر الإرسال..."
-                        : "رصدنا رابطًا من TikTok CDN، لكن مش هنعتبره جاهزًا. مستنيين مشغل اللايف يبدأ فعليًا...");
-                // A real TikTok CDN FLV/HLS request is sufficient evidence to
-                // start the auto-send settle timer; do not wait for a DOM 'playing'
-                // event that may never fire in a background WebView.
-                tikTokLivePlaybackStarted = true;
-                scheduleTikTokLiveCandidateCapture();
-                return;
-            }
-
             isCaptured = true;
             mainHandler.post(() -> {
-                sendToTv(targetTvIp, reqUrl, false);
+                if ("tiktok_live".equals(platformType)) {
+                    // Restore the proven automatic-send behavior: once the hidden
+                    // WebView sees the real TikTok LIVE FLV/HLS request, forward it
+                    // immediately with the headers captured from that same request.
+                    String sourceUrl = tikTokLiveSourceUrl;
+                    if (sourceUrl == null || sourceUrl.trim().isEmpty()) {
+                        sourceUrl = "https://www.tiktok.com/";
+                    }
+                    sendToTv(targetTvIp, reqUrl, false, sourceUrl);
+                } else {
+                    sendToTv(targetTvIp, reqUrl, false);
+                }
                 destroyWebView();
             });
         }
