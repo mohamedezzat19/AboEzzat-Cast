@@ -1947,7 +1947,14 @@ public class BrowserActivity extends Activity {
         // from the canonical watch URL instead.
         if (isBlockedAdUrl(mediaUrl)) return 0;
         if (lower.contains("googlevideo.com") && lower.contains("/videoplayback")) return 0;
-        if (lower.matches(".*\\.(jpg|jpeg|png|webp|gif|bmp|svg|ts|m4s|js|css)(?:[?#].*)?$")) return 0;
+        // Never offer image resources as castable video, including extension-less
+        // animated GIF/WebP endpoints whose MIME type is carried in the query.
+        if (lower.matches(".*\\.(jpg|jpeg|png|webp|gif|gifv|apng|avif|bmp|svg|ts|m4s|js|css)(?:[?#].*)?$")
+                || lower.contains("mime_type=image") || lower.contains("mime-type=image")
+                || lower.contains("mime=image") || lower.contains("content_type=image")
+                || lower.contains("contenttype=image") || lower.contains("image/gif")
+                || lower.contains("image/webp") || lower.contains("image/apng")
+                || lower.contains("format=gif") || lower.contains("format=webp")) return 0;
 
         // Instagram/Threads frequently expose DASH tracks as extension-less CDN
         // URLs whose media type is carried in mime_type rather than mime.
