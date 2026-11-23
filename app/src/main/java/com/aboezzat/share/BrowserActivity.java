@@ -1089,13 +1089,31 @@ public class BrowserActivity extends Activity {
                 boolean tikTokLiveNetworkCapture = view == activeWebView
                         && isTikTokLivePage(requestPageUrl) && isGenericAutoSniffActive();
 
-                // Ignore every page/list/thumbnail request until a specific visible
-                // player has been activated, except for the narrowly-scoped TikTok LIVE fallback.
+                // TikTok VOD sometimes loads its signed MP4 CDN request from a player
+                // frame before the DOM video tracker can arm. Capture only a strong
+                // /video/tos/ media URL belonging to the current TikTok page; this
+                // does not arm on thumbnails, profile images, or unrelated requests.
+                boolean tikTokVodDirectMedia = view == activeWebView
+                        && isTikTokPageUrl(requestPageUrl) && !isTikTokLivePage(requestPageUrl)
+                        && "GET".equalsIgnoreCase(request.getMethod())
+                        && isTikTokCdnVideoUrl(reqUrl)
+                        && classifyCapturedMedia(reqUrl) == 1;
+                if (tikTokVodDirectMedia && activePlaybackKey.isEmpty()) {
+                    synchronized (BrowserActivity.this) {
+                        if (activePlaybackKey.isEmpty()) {
+                            activePlaybackKey = "tiktok-vod:" + requestPageUrl;
+                        }
+                    }
+                }
+
+                // Ignore every page/list/thumbnail request until a specific
+                // player has been activated, except for the narrowly-scoped TikTok LIVE
+                // fallback and a verified direct TikTok VOD media request.
                 boolean dramaLivePlayerActive = isDramaLivePage(requestPageUrl)
                         && activePlaybackKey.startsWith("dramalive-frame:")
                         && System.currentTimeMillis() - activePlayerFrameActivatedAtMs < 10 * 60 * 1000L;
                 if (!dedicatedSocialPage && view == activeWebView
-                        && (!activePlaybackKey.isEmpty() || tikTokLiveNetworkCapture)) {
+                        && (!activePlaybackKey.isEmpty() || tikTokLiveNetworkCapture || tikTokVodDirectMedia)) {
                     if (tikTokLiveNetworkCapture && activePlaybackKey.isEmpty()
                             && isTikTokLiveStreamCandidate(reqUrl)) {
                         synchronized (BrowserActivity.this) {
