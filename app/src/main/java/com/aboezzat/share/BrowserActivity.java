@@ -498,7 +498,7 @@ public class BrowserActivity extends Activity {
         if (anchor == null) return;
         // Keep one flat menu: each browser action appears once and opens its
         // destination directly instead of chaining into another menu.
-        android.widget.PopupMenu menu = new android.widget.PopupMenu(this, anchor);
+        android.widget.PopupMenu menu = new android.widget.PopupMenu(new android.view.ContextThemeWrapper(this, R.style.ModernPopupTheme), anchor);
         menu.getMenu().add("مدير التنزيلات").setOnMenuItemClickListener(item -> { showBrowserDownloadsDialog(); return true; });
         menu.getMenu().add("تحديث الصفحة").setOnMenuItemClickListener(item -> { WebView current = getCurrentWebView(); if (current != null) current.reload(); return true; });
         menu.getMenu().add("سجل التصفح").setOnMenuItemClickListener(item -> { showBrowserHistoryDialog(); return true; });
@@ -576,7 +576,7 @@ public class BrowserActivity extends Activity {
         if (current.equals(prefs.getString("browser_user_agent_custom", "").trim())) {
             selected = values.length - 1;
         }
-        new AlertDialog.Builder(this)
+        new AlertDialog.Builder(this, R.style.ModernDialogTheme)
                 .setTitle("اختيار وكيل المستخدم")
                 .setSingleChoiceItems(labels, selected, (dialog, which) -> {
                     if (which == labels.length - 1) {
@@ -585,7 +585,7 @@ public class BrowserActivity extends Activity {
                         input.setMinLines(2);
                         input.setText(prefs.getString("browser_user_agent_custom", ""));
                         input.setHint("الصق User-Agent هنا");
-                        new AlertDialog.Builder(this)
+                        new AlertDialog.Builder(this, R.style.ModernDialogTheme)
                                 .setTitle("وكيل مستخدم مخصص")
                                 .setView(input)
                                 .setNegativeButton("إلغاء", null)
@@ -635,7 +635,7 @@ public class BrowserActivity extends Activity {
         if (current.equals(prefs.getString("tiktok_live_user_agent_custom", "").trim())) {
             selected = values.length - 1;
         }
-        new AlertDialog.Builder(this)
+        new AlertDialog.Builder(this, R.style.ModernDialogTheme)
                 .setTitle("وكيل مستخدم TikTok LIVE فقط")
                 .setSingleChoiceItems(labels, selected, (dialog, which) -> {
                     if (which == labels.length - 1) {
@@ -644,7 +644,7 @@ public class BrowserActivity extends Activity {
                         input.setMinLines(2);
                         input.setText(prefs.getString("tiktok_live_user_agent_custom", ""));
                         input.setHint("الصق User-Agent الخاص بـ TikTok LIVE");
-                        new AlertDialog.Builder(this)
+                        new AlertDialog.Builder(this, R.style.ModernDialogTheme)
                                 .setTitle("User-Agent مخصص لـ TikTok LIVE")
                                 .setView(input)
                                 .setNegativeButton("إلغاء", null)
@@ -676,7 +676,7 @@ public class BrowserActivity extends Activity {
         Collections.sort(urls, (a, b) -> Long.compare(
                 prefs.getLong("history_time_" + b, 0L), prefs.getLong("history_time_" + a, 0L)));
         if (urls.isEmpty()) {
-            new AlertDialog.Builder(this).setTitle("سجل التصفح")
+            new AlertDialog.Builder(this, R.style.ModernDialogTheme).setTitle("سجل التصفح")
                     .setMessage("لا توجد مواقع في سجل التصفح حتى الآن.")
                     .setPositiveButton("إغلاق", null).show();
             return;
@@ -701,7 +701,7 @@ public class BrowserActivity extends Activity {
                 return row;
             }
         });
-        AlertDialog dialog = new AlertDialog.Builder(this).setTitle("سجل التصفح • " + urls.size())
+        AlertDialog dialog = new AlertDialog.Builder(this, R.style.ModernDialogTheme).setTitle("سجل التصفح • " + urls.size())
                 .setView(list).setNegativeButton("إغلاق", null)
                 .setNeutralButton("مسح السجل", (d, w) -> {
                     prefs.edit().putStringSet("browser_history", new HashSet<String>())
@@ -744,7 +744,7 @@ public class BrowserActivity extends Activity {
         Collections.sort(entries, (a, b) -> a.substring(0, a.indexOf('|'))
                 .compareToIgnoreCase(b.substring(0, b.indexOf('|'))));
         if (entries.isEmpty()) {
-            new AlertDialog.Builder(this).setTitle("المفضلة والمواقع المحفوظة")
+            new AlertDialog.Builder(this, R.style.ModernDialogTheme).setTitle("المفضلة والمواقع المحفوظة")
                     .setMessage("لم تحفظ أي مواقع بعد. افتح موقعاً ثم اختر المفضلة من قائمة المتصفح.")
                     .setPositiveButton("حسنًا", null).show();
             return;
@@ -765,7 +765,7 @@ public class BrowserActivity extends Activity {
                 return row;
             }
         });
-        AlertDialog dialog = new AlertDialog.Builder(this)
+        AlertDialog dialog = new AlertDialog.Builder(this, R.style.ModernDialogTheme)
                 .setTitle("المفضلة والمواقع المحفوظة • " + entries.size())
                 .setView(list).setNegativeButton("إغلاق", null).create();
         list.setOnItemClickListener((parent, view, position, id) -> {
@@ -2318,7 +2318,7 @@ public class BrowserActivity extends Activity {
         value.setTextDirection(View.TEXT_DIRECTION_LTR);
         value.setTextColor(Color.WHITE);
         value.setPadding(dp(18), dp(14), dp(18), dp(14));
-        new AlertDialog.Builder(this)
+        new AlertDialog.Builder(this, R.style.ModernDialogTheme)
                 .setTitle(item.mediaType == 2 ? "رابط مسار الصوت" : item.mediaType == 3
                         ? "رابط صفحة الموقع" : "رابط الفيديو الملتقط")
                 .setView(value)
@@ -3130,7 +3130,7 @@ public class BrowserActivity extends Activity {
                 "🎵 تحميل الصوت فقط (Clean Audio)"
         };
 
-        new AlertDialog.Builder(this)
+        new AlertDialog.Builder(this, R.style.ModernDialogTheme)
                 .setTitle(media.title)
                 .setItems(options, (dialog, which) -> {
                     if (which == 0) {
@@ -3623,7 +3623,7 @@ public class BrowserActivity extends Activity {
         input.setHint("الصق رابط بث M3U8 أو FLV");
         input.setTextColor(Color.WHITE);
         input.setHintTextColor(Color.GRAY);
-        new AlertDialog.Builder(this)
+        new AlertDialog.Builder(this, R.style.ModernDialogTheme)
                 .setTitle("تشغيل رابط IPTV")
                 .setView(input)
                 .setPositiveButton("بث إلى الشاشة", (dialog, which) -> {
@@ -3646,7 +3646,7 @@ public class BrowserActivity extends Activity {
         input.setPadding(dp(14), dp(12), dp(14), dp(12));
         input.setText(getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE)
                 .getString("last_fg_code", ""));
-        new AlertDialog.Builder(this)
+        new AlertDialog.Builder(this, R.style.ModernDialogTheme)
                 .setTitle("📺 تشغيل FG Code")
                 .setMessage("أدخل الكود الخاص بك لتحميل قائمة القنوات بصيغة M3U.")
                 .setView(input)
@@ -3696,7 +3696,7 @@ public class BrowserActivity extends Activity {
         client.newCall(request).enqueue(new Callback() {
             @Override public void onFailure(Call call, IOException e) {
                 String reason = e.getClass().getSimpleName() + ": " + e.getMessage();
-                runOnUiThread(() -> new AlertDialog.Builder(BrowserActivity.this)
+                runOnUiThread(() -> new AlertDialog.Builder(BrowserActivity.this, R.style.ModernDialogTheme)
                         .setTitle("تعذر الاتصال بـ FG Code")
                         .setMessage("لم نتمكن من الوصول إلى fgcode.org.\nالتفصيل: " + reason
                                 + "\n\nتأكد من اتصال الإنترنت أو جرّب فتح الرابط في المتصفح.")
@@ -3711,13 +3711,13 @@ public class BrowserActivity extends Activity {
                 List<CapturedMedia> channels = parseFgM3u(body);
                 runOnUiThread(() -> {
                     if (status < 200 || status >= 300) {
-                        new AlertDialog.Builder(BrowserActivity.this)
+                        new AlertDialog.Builder(BrowserActivity.this, R.style.ModernDialogTheme)
                                 .setTitle("خدمة FG Code رفضت الطلب")
                                 .setMessage("رمز الاستجابة: " + status + "\nالرابط: " + finalUrl)
                                 .setPositiveButton("إغلاق", null).show();
                     } else if (channels.isEmpty()) {
                         String preview = body.length() > 350 ? body.substring(0, 350) : body;
-                        new AlertDialog.Builder(BrowserActivity.this)
+                        new AlertDialog.Builder(BrowserActivity.this, R.style.ModernDialogTheme)
                                 .setTitle("لم يتم العثور على قنوات في هذا الكود")
                                 .setMessage("استجابة الخدمة ليست قائمة M3U تحتوي على قنوات.\nنوع المحتوى: "
                                         + contentType + "\nالرابط النهائي: " + finalUrl
@@ -3756,11 +3756,11 @@ public class BrowserActivity extends Activity {
     private void showFgChannelsDialog(List<CapturedMedia> channels, String code) {
         String[] names = new String[channels.size()];
         for (int i = 0; i < channels.size(); i++) names[i] = channels.get(i).title;
-        new AlertDialog.Builder(this)
+        new AlertDialog.Builder(this, R.style.ModernDialogTheme)
                 .setTitle("قنوات FG • " + channels.size() + " قناة")
                 .setItems(names, (dialog, which) -> {
                     CapturedMedia selected = channels.get(which);
-                    new AlertDialog.Builder(this).setTitle(selected.title)
+                    new AlertDialog.Builder(this, R.style.ModernDialogTheme).setTitle(selected.title)
                             .setItems(new String[]{"📺 بث القناة إلى AboEzzat Receiver", "▶️ تشغيل الرابط في المتصفح"},
                                     (d, action) -> {
                                         if (action == 0) {
@@ -3815,7 +3815,7 @@ public class BrowserActivity extends Activity {
         scroll.addView(rows);
         content.addView(scroll, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(360)));
-        AlertDialog dialog = new AlertDialog.Builder(this)
+        AlertDialog dialog = new AlertDialog.Builder(this, R.style.ModernDialogTheme)
                 .setTitle("علامات التبويب المفتوحة")
                 .setView(content)
                 .setPositiveButton("＋ تبويب جديد", (d, w) -> addNewTab("about:home"))
