@@ -377,9 +377,8 @@ public class ShareActivity extends Activity {
                             String play = data.optString("play");
                             if (!play.isEmpty()) {
                                 if (!play.startsWith("http")) play = "https://www.tikwm.com" + play;
-                                // Historical TikTok VOD route: send the extracted play URL
-                                // immediately using GET /?url=..., without the newer JSON
-                                // /play envelope or captured browser headers.
+                                // Send the extracted TikTok VOD URL through the Receiver playback
+                                // endpoint, keeping long CDN URLs out of the HTTP request line.
                                 sendToTv(targetTvIp, play, false, url);
                                 return;
                             }
