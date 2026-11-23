@@ -687,10 +687,15 @@ public class BrowserActivity extends Activity {
             labels.add(title + "\\n" + url);
         }
         android.widget.ListView list = new android.widget.ListView(this);
+        list.setBackgroundColor(Color.rgb(16, 26, 44));
+        list.setDivider(new android.graphics.drawable.ColorDrawable(Color.rgb(43, 59, 80)));
+        list.setDividerHeight(dp(1));
         list.setAdapter(new android.widget.ArrayAdapter<>(this, android.R.layout.simple_list_item_2,
                 android.R.id.text1, labels) {
             @Override public View getView(int position, View convertView, ViewGroup parent) {
                 View row = super.getView(position, convertView, parent);
+                row.setBackgroundColor(Color.rgb(23, 35, 54));
+                row.setPadding(dp(14), dp(10), dp(14), dp(10));
                 TextView first = row.findViewById(android.R.id.text1);
                 TextView second = row.findViewById(android.R.id.text2);
                 String url = urls.get(position);
@@ -750,10 +755,15 @@ public class BrowserActivity extends Activity {
             return;
         }
         android.widget.ListView list = new android.widget.ListView(this);
+        list.setBackgroundColor(Color.rgb(16, 26, 44));
+        list.setDivider(new android.graphics.drawable.ColorDrawable(Color.rgb(43, 59, 80)));
+        list.setDividerHeight(dp(1));
         list.setAdapter(new android.widget.ArrayAdapter<String>(this,
                 android.R.layout.simple_list_item_2, android.R.id.text1, entries) {
             @Override public View getView(int position, View convertView, ViewGroup parent) {
                 View row = super.getView(position, convertView, parent);
+                row.setBackgroundColor(Color.rgb(23, 35, 54));
+                row.setPadding(dp(14), dp(10), dp(14), dp(10));
                 String entry = entries.get(position);
                 int split = entry.indexOf('|');
                 TextView title = row.findViewById(android.R.id.text1);
