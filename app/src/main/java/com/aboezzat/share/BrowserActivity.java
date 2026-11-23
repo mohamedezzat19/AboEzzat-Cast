@@ -2833,7 +2833,7 @@ public class BrowserActivity extends Activity {
             return;
         }
 
-        final Dialog dialog = new Dialog(this);
+        final Dialog dialog = new Dialog(this, R.style.ModernDialogTheme);
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
         dialog.setContentView(buildMediaListView(dialog));
         if (dialog.getWindow() != null) {
