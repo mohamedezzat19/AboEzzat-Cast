@@ -206,12 +206,10 @@ public class ShareActivity extends Activity {
         }
 
         if (isTikTokLiveUrl(lowerUrl)) {
-            // First attempt a fully hidden WebView capture: autoplay muted, detect the
-            // LIVE HLS/FLV resource, and cast it without opening the visible browser.
-            // Preserve the proven browser route as a fallback if background capture fails.
+            // Capture LIVE in the background and send its stable CDN URL directly.
             tikTokLiveSourceUrl = url;
             tikTokLiveCaptureActive = true;
-            startPlatformSniffer(url, "tiktok_live", 45000L, true);
+            startPlatformSniffer(url, "tiktok_live", 45000L, false);
             return;
         }
 
@@ -277,9 +275,12 @@ public class ShareActivity extends Activity {
         client.newCall(request).enqueue(new Callback() {
             @Override
             public void onFailure(Call call, IOException e) {
-                // If TikTok cannot resolve the shared short link, open it in the
-                // app browser instead of leaving the user at a failed-capture toast.
-                mainHandler.post(() -> openTikTokLiveInBrowser(shortUrl));
+                // Keep short-link resolution and capture fully in the background.
+                mainHandler.post(() -> {
+                    tikTokLiveSourceUrl = shortUrl;
+                    tikTokLiveCaptureActive = true;
+                    startPlatformSniffer(shortUrl, "tiktok_live", 45000L, false);
+                });
             }
 
             @Override
@@ -291,7 +292,7 @@ public class ShareActivity extends Activity {
                     if (isTikTokLiveUrl(resolvedUrl)) {
                         tikTokLiveSourceUrl = resolvedUrl;
                         tikTokLiveCaptureActive = true;
-                        startPlatformSniffer(resolvedUrl, "tiktok_live", 45000L, true);
+                        startPlatformSniffer(resolvedUrl, "tiktok_live", 45000L, false);
                     } else {
                         // Ordinary TikTok posts retain their original Tikwm route.
                         handleTikTok(shortUrl);
@@ -335,20 +336,15 @@ public class ShareActivity extends Activity {
         }
     }
 
-    // TikTok LIVE may expose a desktop autoplay/player flow that differs from
-    // its mobile WebView flow. Keep this override isolated to the hidden LIVE
-    // capture WebView; the user's browser UA preference remains unchanged elsewhere.
-    // Match TikTok LIVE capture to the actual Android WebView used by the browser.
+    // TikTok LIVE has its own User-Agent preference, independent from the
+    // regular browser and all other platforms.
     private String getTikTokLiveUserAgent() {
+        String configured = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE)
+                .getString("tiktok_live_user_agent", "").trim();
+        if (!configured.isEmpty()) return configured;
         String ua = WebSettings.getDefaultUserAgent(this);
         if (ua == null) return "";
-        // TikTok LIVE can expose a different player flow to desktop browsers.
-        // Keep this desktop identity isolated to the hidden LIVE capture WebView.
-        return ua.replaceFirst("\\([^)]*\\)", "(Windows NT 10.0; Win64; x64)")
-                .replace("; wv", "")
-                .replace("Version/4.0 ", "")
-                .replace(" Mobile", "")
-                .trim();
+        return ua.replaceAll(";\\s*wv", "").replace("Version/4.0 ", "").trim();
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -383,9 +379,8 @@ public class ShareActivity extends Activity {
             mainHandler.removeCallbacks(threadsCaptureTimeout);
         }
         webView = new WebView(this);
-        if ("tiktok_live".equals(platformType)) {
-            showTikTokDiagnosticWindow(webView);
-        }
+        // TikTok LIVE capture remains invisible; no browser or diagnostic page is shown.
+        isTikTokDiagnosticVisible = false;
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
@@ -541,16 +536,15 @@ public class ShareActivity extends Activity {
 
         mainHandler.postDelayed(() -> {
             if (!isCaptured) {
-                if ("tiktok_live".equals(platformType) && isTikTokDiagnosticVisible) {
-                    // Keep the same visible WebView alive so the user can inspect
-                    // login prompts/player state and late CDN requests.
-                    updateTikTokDiagnosticStatus("لسه ما التقطناش رابط البث بعد. الصفحة مفتوحة للمراقبة؛ استنى ظهور اللايف أو رسالة تسجيل الدخول.");
-                    return;
-                }
-                // Ignore any late WebView resource callbacks after falling back.
+                // Never open a visible web page for TikTok LIVE. If background
+                // capture fails, stop and leave all other platform routes intact.
                 isCaptured = true;
                 destroyWebView();
-                if (openBrowserOnTimeout) {
+                if ("tiktok_live".equals(platformType)) {
+                    tikTokLiveCaptureActive = false;
+                    Toast.makeText(ShareActivity.this, "تعذر التقاط رابط TikTok LIVE تلقائيًا", Toast.LENGTH_SHORT).show();
+                    finish();
+                } else if (openBrowserOnTimeout) {
                     openTikTokLiveInBrowser(url);
                 } else if ("threads".equals(platformType)) {
                     openThreadsInBrowser(url);
@@ -763,9 +757,8 @@ public class ShareActivity extends Activity {
                 || tikTokLiveCandidateUrl == null || tikTokLiveCandidateUrl.isEmpty()
                 || tikTokLiveCandidateFinalize != null) return;
 
-        // Start one settle window. New signed CDN URLs may arrive while the
-        // player is healthy; checkAndSendMedia keeps the newest candidate.
-        // Do not cancel/restart this timer for every segment/request.
+        // Let rotating signed CDN URLs settle, then automatically send the newest
+        // FLV/HLS URL and the exact captured request headers to the Receiver.
         tikTokLiveCandidateFinalize = () -> {
             synchronized (ShareActivity.this) {
                 tikTokLiveCandidateFinalize = null;
@@ -773,33 +766,13 @@ public class ShareActivity extends Activity {
                         || tikTokLiveCandidateUrl == null || tikTokLiveCandidateUrl.isEmpty()) return;
                 isCaptured = true;
                 final String candidate = tikTokLiveCandidateUrl;
-                pendingTikTokLiveUrl = candidate;
-                final String streamType = candidate.toLowerCase(Locale.ROOT).contains(".m3u8") ? "HLS" : "FLV";
-                final String requestContext;
-                synchronized (tikTokLiveRequestHeaders) {
-                    requestContext = "بيانات طلب البث: UA=" + tikTokLiveRequestHeaders.containsKey("user-agent")
-                            + "، Referer=" + tikTokLiveRequestHeaders.containsKey("referer")
-                            + "، Origin=" + tikTokLiveRequestHeaders.containsKey("origin")
-                            + "، Cookie=" + tikTokLiveRequestHeaders.containsKey("cookie")
-                            + "، Sec-Fetch=" + (tikTokLiveRequestHeaders.containsKey("sec-fetch-site")
-                                || tikTokLiveRequestHeaders.containsKey("sec-fetch-mode")
-                                || tikTokLiveRequestHeaders.containsKey("sec-fetch-dest"))
-                            + "، عدد الهيدرز=" + tikTokLiveRequestHeaders.size();
+                String sourceUrl = tikTokLiveSourceUrl;
+                if (sourceUrl == null || sourceUrl.trim().isEmpty()) {
+                    sourceUrl = "https://www.tiktok.com/";
                 }
-                mainHandler.post(() -> {
-                    if (tikTokDiagnosticUrl != null) {
-                        tikTokDiagnosticUrl.setText("الرابط الملتقط (" + streamType + "):\n" + candidate);
-                    }
-                    if (tikTokDiagnosticAgent != null) {
-                        String liveUa = getTikTokLiveUserAgent();
-                        boolean desktopUa = liveUa.toLowerCase(Locale.ROOT).contains("windows nt");
-                        tikTokDiagnosticAgent.setText((desktopUa ? "نوع المتصفح: Desktop / Windows" :
-                                "نوع المتصفح: Mobile / Android") + "\n" + requestContext
-                                + "\nUser-Agent: " + liveUa);
-                    }
-                    if (tikTokSendButton != null) tikTokSendButton.setEnabled(true);
-                    updateTikTokDiagnosticStatus("اللايف بدأ فعليًا، وانتظرنا 3 ثوانٍ للتأكد من استقرار التشغيل. الرابط جاهز للمراجعة؛ لم يتم إرساله للريسيفر.");
-                });
+                tikTokLiveCaptureActive = true;
+                destroyWebView();
+                sendToTv(targetTvIp, candidate, false, sourceUrl);
             }
         };
         mainHandler.postDelayed(tikTokLiveCandidateFinalize, 3000L);
