@@ -6,4 +6,22 @@
         <item name="colorAccent">#00B8D9</item>
         <item name="colorControlHighlight">#6600B8D9</item>
     </style>
+
+    <!-- Consistent dark, rounded dialog surface for every app popup. -->
+    <style name="ModernDialogTheme" parent="@android:style/Theme.Material.Light.Dialog.Alert">
+        <item name="android:colorAccent">#27B9F5</item>
+        <item name="android:textColorPrimary">#F4F7FF</item>
+        <item name="android:textColorSecondary">#B8C6DF</item>
+        <item name="android:windowBackground">@drawable/bg_modern_dialog</item>
+        <item name="android:windowMinWidthMajor">88%</item>
+        <item name="android:windowMinWidthMinor">88%</item>
+    </style>
+
+    <!-- PopupMenu is hosted in a dark material overlay to match the dialogs. -->
+    <style name="ModernPopupTheme" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:colorAccent">#27B9F5</item>
+        <item name="android:textColorPrimary">#F4F7FF</item>
+        <item name="android:popupMenuStyle">@android:style/Widget.Material.PopupMenu</item>
+        <item name="android:popupBackground">@drawable/bg_modern_dialog</item>
+    </style>
 </resources>
