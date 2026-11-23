@@ -715,9 +715,27 @@ public class ShareActivity extends Activity {
                 pendingTikTokLiveUrl = reqUrl;
                 final String streamType = lower.contains(".m3u8") ? "HLS" : "FLV";
                 final String capturedUrl = reqUrl;
+                final String requestContext;
+                synchronized (tikTokLiveRequestHeaders) {
+                    requestContext = "بيانات طلب البث: UA=" + tikTokLiveRequestHeaders.containsKey("user-agent")
+                            + "، Referer=" + tikTokLiveRequestHeaders.containsKey("referer")
+                            + "، Origin=" + tikTokLiveRequestHeaders.containsKey("origin")
+                            + "، Cookie=" + tikTokLiveRequestHeaders.containsKey("cookie")
+                            + "، Sec-Fetch=" + (tikTokLiveRequestHeaders.containsKey("sec-fetch-site")
+                                || tikTokLiveRequestHeaders.containsKey("sec-fetch-mode")
+                                || tikTokLiveRequestHeaders.containsKey("sec-fetch-dest"))
+                            + "، عدد الهيدرز=" + tikTokLiveRequestHeaders.size();
+                }
                 mainHandler.post(() -> {
                     if (tikTokDiagnosticUrl != null) {
                         tikTokDiagnosticUrl.setText("الرابط الملتقط (" + streamType + "):\n" + capturedUrl);
+                    }
+                    if (tikTokDiagnosticAgent != null) {
+                        String liveUa = getTikTokLiveUserAgent();
+                        boolean desktopUa = liveUa.toLowerCase(Locale.ROOT).contains("windows nt");
+                        tikTokDiagnosticAgent.setText((desktopUa ? "نوع المتصفح: Desktop / Windows" :
+                                "نوع المتصفح: Mobile / Android") + "\n" + requestContext
+                                + "\nUser-Agent: " + liveUa);
                     }
                     if (tikTokSendButton != null) {
                         tikTokSendButton.setEnabled(true);
