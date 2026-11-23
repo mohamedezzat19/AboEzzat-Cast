@@ -409,14 +409,6 @@ public class ShareActivity extends Activity {
             }
 
             @Override
-            public void onPageFinished(WebView view, String loadedUrl) {
-                super.onPageFinished(view, loadedUrl);
-                if ("tiktok_live".equals(platformType)) {
-                    updateTikTokDiagnosticStatus("الصفحة اتحملت. جاري فحص مشغل اللايف والتقاط رابط البث...");
-                }
-            }
-
-            @Override
             public void onReceivedError(WebView view, WebResourceRequest request,
                                         android.webkit.WebResourceError error) {
                 super.onReceivedError(view, request, error);
@@ -466,6 +458,9 @@ public class ShareActivity extends Activity {
             @Override
             public void onPageFinished(WebView view, String loadedUrl) {
                 super.onPageFinished(view, loadedUrl);
+                if ("tiktok_live".equals(platformType)) {
+                    updateTikTokDiagnosticStatus("الصفحة اتحملت. جاري فحص مشغل اللايف والتقاط رابط البث...");
+                }
                 if (loadedUrl != null && loadedUrl.toLowerCase(Locale.ROOT).contains("tiktok")) {
                     CookieManager.getInstance().flush();
                 }
