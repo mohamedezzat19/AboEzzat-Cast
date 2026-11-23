@@ -525,6 +525,7 @@ public class BrowserActivity extends Activity {
         });
         menu.getMenu().add("مسح الكوكيز وبيانات المواقع").setOnMenuItemClickListener(item -> { clearBrowserSiteData(); return true; });
         menu.getMenu().add("وكيل المستخدم (User-Agent)").setOnMenuItemClickListener(item -> { showUserAgentDialog(); return true; });
+        menu.getMenu().add("وكيل مستخدم TikTok LIVE").setOnMenuItemClickListener(item -> { showTikTokLiveUserAgentDialog(); return true; });
         // FG Code must be added to the actual browser overflow menu used by the top-right button.
         menu.show();
     }
@@ -593,6 +594,60 @@ public class BrowserActivity extends Activity {
                         prefs.edit().putString("browser_user_agent", values[which]).apply();
                         dialog.dismiss();
                         Toast.makeText(this, "تم حفظ وكيل المستخدم: " + labels[which], Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setNegativeButton("إغلاق", null)
+                .show();
+    }
+
+    private void showTikTokLiveUserAgentDialog() {
+        SharedPreferences prefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
+        String[] labels = {
+                "Android WebView الافتراضي",
+                "Chrome Android", "Chrome Windows", "Chrome macOS", "Safari iPhone",
+                "إضافة User-Agent مخصص"
+        };
+        String[] values = {
+                WebSettings.getDefaultUserAgent(this).replaceAll(";\\s*wv", "").replace("Version/4.0 ", "").trim(),
+                "Mozilla/5.0 (Linux; Android 14; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
+                "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+                ""
+        };
+        String current = prefs.getString("tiktok_live_user_agent", "").trim();
+        int selected = 0;
+        for (int i = 0; i < values.length - 1; i++) {
+            if (values[i].equals(current)) { selected = i; break; }
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("وكيل مستخدم TikTok LIVE فقط")
+                .setSingleChoiceItems(labels, selected, (dialog, which) -> {
+                    if (which == labels.length - 1) {
+                        EditText input = new EditText(this);
+                        input.setSingleLine(false);
+                        input.setMinLines(2);
+                        input.setText(prefs.getString("tiktok_live_user_agent_custom", ""));
+                        input.setHint("الصق User-Agent الخاص بـ TikTok LIVE");
+                        new AlertDialog.Builder(this)
+                                .setTitle("User-Agent مخصص لـ TikTok LIVE")
+                                .setView(input)
+                                .setNegativeButton("إلغاء", null)
+                                .setPositiveButton("حفظ", (d, w) -> {
+                                    String custom = input.getText().toString().trim();
+                                    if (custom.length() < 20 || custom.length() > 1024
+                                            || custom.indexOf('\\r') >= 0 || custom.indexOf('\\n') >= 0) {
+                                        Toast.makeText(this, "وكيل المستخدم غير صالح", Toast.LENGTH_SHORT).show();
+                                        return;
+                                    }
+                                    prefs.edit().putString("tiktok_live_user_agent_custom", custom)
+                                            .putString("tiktok_live_user_agent", custom).apply();
+                                    Toast.makeText(this, "تم حفظ User-Agent الخاص بـ TikTok LIVE", Toast.LENGTH_SHORT).show();
+                                }).show();
+                    } else {
+                        prefs.edit().putString("tiktok_live_user_agent", values[which]).apply();
+                        dialog.dismiss();
+                        Toast.makeText(this, "تم حفظ وكيل TikTok LIVE: " + labels[which], Toast.LENGTH_SHORT).show();
                     }
                 })
                 .setNegativeButton("إغلاق", null)
