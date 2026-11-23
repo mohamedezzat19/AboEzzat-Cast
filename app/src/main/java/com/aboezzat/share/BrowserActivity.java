@@ -544,6 +544,15 @@ public class BrowserActivity extends Activity {
         return getConfiguredUserAgent();
     }
 
+    // Apply a newly selected browser identity immediately to the active tab.
+    private void applyConfiguredUserAgentToCurrentPage() {
+        WebView current = getCurrentWebView();
+        if (current == null) return;
+        current.getSettings().setUserAgentString(getConfiguredUserAgent());
+        String pageUrl = current.getUrl();
+        if (pageUrl != null && pageUrl.startsWith("http")) current.reload();
+    }
+
     private void showUserAgentDialog() {
         SharedPreferences prefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
         String[] labels = {
@@ -563,6 +572,9 @@ public class BrowserActivity extends Activity {
         int selected = 1;
         for (int i = 0; i < values.length - 1; i++) {
             if (values[i].equals(current)) { selected = i; break; }
+        }
+        if (current.equals(prefs.getString("browser_user_agent_custom", "").trim())) {
+            selected = values.length - 1;
         }
         new AlertDialog.Builder(this)
                 .setTitle("اختيار وكيل المستخدم")
@@ -586,10 +598,12 @@ public class BrowserActivity extends Activity {
                                     }
                                     prefs.edit().putString("browser_user_agent_custom", custom)
                                             .putString("browser_user_agent", custom).apply();
+                                    applyConfiguredUserAgentToCurrentPage();
                                     Toast.makeText(this, "تم حفظ وكيل المستخدم المخصص", Toast.LENGTH_SHORT).show();
                                 }).show();
                     } else {
                         prefs.edit().putString("browser_user_agent", values[which]).apply();
+                        applyConfiguredUserAgentToCurrentPage();
                         dialog.dismiss();
                         Toast.makeText(this, "تم حفظ وكيل المستخدم: " + labels[which], Toast.LENGTH_SHORT).show();
                     }
@@ -617,6 +631,9 @@ public class BrowserActivity extends Activity {
         int selected = 0;
         for (int i = 0; i < values.length - 1; i++) {
             if (values[i].equals(current)) { selected = i; break; }
+        }
+        if (current.equals(prefs.getString("tiktok_live_user_agent_custom", "").trim())) {
+            selected = values.length - 1;
         }
         new AlertDialog.Builder(this)
                 .setTitle("وكيل مستخدم TikTok LIVE فقط")
