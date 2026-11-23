@@ -538,12 +538,10 @@ public class BrowserActivity extends Activity {
         return "Mozilla/5.0 (Linux; Android 14; Mobile; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.6478.122 Mobile Safari/537.36";
     }
 
-    // TikTok LIVE uses this device's Android Chromium identity even when
-    // the browser-wide preference is configured as Windows or macOS.
+    // TikTok pages must honor the same browser-wide choice as every other
+    // ordinary browser page; TikTok LIVE capture uses its separate preference.
     private String getTikTokCompatibleUserAgent() {
-        String userAgent = WebSettings.getDefaultUserAgent(this);
-        if (userAgent == null || userAgent.trim().isEmpty()) return getConfiguredUserAgent();
-        return userAgent.replaceAll(";\\s*wv", "").replace("Version/4.0 ", "").trim();
+        return getConfiguredUserAgent();
     }
 
     private void showUserAgentDialog() {
