@@ -212,8 +212,7 @@ public class ShareActivity extends Activity {
         if (isTikTokLiveUrl(lowerUrl)) {
             // Capture LIVE in the background and send its stable CDN URL directly.
             tikTokLiveSourceUrl = url;
-            tikTokLiveCaptureActive = true;
-            startPlatformSniffer(url, "tiktok_live", 45000L, false);
+            startTikTokLiveLegacySniffer(url);
             return;
         }
 
@@ -347,8 +346,7 @@ public class ShareActivity extends Activity {
                 mainHandler.post(() -> {
                     if (isTikTokLiveUrl(resolvedUrl)) {
                         tikTokLiveSourceUrl = resolvedUrl;
-                        tikTokLiveCaptureActive = true;
-                        startPlatformSniffer(resolvedUrl, "tiktok_live", 45000L, false);
+                        startTikTokLiveLegacySniffer(resolvedUrl);
                     } else {
                         // Ordinary TikTok posts retain their original Tikwm route.
                         handleTikTok(shortUrl);
@@ -495,6 +493,66 @@ public class ShareActivity extends Activity {
     // and every other platform keep their own User-Agent unchanged.
     private String getTikTokLiveUserAgent() {
         return "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36";
+    }
+
+    // Historical TikTok LIVE capture: a detached hidden WebView, Android Chrome 122,
+    // immediate FLV/HLS detection, and BrowserActivity fallback after five seconds.
+    @SuppressLint("SetJavaScriptEnabled")
+    private void startTikTokLiveLegacySniffer(String url) {
+        isCaptured = false;
+        tikTokLiveCaptureActive = false;
+        tikTokLivePlaybackStarted = false;
+        webView = new WebView(this);
+        WebSettings settings = webView.getSettings();
+        settings.setJavaScriptEnabled(true);
+        settings.setDomStorageEnabled(true);
+        settings.setDatabaseEnabled(true);
+        settings.setMediaPlaybackRequiresUserGesture(false);
+        settings.setUserAgentString(
+                "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36");
+
+        webView.addJavascriptInterface(new Object() {
+            @JavascriptInterface
+            public void onMediaFound(String mediaUrl) {
+                checkAndSendMedia(mediaUrl, "tiktok_live");
+            }
+        }, "MediaSniffer");
+
+        webView.setWebViewClient(new WebViewClient() {
+            @Override
+            public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+                checkAndSendMedia(request.getUrl().toString(), "tiktok_live");
+                return super.shouldInterceptRequest(view, request);
+            }
+
+            @Override
+            public void onPageFinished(WebView view, String loadedUrl) {
+                super.onPageFinished(view, loadedUrl);
+                String js = "(function() { " +
+                        "   try { " +
+                        "       var vids = document.getElementsByTagName('video'); " +
+                        "       for (var i = 0; i < vids.length; i++) { " +
+                        "           vids[i].muted = true; " +
+                        "           vids[i].play(); " +
+                        "           var src = vids[i].currentSrc || vids[i].src; " +
+                        "           if (src && src.startsWith('http')) { " +
+                        "               window.MediaSniffer.onMediaFound(src); " +
+                        "           } " +
+                        "       } " +
+                        "   } catch(e){} " +
+                        "})();";
+                view.evaluateJavascript(js, null);
+            }
+        });
+
+        webView.loadUrl(url);
+        mainHandler.postDelayed(() -> {
+            if (!isCaptured) {
+                isCaptured = true;
+                destroyWebView();
+                openTikTokLiveInBrowser(url);
+            }
+        }, 5000L);
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -874,6 +932,20 @@ public class ShareActivity extends Activity {
                 isCaptured = true;
                 mainHandler.post(() -> {
                     sendTikTokLegacyToTv(targetTvIp, reqUrl);
+                    destroyWebView();
+                });
+            }
+            return;
+        }
+
+        if ("tiktok_live".equals(platformType)) {
+            // Keep the original LIVE matcher: FLV/HLS or pull-* CDN streams only.
+            boolean liveMatch = lower.contains("pull-")
+                    || (lower.contains("tiktok") && (lower.contains(".m3u8") || lower.contains(".flv")));
+            if (liveMatch) {
+                isCaptured = true;
+                mainHandler.post(() -> {
+                    sendToTv(targetTvIp, reqUrl, false);
                     destroyWebView();
                 });
             }
