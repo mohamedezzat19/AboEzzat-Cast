@@ -359,10 +359,6 @@ public class ShareActivity extends Activity {
     }
 
     private void handleTikTok(final String url) {
-        tikTokRequestSourceUrl = url;
-        synchronized (tikTokRequestHeaders) {
-            tikTokRequestHeaders.clear();
-        }
         try {
             String apiUrl = "https://www.tikwm.com/api/?url=" + URLEncoder.encode(url, "UTF-8");
             Request request = new Request.Builder().url(apiUrl).build();
@@ -370,7 +366,7 @@ public class ShareActivity extends Activity {
             client.newCall(request).enqueue(new Callback() {
                 @Override
                 public void onFailure(Call call, IOException e) {
-                    mainHandler.post(() -> startPlatformSniffer(url, "generic"));
+                    mainHandler.post(() -> startTikTokVodFallback(url));
                 }
 
                 @Override
@@ -383,16 +379,114 @@ public class ShareActivity extends Activity {
                             String play = data.optString("play");
                             if (!play.isEmpty()) {
                                 if (!play.startsWith("http")) play = "https://www.tikwm.com" + play;
-                                sendToTv(targetTvIp, play, false);
+                                // Historical TikTok VOD route: send the extracted play URL
+                                // immediately using GET /?url=..., without the newer JSON
+                                // /play envelope or captured browser headers.
+                                sendTikTokLegacyToTv(targetTvIp, play);
                                 return;
                             }
                         }
                     } catch (Exception ignored) {}
-                    mainHandler.post(() -> startPlatformSniffer(url, "generic"));
+                    mainHandler.post(() -> startTikTokVodFallback(url));
                 }
             });
         } catch (Exception e) {
-            startPlatformSniffer(url, "generic");
+            startTikTokVodFallback(url);
+        }
+    }
+
+    // Restore the original TikTok ordinary-video fallback exactly: a detached,
+    // hidden WebView using the historical Android Chrome 122 User-Agent.
+    @SuppressLint("SetJavaScriptEnabled")
+    private void startTikTokVodFallback(String url) {
+        isCaptured = false;
+        webView = new WebView(this);
+        WebSettings settings = webView.getSettings();
+        settings.setJavaScriptEnabled(true);
+        settings.setDomStorageEnabled(true);
+        settings.setDatabaseEnabled(true);
+        settings.setMediaPlaybackRequiresUserGesture(false);
+        settings.setUserAgentString("Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36");
+
+        webView.addJavascriptInterface(new Object() {
+            @JavascriptInterface
+            public void onMediaFound(String mediaUrl) {
+                checkAndSendMedia(mediaUrl, "tiktok_vod");
+            }
+        }, "MediaSniffer");
+
+        webView.setWebViewClient(new WebViewClient() {
+            @Override
+            public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+                String reqUrl = request.getUrl().toString();
+                checkAndSendMedia(reqUrl, "tiktok_vod");
+                return super.shouldInterceptRequest(view, request);
+            }
+
+            @Override
+            public void onPageFinished(WebView view, String loadedUrl) {
+                super.onPageFinished(view, loadedUrl);
+                String js = "(function() { " +
+                        "   try { " +
+                        "       var vids = document.getElementsByTagName('video'); " +
+                        "       for (var i = 0; i < vids.length; i++) { " +
+                        "           vids[i].muted = true; " +
+                        "           vids[i].play(); " +
+                        "           var src = vids[i].currentSrc || vids[i].src; " +
+                        "           if (src && src.startsWith('http')) { " +
+                        "               window.MediaSniffer.onMediaFound(src); " +
+                        "           } " +
+                        "       } " +
+                        "   } catch(e){} " +
+                        "})();";
+                view.evaluateJavascript(js, null);
+            }
+        });
+
+        webView.loadUrl(url);
+        mainHandler.postDelayed(() -> {
+            if (!isCaptured) {
+                isCaptured = true;
+                destroyWebView();
+                Toast.makeText(ShareActivity.this,
+                        "تعذر القنص المباشر، جرب فتحه بالمتصفح", Toast.LENGTH_SHORT).show();
+                finish();
+            }
+        }, 16000L);
+    }
+
+    // The old Receiver-compatible TikTok path is a plain GET query.
+    private void sendTikTokLegacyToTv(String tvIp, String mediaUrl) {
+        try {
+            if (!tvIp.startsWith("http://") && !tvIp.startsWith("https://")) {
+                tvIp = "http://" + tvIp;
+            }
+            if (!tvIp.contains(":" + TARGET_PORT)) {
+                tvIp = tvIp + ":" + TARGET_PORT;
+            }
+            String fullUrl = tvIp + "/?url=" + URLEncoder.encode(mediaUrl, "UTF-8");
+            Request request = new Request.Builder().url(fullUrl).get().build();
+            client.newCall(request).enqueue(new Callback() {
+                @Override
+                public void onFailure(Call call, IOException error) {
+                    mainHandler.post(() -> {
+                        Toast.makeText(ShareActivity.this, "تعذر الإرسال للشاشة", Toast.LENGTH_SHORT).show();
+                        finish();
+                    });
+                }
+
+                @Override
+                public void onResponse(Call call, Response response) {
+                    mainHandler.post(() -> {
+                        Toast.makeText(ShareActivity.this,
+                                "تم الإرسال والتشغيل بنجاح ✓", Toast.LENGTH_SHORT).show();
+                        finish();
+                    });
+                    response.close();
+                }
+            });
+        } catch (Exception e) {
+            mainHandler.post(this::finish);
         }
     }
 
@@ -767,6 +861,22 @@ public class ShareActivity extends Activity {
         if (lower.contains(".jpg") || lower.contains(".png") || lower.contains(".webp") ||
                 lower.contains(".js") || lower.contains(".css") || lower.contains("rsrc.php") ||
                 lower.contains("preview") || lower.contains(".ico")) {
+            return;
+        }
+
+        if ("tiktok_vod".equals(platformType)) {
+            boolean oldTikTokMatch =
+                    (lower.contains("pull-") && lower.contains("tiktokcdn.com")) ||
+                    (lower.contains("tiktokcdn.com") && (lower.contains(".flv") || lower.contains(".m3u8"))) ||
+                    lower.contains(".mp4") || lower.contains(".m3u8") ||
+                    lower.contains("video_playback") || lower.contains("&mime=video");
+            if (oldTikTokMatch) {
+                isCaptured = true;
+                mainHandler.post(() -> {
+                    sendTikTokLegacyToTv(targetTvIp, reqUrl);
+                    destroyWebView();
+                });
+            }
             return;
         }
 
