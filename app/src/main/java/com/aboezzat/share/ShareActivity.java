@@ -80,6 +80,11 @@ public class ShareActivity extends Activity {
     private final Map<String, String> tikTokLiveRequestHeaders = new HashMap<>();
     private volatile boolean tikTokLiveCaptureActive = false;
     private volatile String tikTokLiveSourceUrl = "";
+    // Wait for the player to actually start before accepting a TikTok CDN URL.
+    private volatile boolean tikTokLivePlaybackStarted = false;
+    private String tikTokLiveCandidateUrl = "";
+    private long tikTokLiveCandidateGeneration = 0L;
+    private Runnable tikTokLiveCandidateFinalize;
     private final Runnable threadsCaptureTimeout = () -> finishThreadsCapture();
 
     @Override
@@ -356,6 +361,13 @@ public class ShareActivity extends Activity {
                                       long timeoutMs, boolean openBrowserOnTimeout) {
         isCaptured = false;
         if ("tiktok_live".equals(platformType)) {
+            tikTokLivePlaybackStarted = false;
+            tikTokLiveCandidateUrl = "";
+            tikTokLiveCandidateGeneration++;
+            if (tikTokLiveCandidateFinalize != null) {
+                mainHandler.removeCallbacks(tikTokLiveCandidateFinalize);
+                tikTokLiveCandidateFinalize = null;
+            }
             // Start a fresh header snapshot for this shared LIVE session. Individual
             // CDN segment requests must merge into it, not erase earlier headers.
             synchronized (tikTokLiveRequestHeaders) {
@@ -400,6 +412,15 @@ public class ShareActivity extends Activity {
             @JavascriptInterface
             public void onMediaFound(String mediaUrl) {
                 checkAndSendMedia(mediaUrl, platformType);
+            }
+
+            @JavascriptInterface
+            public void onPlayerStarted() {
+                if (!"tiktok_live".equals(platformType)) return;
+                synchronized (ShareActivity.this) {
+                    tikTokLivePlaybackStarted = true;
+                    scheduleTikTokLiveCandidateCapture();
+                }
             }
         }, "MediaSniffer");
 
@@ -493,6 +514,7 @@ public class ShareActivity extends Activity {
                         "                   v.setAttribute('muted', ''); " +
                         "                   v.setAttribute('playsinline', ''); " +
                         "                   report(v.currentSrc || v.src); " +
+                        "                   if (!v.paused && v.readyState >= 2 && v.currentTime > 0) { try { window.MediaSniffer.onPlayerStarted(); } catch(e){} } " +
                         "                   var sources = v.getElementsByTagName('source'); " +
                         "                   for (var j = 0; j < sources.length; j++) report(sources[j].src); " +
                         "                   if (v.paused) { var p = v.play(); if (p && p.catch) p.catch(function(){}); } " +
@@ -506,7 +528,7 @@ public class ShareActivity extends Activity {
                         "       observer.observe(document.documentElement || document, { childList: true, subtree: true, attributes: true, attributeFilter: ['src'] }); " +
                         "       document.addEventListener('loadedmetadata', scan, true); " +
                         "       document.addEventListener('canplay', scan, true); " +
-                        "       document.addEventListener('playing', scan, true); " +
+                        "       document.addEventListener('playing', function(e) { try { if (e.target && e.target.tagName === 'VIDEO') window.MediaSniffer.onPlayerStarted(); } catch(err){} scan(); }, true); " +
                         "       var attempts = 0; " +
                         "       var timer = setInterval(function() { scan(); attempts++; if (attempts >= 38) clearInterval(timer); }, 1100); " +
                         "   } catch(e){} " +
@@ -710,11 +732,48 @@ public class ShareActivity extends Activity {
         }
 
         if (matched) {
-            isCaptured = true;
             if ("tiktok_live".equals(platformType)) {
-                pendingTikTokLiveUrl = reqUrl;
-                final String streamType = lower.contains(".m3u8") ? "HLS" : "FLV";
-                final String capturedUrl = reqUrl;
+                // Treat the CDN URL as a candidate only. A request may appear before
+                // the player starts; wait for actual playback and a 3-second settle.
+                if (!reqUrl.equals(tikTokLiveCandidateUrl)) {
+                    tikTokLiveCandidateUrl = reqUrl;
+                    tikTokLiveCandidateGeneration++;
+                    if (tikTokLiveCandidateFinalize != null) {
+                        mainHandler.removeCallbacks(tikTokLiveCandidateFinalize);
+                        tikTokLiveCandidateFinalize = null;
+                    }
+                }
+                updateTikTokDiagnosticStatus(tikTokLivePlaybackStarted
+                        ? "رصدنا رابط البث. بنتأكد إن تشغيل اللايف استقر قبل إظهار زر الإرسال..."
+                        : "رصدنا رابطًا من TikTok CDN، لكن مش هنعتبره جاهزًا. مستنيين مشغل اللايف يبدأ فعليًا...");
+                if (tikTokLivePlaybackStarted) scheduleTikTokLiveCandidateCapture();
+                return;
+            }
+
+            isCaptured = true;
+            mainHandler.post(() -> {
+                sendToTv(targetTvIp, reqUrl, false);
+                destroyWebView();
+            });
+        }
+    }
+
+    private synchronized void scheduleTikTokLiveCandidateCapture() {
+        if (isCaptured || !tikTokLivePlaybackStarted
+                || tikTokLiveCandidateUrl == null || tikTokLiveCandidateUrl.isEmpty()) return;
+        if (tikTokLiveCandidateFinalize != null) {
+            mainHandler.removeCallbacks(tikTokLiveCandidateFinalize);
+        }
+        final String candidate = tikTokLiveCandidateUrl;
+        final long generation = tikTokLiveCandidateGeneration;
+        tikTokLiveCandidateFinalize = () -> {
+            synchronized (ShareActivity.this) {
+                if (isCaptured || !tikTokLivePlaybackStarted
+                        || generation != tikTokLiveCandidateGeneration
+                        || !candidate.equals(tikTokLiveCandidateUrl)) return;
+                isCaptured = true;
+                pendingTikTokLiveUrl = candidate;
+                final String streamType = candidate.toLowerCase(Locale.ROOT).contains(".m3u8") ? "HLS" : "FLV";
                 final String requestContext;
                 synchronized (tikTokLiveRequestHeaders) {
                     requestContext = "بيانات طلب البث: UA=" + tikTokLiveRequestHeaders.containsKey("user-agent")
@@ -728,29 +787,21 @@ public class ShareActivity extends Activity {
                 }
                 mainHandler.post(() -> {
                     if (tikTokDiagnosticUrl != null) {
-                        tikTokDiagnosticUrl.setText("الرابط الملتقط (" + streamType + "):\n" + capturedUrl);
+                        tikTokDiagnosticUrl.setText("الرابط الملتقط (" + streamType + "):\\n" + candidate);
                     }
                     if (tikTokDiagnosticAgent != null) {
                         String liveUa = getTikTokLiveUserAgent();
                         boolean desktopUa = liveUa.toLowerCase(Locale.ROOT).contains("windows nt");
                         tikTokDiagnosticAgent.setText((desktopUa ? "نوع المتصفح: Desktop / Windows" :
-                                "نوع المتصفح: Mobile / Android") + "\n" + requestContext
-                                + "\nUser-Agent: " + liveUa);
+                                "نوع المتصفح: Mobile / Android") + "\\n" + requestContext
+                                + "\\nUser-Agent: " + liveUa);
                     }
-                    if (tikTokSendButton != null) {
-                        tikTokSendButton.setEnabled(true);
-                    }
-                    updateTikTokDiagnosticStatus("تم التقاط رابط البث بنجاح. الرابط ظاهر بالتفصيل، ولم يتم إرساله. افحص صفحة اللايف، وبعدها قرر تبعته للريسيفر للتجربة أم لا.");
+                    if (tikTokSendButton != null) tikTokSendButton.setEnabled(true);
+                    updateTikTokDiagnosticStatus("اللايف بدأ فعليًا، وانتظرنا 3 ثوانٍ للتأكد من استقرار التشغيل. الرابط جاهز للمراجعة؛ لم يتم إرساله للريسيفر.");
                 });
-                // TikTok LIVE capture is manual-review only: never send or close
-                // the diagnostic WebView automatically after finding a stream.
-                return;
             }
-            mainHandler.post(() -> {
-                sendToTv(targetTvIp, reqUrl, false);
-                destroyWebView();
-            });
-        }
+        };
+        mainHandler.postDelayed(tikTokLiveCandidateFinalize, 3000L);
     }
 
     private void probeThreadsMp4(final String mediaUrl) {
