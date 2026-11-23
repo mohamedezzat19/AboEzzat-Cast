@@ -760,18 +760,19 @@ public class ShareActivity extends Activity {
 
     private synchronized void scheduleTikTokLiveCandidateCapture() {
         if (isCaptured || !tikTokLivePlaybackStarted
-                || tikTokLiveCandidateUrl == null || tikTokLiveCandidateUrl.isEmpty()) return;
-        if (tikTokLiveCandidateFinalize != null) {
-            mainHandler.removeCallbacks(tikTokLiveCandidateFinalize);
-        }
-        final String candidate = tikTokLiveCandidateUrl;
-        final long generation = tikTokLiveCandidateGeneration;
+                || tikTokLiveCandidateUrl == null || tikTokLiveCandidateUrl.isEmpty()
+                || tikTokLiveCandidateFinalize != null) return;
+
+        // Start one settle window. New signed CDN URLs may arrive while the
+        // player is healthy; checkAndSendMedia keeps the newest candidate.
+        // Do not cancel/restart this timer for every segment/request.
         tikTokLiveCandidateFinalize = () -> {
             synchronized (ShareActivity.this) {
+                tikTokLiveCandidateFinalize = null;
                 if (isCaptured || !tikTokLivePlaybackStarted
-                        || generation != tikTokLiveCandidateGeneration
-                        || !candidate.equals(tikTokLiveCandidateUrl)) return;
+                        || tikTokLiveCandidateUrl == null || tikTokLiveCandidateUrl.isEmpty()) return;
                 isCaptured = true;
+                final String candidate = tikTokLiveCandidateUrl;
                 pendingTikTokLiveUrl = candidate;
                 final String streamType = candidate.toLowerCase(Locale.ROOT).contains(".m3u8") ? "HLS" : "FLV";
                 final String requestContext;
@@ -787,14 +788,14 @@ public class ShareActivity extends Activity {
                 }
                 mainHandler.post(() -> {
                     if (tikTokDiagnosticUrl != null) {
-                        tikTokDiagnosticUrl.setText("الرابط الملتقط (" + streamType + "):\n" + candidate);
+                        tikTokDiagnosticUrl.setText("الرابط الملتقط (" + streamType + "):\\n" + candidate);
                     }
                     if (tikTokDiagnosticAgent != null) {
                         String liveUa = getTikTokLiveUserAgent();
                         boolean desktopUa = liveUa.toLowerCase(Locale.ROOT).contains("windows nt");
                         tikTokDiagnosticAgent.setText((desktopUa ? "نوع المتصفح: Desktop / Windows" :
-                                "نوع المتصفح: Mobile / Android") + "\n" + requestContext
-                                + "\nUser-Agent: " + liveUa);
+                                "نوع المتصفح: Mobile / Android") + "\\n" + requestContext
+                                + "\\nUser-Agent: " + liveUa);
                     }
                     if (tikTokSendButton != null) tikTokSendButton.setEnabled(true);
                     updateTikTokDiagnosticStatus("اللايف بدأ فعليًا، وانتظرنا 3 ثوانٍ للتأكد من استقرار التشغيل. الرابط جاهز للمراجعة؛ لم يتم إرساله للريسيفر.");
