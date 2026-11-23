@@ -379,7 +379,7 @@ public class MainActivity extends Activity {
         // 12. إعدادات
         findViewById(R.id.menu_settings).setOnClickListener(v -> {
             closeDrawer();
-            new AlertDialog.Builder(MainActivity.this)
+            new AlertDialog.Builder(MainActivity.this, R.style.ModernDialogTheme)
                     .setTitle("إعدادات Abo Ezzat Share")
                     .setItems(new String[]{"التحقق من التحديثات", "إعداد عنوان IP الشاشة", "تفعيل الاختصار العائم عند نسخ رابط", "تشخيص مشكلة الفقاعة", "إعدادات أندرويد وأذونات التطبيق", "إعداد VPN داخل التطبيق"}, (dialog, which) -> {
                         if (which == 0) {
@@ -409,7 +409,7 @@ public class MainActivity extends Activity {
 
 
     private void openClipboardShortcutSetup() {
-        new AlertDialog.Builder(this)
+        new AlertDialog.Builder(this, R.style.ModernDialogTheme)
                 .setTitle("اختصار AboEzzat Cast العائم")
                 .setMessage("لتشغيل الاختصار العائم، فعّل الإذنين التاليين مرة واحدة:\n\n1) السماح بالظهور فوق التطبيقات الأخرى.\n2) تفعيل خدمة إمكانية الوصول الخاصة بـ AboEzzat Cast.\n\nالخدمة تراقب أحداث Web Video Caster فقط، وتقرأ عناوين الروابط التي يتيحها التطبيق ضمن عناصر إمكانية الوصول؛ لا تصوّر الشاشة ولا تضغط داخل Web Video Caster ولا تقرأ ملفاته الخاصة. كما تحتفظ باختصار النسخ الحالي. تظهر الفقاعة عند العثور على رابط ويمكنك سحبها لمكان مناسب.")
                 .setPositiveButton("إذن الظهور فوق التطبيقات", (d, w) -> {
@@ -482,7 +482,7 @@ public class MainActivity extends Activity {
                 + "نتيجة عرض الفقاعة: " + bubbleResult + "\n"
                 + "آخر حدث لدورة حياة الخدمة: " + lastLifecycle + "\n"
                 + "سجل تشغيل/إغلاق الخدمة والتطبيق:\n" + lifecycleLog;
-        new AlertDialog.Builder(this)
+        new AlertDialog.Builder(this, R.style.ModernDialogTheme)
                 .setTitle("تشخيص مشكلة الفقاعة")
                 .setMessage(report)
                 .setPositiveButton("نسخ التقرير", (d, w) -> {
@@ -534,7 +534,7 @@ public class MainActivity extends Activity {
     }
 
     private void showBackupRestoreDialog() {
-        new AlertDialog.Builder(this).setTitle("النسخ الاحتياطي والاستعادة")
+        new AlertDialog.Builder(this, R.style.ModernDialogTheme).setTitle("النسخ الاحتياطي والاستعادة")
                 .setItems(new String[]{"تصدير الإعدادات إلى ملف", "استعادة الإعدادات من ملف"}, (dialog, which) -> {
                     Intent intent = new Intent(which == 0 ? Intent.ACTION_CREATE_DOCUMENT : Intent.ACTION_OPEN_DOCUMENT);
                     intent.addCategory(Intent.CATEGORY_OPENABLE);
@@ -697,7 +697,7 @@ public class MainActivity extends Activity {
                     browserPrefs.getLong("history_time_" + a, 0)));
         }
         if (urls.isEmpty()) {
-            new AlertDialog.Builder(this).setTitle(mostVisited ? "الأكثر زيارة" : "سجل التصفح")
+            new AlertDialog.Builder(this, R.style.ModernDialogTheme).setTitle(mostVisited ? "الأكثر زيارة" : "سجل التصفح")
                     .setMessage("لسه مفيش صفحات اتسجلت. افتح مواقع من المتصفح الأول.")
                     .setPositiveButton("فتح المتصفح", (d, w) -> startActivity(new Intent(this, BrowserActivity.class)))
                     .setNegativeButton("إغلاق", null).show();
@@ -715,7 +715,7 @@ public class MainActivity extends Activity {
         android.widget.ListView listView = new android.widget.ListView(this);
         listView.setAdapter(new android.widget.ArrayAdapter<String>(this,
                 android.R.layout.simple_list_item_1, labels));
-        AlertDialog dialog = new AlertDialog.Builder(this)
+        AlertDialog dialog = new AlertDialog.Builder(this, R.style.ModernDialogTheme)
                 .setTitle(mostVisited ? "الأكثر زيارة" : "سجل التصفح")
                 .setView(listView)
                 .setNeutralButton("مسح السجل كله", (d, w) -> {
@@ -734,7 +734,7 @@ public class MainActivity extends Activity {
         listView.setOnItemLongClickListener((parent, view, position, id) -> {
             String url = urls.get(position);
             String title = browserPrefs.getString("history_title_" + url, url);
-            new AlertDialog.Builder(MainActivity.this)
+            new AlertDialog.Builder(MainActivity.this, R.style.ModernDialogTheme)
                     .setTitle("حذف الصفحة من السجل؟")
                     .setMessage(title + "\n" + url)
                     .setPositiveButton("حذف", (confirm, which) -> {
@@ -768,7 +768,7 @@ public class MainActivity extends Activity {
         input.setBackgroundColor(0xFF262833);
         input.setPadding(16, 16, 16, 16);
 
-        new AlertDialog.Builder(this)
+        new AlertDialog.Builder(this, R.style.ModernDialogTheme)
                 .setTitle("تشغيل IPTV على الشاشة")
                 .setView(input)
                 .setPositiveButton("بث مباشر 📺", (dialog, which) -> {
@@ -832,7 +832,7 @@ public class MainActivity extends Activity {
                 TextView card = addLibraryCard(content, names.get(i));
                 card.setOnClickListener(v -> openLibraryUrl(urls.get(index)));
                 card.setOnLongClickListener(v -> {
-                    new AlertDialog.Builder(MainActivity.this)
+                    new AlertDialog.Builder(MainActivity.this, R.style.ModernDialogTheme)
                             .setTitle("حذف العلامة المرجعية؟")
                             .setMessage(names.get(index) + "\n" + urls.get(index))
                             .setPositiveButton("حذف", (d, w) -> {
@@ -860,7 +860,7 @@ public class MainActivity extends Activity {
             card.setOnClickListener(v -> openLibraryUrl(pageUrl));
             card.setOnLongClickListener(v -> {
                 String name = browserPrefs.getString("history_title_" + pageUrl, pageUrl);
-                new AlertDialog.Builder(MainActivity.this)
+                new AlertDialog.Builder(MainActivity.this, R.style.ModernDialogTheme)
                         .setTitle("حذف الصفحة من السجل؟")
                         .setMessage(name + "\n" + pageUrl)
                         .setPositiveButton("حذف", (d, w) -> {
@@ -889,7 +889,7 @@ public class MainActivity extends Activity {
         clearParams.topMargin = dp(12);
         clearParams.bottomMargin = dp(10);
         content.addView(clearHistory, clearParams);
-        clearHistory.setOnClickListener(v -> new AlertDialog.Builder(MainActivity.this)
+        clearHistory.setOnClickListener(v -> new AlertDialog.Builder(MainActivity.this, R.style.ModernDialogTheme)
                 .setTitle("مسح سجل التصفح بالكامل؟")
                 .setMessage("سيتم حذف جميع الصفحات المحفوظة في السجل.")
                 .setPositiveButton("مسح", (d, w) -> {
@@ -903,7 +903,7 @@ public class MainActivity extends Activity {
         recent.setOnClickListener(v -> showRecentMediaDialog());
         TextView playlist = addLibraryCard(content, "قائمة التشغيل");
         playlist.setOnClickListener(v -> showPlaylistDialog());
-        AlertDialog dialog = new AlertDialog.Builder(this).create();
+        AlertDialog dialog = new AlertDialog.Builder(this, R.style.ModernDialogTheme).create();
         dialog.setView(scroll);
         dialog.show();
         if (dialog.getWindow() != null) {
@@ -971,7 +971,7 @@ public class MainActivity extends Activity {
     private void showRecentMediaDialog() {
         List<Uri> recent = readUriList("recent_media_uris");
         if (recent.isEmpty()) {
-            new AlertDialog.Builder(this).setTitle("الوسائط الأخيرة")
+            new AlertDialog.Builder(this, R.style.ModernDialogTheme).setTitle("الوسائط الأخيرة")
                     .setMessage("لا توجد وسائط حديثة محفوظة. اختر فيديو أو صورة من زر الوسائط لإضافتها هنا.")
                     .setPositiveButton("اختيار ملفات", (d, w) -> openMediaPicker(false))
                     .setNegativeButton("إغلاق", null).show();
@@ -979,7 +979,7 @@ public class MainActivity extends Activity {
         }
         String[] labels = new String[recent.size()];
         for (int i = 0; i < recent.size(); i++) labels[i] = getMediaDisplayName(recent.get(i), i);
-        new AlertDialog.Builder(this).setTitle("الوسائط الأخيرة")
+        new AlertDialog.Builder(this, R.style.ModernDialogTheme).setTitle("الوسائط الأخيرة")
                 .setItems(labels, (dialog, which) -> {
                     Uri chosen = recent.get(which);
                     setSelectedMediaUri(chosen);
@@ -991,7 +991,7 @@ public class MainActivity extends Activity {
 
     private void showPlaylistDialog() {
         if (videoQueue.isEmpty()) {
-            new AlertDialog.Builder(this).setTitle("قائمة التشغيل")
+            new AlertDialog.Builder(this, R.style.ModernDialogTheme).setTitle("قائمة التشغيل")
                     .setMessage("قائمة التشغيل فارغة. أضف فيديوهات من زر الوسائط أولاً.")
                     .setPositiveButton("إضافة فيديوهات", (d, w) -> openMediaPicker(false))
                     .setNegativeButton("إغلاق", null).show();
@@ -999,7 +999,7 @@ public class MainActivity extends Activity {
         }
         String[] items = new String[videoQueue.size()];
         for (int i = 0; i < videoQueue.size(); i++) items[i] = getMediaDisplayName(videoQueue.get(i), i);
-        new AlertDialog.Builder(this).setTitle("قائمة التشغيل (" + videoQueue.size() + " ملفات)")
+        new AlertDialog.Builder(this, R.style.ModernDialogTheme).setTitle("قائمة التشغيل (" + videoQueue.size() + " ملفات)")
                 .setItems(items, (dialog, which) -> {
                     currentVideoIndex = which;
                     setSelectedMediaUri(videoQueue.get(currentVideoIndex));
@@ -1030,7 +1030,7 @@ public class MainActivity extends Activity {
         android.widget.ListView listView = new android.widget.ListView(this);
         listView.setAdapter(new android.widget.ArrayAdapter<String>(this,
                 android.R.layout.simple_list_item_1, names));
-        AlertDialog dialog = new AlertDialog.Builder(this)
+        AlertDialog dialog = new AlertDialog.Builder(this, R.style.ModernDialogTheme)
                 .setTitle("العلامات المرجعية (اضغط مطولاً للحذف)")
                 .setView(listView)
                 .setNegativeButton("إغلاق", null)
@@ -1043,7 +1043,7 @@ public class MainActivity extends Activity {
         });
         listView.setOnItemLongClickListener((parent, view, position, id) -> {
             String entry = entries.get(position);
-            new AlertDialog.Builder(MainActivity.this)
+            new AlertDialog.Builder(MainActivity.this, R.style.ModernDialogTheme)
                     .setTitle("حذف العلامة المرجعية؟")
                     .setMessage(names.get(position) + "\n" + urls.get(position))
                     .setPositiveButton("حذف", (confirm, which) -> {
@@ -1086,7 +1086,7 @@ public class MainActivity extends Activity {
         android.widget.ListView list = new android.widget.ListView(this);
         list.setAdapter(new android.widget.ArrayAdapter<String>(this,
                 android.R.layout.simple_list_item_1, labels));
-        AlertDialog dialog = new AlertDialog.Builder(this)
+        AlertDialog dialog = new AlertDialog.Builder(this, R.style.ModernDialogTheme)
                 .setTitle("الوسائط المحفوظة")
                 .setView(list)
                 .setPositiveButton("إضافة رابط", (d, w) -> showAddSavedMediaDialog())
@@ -1099,7 +1099,7 @@ public class MainActivity extends Activity {
         });
         list.setOnItemLongClickListener((parent, view, position, id) -> {
             String url = urls.get(position);
-            new AlertDialog.Builder(MainActivity.this)
+            new AlertDialog.Builder(MainActivity.this, R.style.ModernDialogTheme)
                     .setTitle("حذف الوسيط المحفوظ؟")
                     .setMessage(url)
                     .setPositiveButton("حذف", (confirm, which) -> {
@@ -1126,7 +1126,7 @@ public class MainActivity extends Activity {
         input.setSingleLine(true);
         input.setHint("https:// رابط الفيديو أو الصوت المباشر");
         input.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_URI);
-        new AlertDialog.Builder(this)
+        new AlertDialog.Builder(this, R.style.ModernDialogTheme)
                 .setTitle("إضافة وسيط محفوظ")
                 .setMessage("أضف رابط بث أو ملف وسائط مباشر. اضغط عليه لاحقًا لإرساله إلى الشاشة.")
                 .setView(input)
@@ -1186,7 +1186,7 @@ private void showManualIpDialog() {
         input.setSingleLine(true);
         input.setHint("مثال: 192.168.1.100");
         input.setText(prefs.getString("tv_ip", ""));
-        new AlertDialog.Builder(this).setTitle("إدخال IP يدويًا").setView(input)
+        new AlertDialog.Builder(this, R.style.ModernDialogTheme).setTitle("إدخال IP يدويًا").setView(input)
                 .setPositiveButton("حفظ", (dialog, which) -> {
                     String ip = input.getText().toString().trim();
                     if (!ip.isEmpty()) {
@@ -1261,7 +1261,7 @@ private void showManualIpDialog() {
         accessibilityReminderShown = true;
         reminderPrefs.edit().putLong("accessibility_reminder_last_shown", now).apply();
 
-        new AlertDialog.Builder(this)
+        new AlertDialog.Builder(this, R.style.ModernDialogTheme)
                 .setTitle("زر النسخ العائم غير مفعّل")
                 .setMessage("لتفعيل اختصار النسخ العائم، فعّل خدمة «اختصار AboEzzat Cast عند النسخ» من إعدادات إمكانية الوصول. لن نكرر هذا التنبيه خلال نفس إصدار التطبيق.")
                 .setPositiveButton("فتح إعدادات إمكانية الوصول", (dialog, which) -> {
@@ -1457,7 +1457,7 @@ private void showManualIpDialog() {
             card.addView(actions);
             card.setOnClickListener(v -> selectSavedReceiver(device, dialogRef[0]));
             edit.setOnClickListener(v -> showEditReceiverDialog(device));
-            delete.setOnClickListener(v -> new AlertDialog.Builder(this)
+            delete.setOnClickListener(v -> new AlertDialog.Builder(this, R.style.ModernDialogTheme)
                     .setTitle("حذف الجهاز؟")
                     .setMessage("سيتم حذف " + device.name + " من القائمة المحفوظة.")
                     .setNegativeButton("إلغاء", null)
@@ -1517,7 +1517,7 @@ private void showManualIpDialog() {
         footer.addView(scan, new LinearLayout.LayoutParams(-2, -2));
         root.addView(footer);
 
-        AlertDialog dialog = new AlertDialog.Builder(this).setView(root)
+        AlertDialog dialog = new AlertDialog.Builder(this, R.style.ModernDialogTheme).setView(root)
                 .setNegativeButton("إغلاق", null).create();
         dialogRef[0] = dialog;
         add.setOnClickListener(v -> {
@@ -1546,7 +1546,7 @@ private void showManualIpDialog() {
         ip.setText(existing == null ? "" : existing.ip);
         form.addView(name);
         form.addView(ip);
-        new AlertDialog.Builder(this)
+        new AlertDialog.Builder(this, R.style.ModernDialogTheme)
                 .setTitle(existing == null ? "إضافة جهاز جديد" : "تعديل الجهاز")
                 .setView(form)
                 .setNegativeButton("إلغاء", null)
@@ -1743,7 +1743,7 @@ private void showManualIpDialog() {
             android.widget.ListView list = new android.widget.ListView(this);
             list.setAdapter(new android.widget.ArrayAdapter<String>(this,
                     android.R.layout.simple_list_item_1, labels));
-            AlertDialog dialog = new AlertDialog.Builder(this)
+            AlertDialog dialog = new AlertDialog.Builder(this, R.style.ModernDialogTheme)
                     .setTitle("روابط Web Video Caster الملتقطة")
                     .setView(list)
                     .setNegativeButton("إغلاق", (d, w) -> finish())
@@ -1755,7 +1755,7 @@ private void showManualIpDialog() {
                     .create();
             list.setOnItemClickListener((parent, view, position, id) -> {
                 String selectedUrl = urls.get(position);
-                new AlertDialog.Builder(this)
+                new AlertDialog.Builder(this, R.style.ModernDialogTheme)
                         .setTitle("تشغيل الرابط")
                         .setMessage(selectedUrl)
                         .setPositiveButton("إرسال إلى AboEzzat Receiver", (d, w) -> {
