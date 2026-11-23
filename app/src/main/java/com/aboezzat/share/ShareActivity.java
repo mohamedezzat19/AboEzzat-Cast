@@ -326,7 +326,13 @@ public class ShareActivity extends Activity {
     private String getTikTokLiveUserAgent() {
         String ua = WebSettings.getDefaultUserAgent(this);
         if (ua == null) return "";
-        return ua.replace("; wv", "").replace("Version/4.0 ", "").trim();
+        // TikTok LIVE can expose a different player flow to desktop browsers.
+        // Keep this desktop identity isolated to the hidden LIVE capture WebView.
+        return ua.replaceFirst("\\([^)]*\\)", "(Windows NT 10.0; Win64; x64)")
+                .replace("; wv", "")
+                .replace("Version/4.0 ", "")
+                .replace(" Mobile", "")
+                .trim();
     }
 
     @SuppressLint("SetJavaScriptEnabled")
