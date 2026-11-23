@@ -338,6 +338,13 @@ public class ShareActivity extends Activity {
     private void startPlatformSniffer(String url, final String platformType,
                                       long timeoutMs, boolean openBrowserOnTimeout) {
         isCaptured = false;
+        if ("tiktok_live".equals(platformType)) {
+            // Start a fresh header snapshot for this shared LIVE session. Individual
+            // CDN segment requests must merge into it, not erase earlier headers.
+            synchronized (tikTokLiveRequestHeaders) {
+                tikTokLiveRequestHeaders.clear();
+            }
+        }
         if ("threads".equals(platformType)) {
             threadsSharedUrl = url;
             threadsVideoUrl = "";
@@ -383,7 +390,8 @@ public class ShareActivity extends Activity {
                 if ("tiktok_live".equals(platformType)) {
                     if (isTikTokLiveStreamUrl(reqUrl)) {
                         synchronized (tikTokLiveRequestHeaders) {
-                            tikTokLiveRequestHeaders.clear();
+                            // Preserve headers already captured from the initial media request;
+                            // later FLV/HLS segment requests may omit Referer or client hints.
                             Map<String, String> requestHeaders = request.getRequestHeaders();
                             if (requestHeaders != null) {
                                 for (Map.Entry<String, String> entry : requestHeaders.entrySet()) {
@@ -708,6 +716,9 @@ public class ShareActivity extends Activity {
                     }
                     if (!liveHeaders.has("referer") && sourceUrl != null && !sourceUrl.trim().isEmpty()) {
                         liveHeaders.put("referer", sourceUrl);
+                    }
+                    if (!liveHeaders.has("origin")) {
+                        liveHeaders.put("origin", "https://www.tiktok.com");
                     }
                     if (liveHeaders.length() > 0) payload.put("headers", liveHeaders);
                 }
