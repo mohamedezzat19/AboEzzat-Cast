@@ -49,6 +49,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.security.KeyStore;
+import java.security.cert.X509Certificate;
 import java.nio.ByteBuffer;
 import javax.crypto.Mac;
 import javax.crypto.Cipher;
@@ -138,6 +139,7 @@ public class MainActivity extends Activity {
                                 .header("X-AboEzzat-Signature", signature)
                                 .build();
                         return chain.proceed(signed);
+                    }
                     }
                 }
                 return chain.proceed(original);
@@ -1748,6 +1750,14 @@ private void showManualIpDialog() {
                         List<SavedReceiverDevice> latest = loadSavedReceiverDevices();
                         latest.removeIf(item -> item.ip.equalsIgnoreCase(device.ip));
                         saveSavedReceiverDevices(latest);
+                        try {
+                            String endpoint = buildReceiverHttpsEndpoint(device.ip);
+                            String host = Uri.parse(endpoint).getHost();
+                            if (host != null) {
+                                prefs.edit().remove(PREF_RECEIVER_SECRET + host)
+                                        .remove(PREF_RECEIVER_TLS_PIN + host).commit();
+                            }
+                        } catch (Exception ignored) { }
                         showSavedReceiverDialog();
                     }).show());
             list.addView(card, new LinearLayout.LayoutParams(-1, -2));
@@ -2169,13 +2179,13 @@ private void showManualIpDialog() {
             return;
         }
         try {
-            String endpoint = tvIp;
-            if (!endpoint.startsWith("http")) endpoint = "http://" + endpoint;
-            if (!endpoint.contains(":" + TARGET_PORT)) endpoint += ":" + TARGET_PORT;
+            String endpoint = buildReceiverHttpsEndpoint(tvIp);
+            String receiverHost = Uri.parse(endpoint).getHost();
+            OkHttpClient pinnedClient = getPinnedReceiverClient(receiverHost);
             String fullUrl = endpoint + "/?url=" + URLEncoder.encode(mediaUrl, "UTF-8") + "&open=browser";
             Request req = new Request.Builder().url(fullUrl).build();
             AtomicBoolean requestHeadersSent = new AtomicBoolean(false);
-            OkHttpClient trackedClient = client.newBuilder()
+            OkHttpClient trackedClient = pinnedClient.newBuilder()
                     .eventListener(new EventListener() {
                         @Override
                         public void requestHeadersEnd(Call call, Request request) {
@@ -2384,12 +2394,12 @@ private void showManualIpDialog() {
             return;
         }
         try {
-            String endpoint = tvIp;
-            if (!endpoint.startsWith("http")) endpoint = "http://" + endpoint;
-            if (!endpoint.contains(":" + TARGET_PORT)) endpoint += ":" + TARGET_PORT;
+            String endpoint = buildReceiverHttpsEndpoint(tvIp);
+            String receiverHost = Uri.parse(endpoint).getHost();
+            OkHttpClient pinnedClient = getPinnedReceiverClient(receiverHost);
             String fullUrl = endpoint + "/?url=" + URLEncoder.encode(mediaUrl, "UTF-8") + "&open=browser";
             Request req = new Request.Builder().url(fullUrl).build();
-            client.newCall(req).enqueue(new Callback() {
+            pinnedClient.newCall(req).enqueue(new Callback() {
                 @Override public void onFailure(Call call, IOException error) {
                     runOnUiThread(() -> Toast.makeText(MainActivity.this,
                             "تعذر إرسال الرابط إلى الشاشة", Toast.LENGTH_LONG).show());
@@ -2584,13 +2594,13 @@ private void showManualIpDialog() {
                 ? "http://" + phoneIp + ":8088/media.jpg"
                 : "http://" + phoneIp + ":8088/media.mp4";
         try {
-            String endpoint = tvIp;
-            if (!endpoint.startsWith("http")) endpoint = "http://" + endpoint;
-            if (!endpoint.contains(":" + TARGET_PORT)) endpoint += ":" + TARGET_PORT;
+            String endpoint = buildReceiverHttpsEndpoint(tvIp);
+            String receiverHost = Uri.parse(endpoint).getHost();
+            OkHttpClient pinnedClient = getPinnedReceiverClient(receiverHost);
             String fullUrl = endpoint + "/?url=" + URLEncoder.encode(targetUrl, "UTF-8");
             Request req = new Request.Builder().url(fullUrl).get().build();
             AtomicBoolean requestHeadersSent = new AtomicBoolean(false);
-            OkHttpClient trackedClient = client.newBuilder()
+            OkHttpClient trackedClient = pinnedClient.newBuilder()
                     .eventListener(new EventListener() {
                         @Override
                         public void requestHeadersEnd(Call call, Request request) {
@@ -2621,13 +2631,12 @@ private void showManualIpDialog() {
         }
 
         try {
-            String endpoint = tvIp;
-            if (!endpoint.startsWith("http")) endpoint = "http://" + endpoint;
-            if (!endpoint.contains(":" + TARGET_PORT)) endpoint += ":" + TARGET_PORT;
-
+            String endpoint = buildReceiverHttpsEndpoint(tvIp);
+            String receiverHost = Uri.parse(endpoint).getHost();
+            OkHttpClient pinnedClient = getPinnedReceiverClient(receiverHost);
             String fullUrl = endpoint + "/?command=" + cmd;
             Request req = new Request.Builder().url(fullUrl).build();
-            client.newCall(req).enqueue(new Callback() {
+            pinnedClient.newCall(req).enqueue(new Callback() {
                 @Override
                 public void onFailure(Call call, IOException e) {}
                 @Override
