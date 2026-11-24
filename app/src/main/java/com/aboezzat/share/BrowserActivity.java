@@ -692,11 +692,12 @@ public class BrowserActivity extends Activity {
                 TextView row = (TextView) super.getView(position, convertView, parent);
                 String url = urls.get(position);
                 String title = prefs.getString("history_title_" + url, "");
-                if (title == null || title.trim().isEmpty()) {
+                if (title == null || title.trim().isEmpty() || title.trim().equals(url)
+                        || title.trim().startsWith("http://") || title.trim().startsWith("https://")) {
                     try {
                         String host = Uri.parse(url).getHost();
-                        title = host == null ? url : host;
-                    } catch (Exception ignored) { title = url; }
+                        title = host == null || host.trim().isEmpty() ? "موقع محفوظ" : host;
+                    } catch (Exception ignored) { title = "موقع محفوظ"; }
                 }
                 row.setText(title.trim());
                 row.setTextColor(Color.WHITE);
