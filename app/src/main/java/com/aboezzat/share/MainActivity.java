@@ -1410,7 +1410,7 @@ private void showManualIpDialog() {
             }
             performReceiverPairing(endpoint, pairedHost, fingerprint, code);
         } catch (Exception invalidQr) {
-            Log.w("AboEzzatCast", "Rejected receiver pairing QR", invalidQr);
+            android.util.Log.w("AboEzzatCast", "Rejected receiver pairing QR", invalidQr);
             Toast.makeText(this, "QR غير صالح أو لا يحتوي بيانات ريسيفر مدعومة.", Toast.LENGTH_LONG).show();
         }
     }
