@@ -2593,9 +2593,17 @@ private void showManualIpDialog() {
         if (phoneIp.isEmpty() || phoneIp.equals("0.0.0.0")) return;
 
         String mime = getContentResolver().getType(selectedMediaUri);
-        String targetUrl = (mime != null && mime.startsWith("image/"))
-                ? "http://" + phoneIp + ":8088/media.jpg"
-                : "http://" + phoneIp + ":8088/media.mp4";
+        String mediaToken = CastKeepAliveService.getMediaAccessToken();
+        if (mediaToken == null || !mediaToken.matches("[A-Za-z0-9_-]{43}")) {
+            if (showToast) Toast.makeText(this,
+                    "تعذر تجهيز رابط الوسائط المحمي؛ أعد اختيار الملف.",
+                    Toast.LENGTH_LONG).show();
+            return;
+        }
+        String mediaPath = (mime != null && mime.startsWith("image/"))
+                ? "/media.jpg" : "/media.mp4";
+        String targetUrl = "http://" + phoneIp + ":8088" + mediaPath
+                + "?token=" + URLEncoder.encode(mediaToken, "UTF-8");
         try {
             String endpoint = buildReceiverHttpsEndpoint(tvIp);
             String receiverHost = Uri.parse(endpoint).getHost();
