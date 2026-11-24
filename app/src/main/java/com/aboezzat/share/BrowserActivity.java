@@ -994,29 +994,62 @@ public class BrowserActivity extends Activity {
                 if (pendingGeolocationCallback != null) {
                     pendingGeolocationCallback.invoke(pendingGeolocationOrigin, false, false);
                 }
+                final String requestedOrigin = origin == null ? "" : origin.trim();
                 pendingGeolocationCallback = callback;
-                pendingGeolocationOrigin = origin == null ? "" : origin;
+                pendingGeolocationOrigin = requestedOrigin;
 
-                if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.M) {
-                    callback.invoke(pendingGeolocationOrigin, true, false);
+                // Geolocation is only exposed to secure web origins. App-level Android
+                // permission alone must never silently authorize an arbitrary website.
+                Uri originUri = Uri.parse(requestedOrigin);
+                if (!"https".equalsIgnoreCase(originUri.getScheme())
+                        || originUri.getHost() == null || originUri.getHost().trim().isEmpty()) {
+                    callback.invoke(requestedOrigin, false, false);
                     pendingGeolocationCallback = null;
                     pendingGeolocationOrigin = "";
                     return;
                 }
 
-                boolean fineGranted = checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)
-                        == PackageManager.PERMISSION_GRANTED;
-                boolean coarseGranted = checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION)
-                        == PackageManager.PERMISSION_GRANTED;
-                if (fineGranted || coarseGranted) {
-                    callback.invoke(pendingGeolocationOrigin, true, false);
-                    pendingGeolocationCallback = null;
-                    pendingGeolocationOrigin = "";
-                    return;
-                }
-
-                requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION,
-                        Manifest.permission.ACCESS_COARSE_LOCATION}, GEOLOCATION_PERMISSION_REQUEST_CODE);
+                new AlertDialog.Builder(BrowserActivity.this)
+                        .setTitle("السماح بموقعك؟")
+                        .setMessage("الموقع التالي يطلب الوصول إلى موقعك الحالي:\n"
+                                + originUri.getHost()
+                                + "\n\nلن يتم السماح إلا بعد موافقتك.")
+                        .setNegativeButton("رفض", (dialog, which) -> {
+                            if (pendingGeolocationCallback == callback) {
+                                callback.invoke(requestedOrigin, false, false);
+                                pendingGeolocationCallback = null;
+                                pendingGeolocationOrigin = "";
+                            }
+                        })
+                        .setPositiveButton("سماح", (dialog, which) -> {
+                            if (pendingGeolocationCallback != callback) return;
+                            if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.M) {
+                                callback.invoke(requestedOrigin, true, false);
+                                pendingGeolocationCallback = null;
+                                pendingGeolocationOrigin = "";
+                                return;
+                            }
+                            boolean fineGranted = checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION)
+                                    == PackageManager.PERMISSION_GRANTED;
+                            boolean coarseGranted = checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION)
+                                    == PackageManager.PERMISSION_GRANTED;
+                            if (fineGranted || coarseGranted) {
+                                callback.invoke(requestedOrigin, true, false);
+                                pendingGeolocationCallback = null;
+                                pendingGeolocationOrigin = "";
+                            } else {
+                                requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION,
+                                        Manifest.permission.ACCESS_COARSE_LOCATION}, GEOLOCATION_PERMISSION_REQUEST_CODE);
+                            }
+                        })
+                        .setOnCancelListener(dialog -> {
+                            if (pendingGeolocationCallback == callback) {
+                                callback.invoke(requestedOrigin, false, false);
+                                pendingGeolocationCallback = null;
+                                pendingGeolocationOrigin = "";
+                            }
+                        })
+                        .show();
             }
 
             @Override
