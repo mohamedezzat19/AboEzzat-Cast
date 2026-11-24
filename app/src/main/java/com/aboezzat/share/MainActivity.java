@@ -2603,7 +2603,7 @@ private void showManualIpDialog() {
         String mediaPath = (mime != null && mime.startsWith("image/"))
                 ? "/media.jpg" : "/media.mp4";
         String targetUrl = "http://" + phoneIp + ":8088" + mediaPath
-                + "?token=" + URLEncoder.encode(mediaToken, "UTF-8");
+                + "?token=" + mediaToken;
         try {
             String endpoint = buildReceiverHttpsEndpoint(tvIp);
             String receiverHost = Uri.parse(endpoint).getHost();
