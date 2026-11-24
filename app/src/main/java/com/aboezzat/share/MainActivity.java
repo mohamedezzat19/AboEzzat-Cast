@@ -23,6 +23,8 @@ import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
+import android.security.keystore.KeyGenParameterSpec;
+import android.security.keystore.KeyProperties;
 import android.text.format.Formatter;
 import android.util.Base64;
 import android.view.View;
@@ -46,7 +48,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.security.KeyStore;
+import java.nio.ByteBuffer;
 import javax.crypto.Mac;
+import javax.crypto.Cipher;
+import javax.crypto.KeyGenerator;
+import javax.crypto.SecretKey;
+import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -88,8 +96,8 @@ public class MainActivity extends Activity {
                 Request original = chain.request();
                 if (original.url().port() == TARGET_PORT
                         && !"/pair".equals(original.url().encodedPath())) {
-                    String secret = getSharedPreferences("AboEzzatSharePrefs",
-                            MODE_PRIVATE | MODE_MULTI_PROCESS).getString(PREF_RECEIVER_SECRET + original.url().host(), "");
+                    String secret = decryptReceiverSecret(getSharedPreferences("AboEzzatSharePrefs",
+                            MODE_PRIVATE | MODE_MULTI_PROCESS).getString(PREF_RECEIVER_SECRET + original.url().host(), ""));
                     if (secret != null && !secret.isEmpty()) {
                         long timestamp = System.currentTimeMillis();
                         String nonce = UUID.randomUUID().toString();
@@ -1375,7 +1383,8 @@ private void showManualIpDialog() {
                                 runOnUiThread(() -> {
                                     if (successful && pairedSecret.length() >= 40) {
                                         String pairedHost = Uri.parse(endpoint).getHost();
-                                        prefs.edit().putString(PREF_RECEIVER_SECRET + pairedHost, pairedSecret).apply();
+                                        prefs.edit().putString(PREF_RECEIVER_SECRET + pairedHost,
+                                                encryptReceiverSecret(pairedSecret)).apply();
                                         Toast.makeText(MainActivity.this,
                                                 "✅ تم الربط الآمن بنجاح. تقدر تبعت للشاشة دلوقتي.",
                                                 Toast.LENGTH_LONG).show();
@@ -2115,6 +2124,59 @@ private void showManualIpDialog() {
         } catch (Exception ignored) {
             if (clipboardShortcutLaunch) finish();
         }
+    }
+
+    private String encryptReceiverSecret(String plainText) {
+        try {
+            SecretKey key = getOrCreateReceiverKey();
+            Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+            cipher.init(Cipher.ENCRYPT_MODE, key);
+            byte[] encrypted = cipher.doFinal(plainText.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            byte[] iv = cipher.getIV();
+            ByteBuffer packed = ByteBuffer.allocate(4 + iv.length + encrypted.length);
+            packed.putInt(iv.length).put(iv).put(encrypted);
+            return Base64.encodeToString(packed.array(), Base64.NO_WRAP);
+        } catch (Exception e) {
+            android.util.Log.e("AboEzzatCast", "Could not protect receiver pairing key", e);
+            return "";
+        }
+    }
+
+    private String decryptReceiverSecret(String encoded) {
+        if (encoded == null || encoded.isEmpty()) return "";
+        try {
+            byte[] packedBytes = Base64.decode(encoded, Base64.NO_WRAP);
+            ByteBuffer packed = ByteBuffer.wrap(packedBytes);
+            int ivLength = packed.getInt();
+            if (ivLength < 12 || ivLength > 16 || packed.remaining() <= ivLength) return "";
+            byte[] iv = new byte[ivLength];
+            packed.get(iv);
+            byte[] encrypted = new byte[packed.remaining()];
+            packed.get(encrypted);
+            Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+            cipher.init(Cipher.DECRYPT_MODE, getOrCreateReceiverKey(), new GCMParameterSpec(128, iv));
+            return new String(cipher.doFinal(encrypted), java.nio.charset.StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            android.util.Log.w("AboEzzatCast", "Stored receiver pairing key is unavailable on this device");
+            return "";
+        }
+    }
+
+    private SecretKey getOrCreateReceiverKey() throws Exception {
+        final String alias = "AboEzzatCast.ReceiverAuthKey";
+        KeyStore keyStore = KeyStore.getInstance("AndroidKeyStore");
+        keyStore.load(null);
+        if (!keyStore.containsAlias(alias)) {
+            KeyGenerator generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore");
+            generator.init(new KeyGenParameterSpec.Builder(alias,
+                    KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT)
+                    .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                    .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                    .setRandomizedEncryptionRequired(true)
+                    .build());
+            generator.generateKey();
+        }
+        return ((KeyStore.SecretKeyEntry) keyStore.getEntry(alias, null)).getSecretKey();
     }
 
     private boolean hasSecureReceiverPairing() {
