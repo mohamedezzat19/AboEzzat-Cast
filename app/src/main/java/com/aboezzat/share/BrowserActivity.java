@@ -2433,7 +2433,7 @@ public class BrowserActivity extends Activity {
             HttpURLConnection connection = null;
             try {
                 connection = (HttpURLConnection) new URL(endpointUrl).openConnection();
-                connection.setInstanceFollowRedirects(true);
+                connection.setInstanceFollowRedirects(false);
                 connection.setConnectTimeout(8000);
                 connection.setReadTimeout(8000);
                 connection.setRequestMethod("GET");
@@ -2515,7 +2515,7 @@ public class BrowserActivity extends Activity {
             HttpURLConnection connection = null;
             try {
                 connection = (HttpURLConnection) new URL(mediaUrl).openConnection();
-                connection.setInstanceFollowRedirects(true);
+                connection.setInstanceFollowRedirects(false);
                 connection.setConnectTimeout(7000);
                 connection.setReadTimeout(7000);
                 connection.setRequestMethod("GET");
@@ -2605,7 +2605,7 @@ public class BrowserActivity extends Activity {
                 conn = (HttpURLConnection) u.openConnection();
                 conn.setConnectTimeout(8000);
                 conn.setReadTimeout(8000);
-                conn.setInstanceFollowRedirects(true);
+                conn.setInstanceFollowRedirects(false);
                 conn.setRequestProperty("User-Agent", WebSettings.getDefaultUserAgent(BrowserActivity.this));
                 conn.setRequestProperty("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8");
                 String cookie = CookieManager.getInstance().getCookie(media.posterUrl);
@@ -2997,10 +2997,16 @@ public class BrowserActivity extends Activity {
 
     private void fetchCustomSitePreview(final String siteName, final String siteUrl) {
         AsyncTask.execute(() -> {
+            // Preview fetching is a background native request: never let a saved URL
+            // redirect this request into localhost, a private LAN, or device services.
+            if (!isSafePublicHttpUrl(siteUrl)) {
+                Log.w(TAG, "Skipped custom-site preview for a non-public host");
+                return;
+            }
             HttpURLConnection connection = null;
             try {
                 connection = (HttpURLConnection) new URL(siteUrl).openConnection();
-                connection.setInstanceFollowRedirects(true);
+                connection.setInstanceFollowRedirects(false);
                 connection.setConnectTimeout(7000);
                 connection.setReadTimeout(7000);
                 connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/126 Mobile Safari/537.36");
