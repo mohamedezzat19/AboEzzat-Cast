@@ -990,7 +990,7 @@ public class BrowserActivity extends Activity {
         cookieManager.setAcceptCookie(true);
         cookieManager.setAcceptThirdPartyCookies(webView, true);
 
-        webView.addJavascriptInterface(new JsBridge(), "AboEzzatBridge");
+        webView.addJavascriptInterface(new JsBridge(webView), "AboEzzatBridge");
 
         webView.setWebChromeClient(new WebChromeClient() {
             @Override
@@ -1197,6 +1197,8 @@ public class BrowserActivity extends Activity {
             @Override
             @SuppressWarnings("deprecation")
             public boolean shouldOverrideUrlLoading(WebView view, String targetUrl) {
+                homePageBridgeActive = false;
+                homeBridgeWebView = null;
                 String lower = targetUrl == null ? "" : targetUrl.toLowerCase(Locale.ROOT);
                 String currentUrl = view == null ? activePageUrl : view.getUrl();
                 if (view != null && isTikTokPageUrl(targetUrl)) {
@@ -1827,6 +1829,12 @@ public class BrowserActivity extends Activity {
     }
 
     private class JsBridge {
+        private final WebView bridgeWebView;
+
+        JsBridge(WebView owner) {
+            bridgeWebView = owner;
+        }
+
         @JavascriptInterface
         public void onMetaFound(String title, String posterUrl) {
             if (title != null && !title.isEmpty()) {
@@ -2028,7 +2036,7 @@ public class BrowserActivity extends Activity {
 
         @JavascriptInterface
         public void onNewCustomSite(String name, String siteUrl) {
-            final WebView source = activeWebView;
+            final WebView source = bridgeWebView;
             runOnUiThread(() -> {
                 if (!isInternalHomeBridgeAllowed(source)) {
                     Log.w(TAG, "Rejected custom-site bridge call outside the app home page");
