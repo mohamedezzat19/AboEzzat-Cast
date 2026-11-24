@@ -1315,14 +1315,13 @@ public class MainActivity extends Activity {
         }
         tvStatusBadge.setText("● جارٍ التحقق من " + ip + "...");
         AsyncTask.execute(() -> {
-            boolean reachable = false;
-            try (Socket socket = new Socket()) {
-                socket.connect(new InetSocketAddress(ip, TARGET_PORT), 1200);
-                reachable = true;
-            } catch (Exception ignored) { }
+            boolean reachable = isReceiverOnline(ip);
             final boolean isReachable = reachable;
+            final boolean paired = hasSecureReceiverPairing();
             runOnUiThread(() -> tvStatusBadge.setText(isReachable
-                    ? "● متصل بـ " + ip : "● محفوظ، غير متصل: " + ip));
+                    ? "● اتصال آمن بـ " + ip
+                    : paired ? "● محفوظ، تعذر الاتصال الآمن: " + ip
+                    : "● الجهاز محفوظ، يحتاج ربط QR: " + ip));
         });
     }
 private void showManualIpDialog() {
@@ -1750,9 +1749,30 @@ private void showManualIpDialog() {
     }
 
     private boolean isReceiverOnline(String ip) {
-        try (Socket socket = new Socket()) {
-            socket.connect(new InetSocketAddress(ip, TARGET_PORT), 700);
-            return true;
+        if (ip == null || ip.trim().isEmpty()) return false;
+        try {
+            String endpoint = buildReceiverHttpsEndpoint(ip);
+            String host = Uri.parse(endpoint).getHost();
+            if (host == null) return false;
+            String pin = prefs.getString(PREF_RECEIVER_TLS_PIN + host, "");
+            String encryptedSecret = getSharedPreferences("AboEzzatSharePrefs",
+                    MODE_PRIVATE | MODE_MULTI_PROCESS)
+                    .getString(PREF_RECEIVER_SECRET + host, "");
+            if (!isValidReceiverFingerprint(pin)
+                    || decryptReceiverSecret(encryptedSecret).length() < 40) {
+                return false;
+            }
+            OkHttpClient probe = getPinnedReceiverClient(host).newBuilder()
+                    .connectTimeout(1200, java.util.concurrent.TimeUnit.MILLISECONDS)
+                    .readTimeout(1500, java.util.concurrent.TimeUnit.MILLISECONDS)
+                    .callTimeout(2200, java.util.concurrent.TimeUnit.MILLISECONDS)
+                    .build();
+            Request request = new Request.Builder()
+                    .url(endpoint + "/?command=status")
+                    .get().build();
+            try (Response response = probe.newCall(request).execute()) {
+                return response.isSuccessful();
+            }
         } catch (Exception ignored) {
             return false;
         }
@@ -1991,34 +2011,76 @@ private void showManualIpDialog() {
 
     private void scanForTvDevices() {
         tvStatusBadge.setText("🔍 جاري الفحص...");
-        Toast.makeText(this, "جاري فحص الشبكة لاكتشاف الأجهزة المتاحة...", Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, "جاري البحث الآمن عن أجهزة Receiver...", Toast.LENGTH_SHORT).show();
 
         AsyncTask.execute(() -> {
-            String phoneIp = getDeviceIpAddress();
-            if (phoneIp.isEmpty() || !phoneIp.contains(".")) {
-                runOnUiThread(() -> tvStatusBadge.setText("● تأكد من الواي فاي"));
-                return;
+            final java.util.Set<String> discovered = new java.util.LinkedHashSet<>();
+            WifiManager wifi = (WifiManager) getApplicationContext()
+                    .getSystemService(Context.WIFI_SERVICE);
+            WifiManager.MulticastLock multicastLock = null;
+            java.net.MulticastSocket socket = null;
+            java.net.InetAddress group = null;
+            try {
+                if (wifi != null) {
+                    multicastLock = wifi.createMulticastLock("AboEzzatCastReceiverDiscovery");
+                    multicastLock.setReferenceCounted(false);
+                    multicastLock.acquire();
+                }
+                socket = new java.net.MulticastSocket(null);
+                socket.setReuseAddress(true);
+                socket.bind(new InetSocketAddress(37020));
+                socket.setSoTimeout(4000);
+                group = java.net.InetAddress.getByName("239.255.42.99");
+                socket.joinGroup(group);
+
+                long deadline = android.os.SystemClock.elapsedRealtime() + 4000L;
+                byte[] buffer = new byte[512];
+                while (android.os.SystemClock.elapsedRealtime() < deadline) {
+                    java.net.DatagramPacket packet = new java.net.DatagramPacket(buffer, buffer.length);
+                    try {
+                        socket.receive(packet);
+                    } catch (java.net.SocketTimeoutException timeout) {
+                        break;
+                    }
+                    String message = new String(packet.getData(), packet.getOffset(),
+                            packet.getLength(), java.nio.charset.StandardCharsets.UTF_8).trim();
+                    String[] parts = message.split("\\|", -1);
+                    if (parts.length != 3 || !"ABOEZZAT_RECEIVER".equals(parts[0])) continue;
+                    String advertisedIp = parts[1].trim();
+                    int advertisedPort;
+                    try { advertisedPort = Integer.parseInt(parts[2].trim()); }
+                    catch (NumberFormatException invalidPort) { continue; }
+                    if (advertisedPort != TARGET_PORT
+                            || !advertisedIp.matches("(25[0-5]|2[0-4]\\d|1?\\d?\\d)(\\.(25[0-5]|2[0-4]\\d|1?\\d?\\d)){3}")) {
+                        continue;
+                    }
+                    java.net.InetAddress address = java.net.InetAddress.getByName(advertisedIp);
+                    if (address.isSiteLocalAddress() && !address.isLoopbackAddress()
+                            && !address.isLinkLocalAddress() && !address.isMulticastAddress()) {
+                        discovered.add(advertisedIp);
+                    }
+                }
+            } catch (Exception discoveryError) {
+                android.util.Log.w("AboEzzatCast", "Receiver multicast discovery failed", discoveryError);
+            } finally {
+                if (socket != null) {
+                    try { if (group != null) socket.leaveGroup(group); } catch (Exception ignored) {}
+                    try { socket.close(); } catch (Exception ignored) {}
+                }
+                if (multicastLock != null && multicastLock.isHeld()) {
+                    try { multicastLock.release(); } catch (Exception ignored) {}
+                }
             }
 
-            String subnet = phoneIp.substring(0, phoneIp.lastIndexOf(".") + 1);
-            final List<String> availableDevices = new ArrayList<>();
-
-            for (int i = 1; i < 255; i++) {
-                String testIp = subnet + i;
-                try {
-                    Socket socket = new Socket();
-                    socket.connect(new InetSocketAddress(testIp, TARGET_PORT), 35);
-                    socket.close();
-                    availableDevices.add(testIp);
-                } catch (Exception ignored) {}
-            }
-
+            final List<String> availableDevices = new ArrayList<>(discovered);
             runOnUiThread(() -> {
                 if (!availableDevices.isEmpty()) {
                     showDeviceSelectionDialog(availableDevices);
                 } else {
                     tvStatusBadge.setText("● لم تكتشف أجهزة");
-                    Toast.makeText(MainActivity.this, "لم يتم العثور على أي جهاز فاتح منفذ 8081", Toast.LENGTH_LONG).show();
+                    Toast.makeText(MainActivity.this,
+                            "لم يصل إعلان اكتشاف من Receiver. تأكد أن الجهازين على نفس الشبكة وأن Receiver مفتوح.",
+                            Toast.LENGTH_LONG).show();
                 }
             });
         });
