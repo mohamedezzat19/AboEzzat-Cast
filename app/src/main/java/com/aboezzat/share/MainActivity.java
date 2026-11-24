@@ -766,29 +766,16 @@ public class MainActivity extends Activity {
             if (title == null || title.trim().isEmpty() || title.trim().equals(url)
                     || title.trim().startsWith("http://") || title.trim().startsWith("https://"))
                 title = getCompactSavedUrlLabel(url);
-            new AlertDialog.Builder(MainActivity.this, R.style.ModernDialogTheme)
-                    .setTitle(title)
-                    .setMessage(url)
-                    .setPositiveButton("نسخ الرابط", (confirm, which) -> {
-                        ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-                        if (clipboard != null) {
-                            clipboard.setPrimaryClip(ClipData.newPlainText("URL", url));
-                            Toast.makeText(MainActivity.this, "تم نسخ الرابط الكامل", Toast.LENGTH_SHORT).show();
-                        }
-                    })
-                    .setNeutralButton("حذف من السجل", (confirm, which) -> {
-                        Set<String> updated = new HashSet<>(browserPrefs.getStringSet("browser_history", new HashSet<String>()));
-                        updated.remove(url);
-                        browserPrefs.edit().putStringSet("browser_history", updated)
-                                .remove("history_title_" + url)
-                                .remove("history_time_" + url)
-                                .remove("visit_count_" + url).apply();
-                        dialog.dismiss();
-                        Toast.makeText(MainActivity.this, "تم حذف الصفحة من السجل", Toast.LENGTH_SHORT).show();
-                        showBrowserHistory(mostVisited);
-                    })
-                    .setNegativeButton("إغلاق", null)
-                    .show();
+            showLinkActionsDialog(title, url, () -> {
+                Set<String> updated = new HashSet<>(browserPrefs.getStringSet("browser_history", new HashSet<String>()));
+                updated.remove(url);
+                browserPrefs.edit().putStringSet("browser_history", updated)
+                        .remove("history_title_" + url).remove("history_time_" + url)
+                        .remove("visit_count_" + url).apply();
+                dialog.dismiss();
+                Toast.makeText(MainActivity.this, "تم حذف الصفحة من السجل", Toast.LENGTH_SHORT).show();
+                showBrowserHistory(mostVisited);
+            }, () -> castUrlDirectlyToTv(url));
             return true;
         });
         dialog.show();
@@ -871,16 +858,13 @@ public class MainActivity extends Activity {
                 TextView card = addLibraryCard(content, names.get(i));
                 card.setOnClickListener(v -> openLibraryUrl(urls.get(index)));
                 card.setOnLongClickListener(v -> {
-                    new AlertDialog.Builder(MainActivity.this, R.style.ModernDialogTheme)
-                            .setTitle("حذف العلامة المرجعية؟")
-                            .setMessage(names.get(index) + "\n" + urls.get(index))
-                            .setPositiveButton("حذف", (d, w) -> {
-                                Set<String> updated = new HashSet<>(browserPrefs.getStringSet("custom_sites", new HashSet<String>()));
-                                updated.remove(entries.get(index));
-                                browserPrefs.edit().putStringSet("custom_sites", updated).apply();
-                                Toast.makeText(MainActivity.this, "تم حذف العلامة المرجعية", Toast.LENGTH_SHORT).show();
-                                showLibraryDialog();
-                            }).setNegativeButton("إلغاء", null).show();
+                    showLinkActionsDialog(names.get(index), urls.get(index), () -> {
+                        Set<String> updated = new HashSet<>(browserPrefs.getStringSet("custom_sites", new HashSet<String>()));
+                        updated.remove(entries.get(index));
+                        browserPrefs.edit().putStringSet("custom_sites", updated).apply();
+                        Toast.makeText(MainActivity.this, "تم حذف العلامة المرجعية", Toast.LENGTH_SHORT).show();
+                        showLibraryDialog();
+                    }, () -> castUrlDirectlyToTv(urls.get(index)));
                     return true;
                 });
             }
@@ -901,18 +885,15 @@ public class MainActivity extends Activity {
             card.setOnClickListener(v -> openLibraryUrl(pageUrl));
             card.setOnLongClickListener(v -> {
                 String name = browserPrefs.getString("history_title_" + pageUrl, pageUrl);
-                new AlertDialog.Builder(MainActivity.this, R.style.ModernDialogTheme)
-                        .setTitle("حذف الصفحة من السجل؟")
-                        .setMessage(name + "\n" + pageUrl)
-                        .setPositiveButton("حذف", (d, w) -> {
-                            Set<String> updated = new HashSet<>(browserPrefs.getStringSet("browser_history", new HashSet<String>()));
-                            updated.remove(pageUrl);
-                            browserPrefs.edit().putStringSet("browser_history", updated)
-                                    .remove("history_title_" + pageUrl).remove("history_time_" + pageUrl)
-                                    .remove("visit_count_" + pageUrl).apply();
-                            Toast.makeText(MainActivity.this, "تم حذف الصفحة من السجل", Toast.LENGTH_SHORT).show();
-                            showLibraryDialog();
-                        }).setNegativeButton("إلغاء", null).show();
+                showLinkActionsDialog(name, pageUrl, () -> {
+                    Set<String> updated = new HashSet<>(browserPrefs.getStringSet("browser_history", new HashSet<String>()));
+                    updated.remove(pageUrl);
+                    browserPrefs.edit().putStringSet("browser_history", updated)
+                            .remove("history_title_" + pageUrl).remove("history_time_" + pageUrl)
+                            .remove("visit_count_" + pageUrl).apply();
+                    Toast.makeText(MainActivity.this, "تم حذف الصفحة من السجل", Toast.LENGTH_SHORT).show();
+                    showLibraryDialog();
+                }, () -> castUrlDirectlyToTv(pageUrl));
                 return true;
             });
         }
@@ -1002,6 +983,65 @@ public class MainActivity extends Activity {
         return shape;
     }
 
+
+    private void showLinkActionsDialog(String title, String url, Runnable deleteAction, Runnable sendAction) {
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(dp(18), dp(12), dp(18), dp(12));
+        TextView fullUrl = new TextView(this);
+        fullUrl.setText(url);
+        fullUrl.setTextColor(0xFFE5E7EB);
+        fullUrl.setTextSize(12);
+        fullUrl.setTextIsSelectable(true);
+        fullUrl.setTextDirection(View.TEXT_DIRECTION_LTR);
+        fullUrl.setPadding(dp(4), dp(8), dp(4), dp(14));
+        panel.addView(fullUrl);
+        LinearLayout actions = new LinearLayout(this);
+        actions.setOrientation(LinearLayout.HORIZONTAL);
+        actions.setGravity(Gravity.CENTER);
+        panel.addView(actions);
+        addLinkActionButton(actions, "🗑️", "مسح الرابط", deleteAction, 0xFFB3261E);
+        addLinkActionButton(actions, "📋", "نسخ الرابط", () -> {
+            ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+            if (clipboard != null) {
+                clipboard.setPrimaryClip(ClipData.newPlainText("URL", url));
+                Toast.makeText(this, "تم نسخ الرابط", Toast.LENGTH_SHORT).show();
+            }
+        }, 0xFF245B8F);
+        addLinkActionButton(actions, "📤", "إرسال الرابط", sendAction, 0xFF287A52);
+        new AlertDialog.Builder(this, R.style.ModernDialogTheme)
+                .setTitle(title == null || title.trim().isEmpty() ? "إجراءات الرابط" : title)
+                .setView(panel)
+                .setNegativeButton("إغلاق", null)
+                .show();
+    }
+
+    private void addLinkActionButton(LinearLayout parent, String icon, String label,
+                                     Runnable action, int backgroundColor) {
+        TextView button = new TextView(this);
+        button.setText(icon + "\\n" + label);
+        button.setTextColor(0xFFFFFFFF);
+        button.setTextSize(12);
+        button.setTypeface(null, Typeface.BOLD);
+        button.setGravity(Gravity.CENTER);
+        button.setPadding(dp(4), dp(12), dp(4), dp(12));
+        GradientDrawable shape = new GradientDrawable();
+        shape.setColor(backgroundColor);
+        shape.setCornerRadius(dp(12));
+        button.setBackground(shape);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(76), 1f);
+        params.setMargins(dp(4), 0, dp(4), 0);
+        parent.addView(button, params);
+        button.setOnClickListener(v -> {
+            // Close the action sheet before performing the selected operation.
+            if (action != null) action.run();
+            View root = (View) parent.getParent();
+            if (root != null) {
+                android.content.Context context = root.getContext();
+            }
+        });
+    }
+
     private void openLibraryUrl(String url) {
         Intent intent = new Intent(MainActivity.this, BrowserActivity.class);
         intent.putExtra("url", url);
@@ -1084,19 +1124,14 @@ public class MainActivity extends Activity {
         });
         listView.setOnItemLongClickListener((parent, view, position, id) -> {
             String entry = entries.get(position);
-            new AlertDialog.Builder(MainActivity.this, R.style.ModernDialogTheme)
-                    .setTitle("حذف العلامة المرجعية؟")
-                    .setMessage(names.get(position) + "\n" + urls.get(position))
-                    .setPositiveButton("حذف", (confirm, which) -> {
-                        Set<String> updated = new HashSet<>(bookmarkPrefs.getStringSet("custom_sites", new HashSet<String>()));
-                        updated.remove(entry);
-                        bookmarkPrefs.edit().putStringSet("custom_sites", updated).apply();
-                        dialog.dismiss();
-                        Toast.makeText(MainActivity.this, "تم حذف العلامة المرجعية", Toast.LENGTH_SHORT).show();
-                        showBookmarksDialog();
-                    })
-                    .setNegativeButton("إلغاء", null)
-                    .show();
+            showLinkActionsDialog(names.get(position), urls.get(position), () -> {
+                Set<String> updated = new HashSet<>(bookmarkPrefs.getStringSet("custom_sites", new HashSet<String>()));
+                updated.remove(entry);
+                bookmarkPrefs.edit().putStringSet("custom_sites", updated).apply();
+                dialog.dismiss();
+                Toast.makeText(MainActivity.this, "تم حذف العلامة المرجعية", Toast.LENGTH_SHORT).show();
+                showBookmarksDialog();
+            }, () -> castUrlDirectlyToTv(urls.get(position)));
             return true;
         });
         dialog.show();
@@ -1140,30 +1175,18 @@ public class MainActivity extends Activity {
         });
         list.setOnItemLongClickListener((parent, view, position, id) -> {
             String url = urls.get(position);
-            new AlertDialog.Builder(MainActivity.this, R.style.ModernDialogTheme)
-                    .setTitle(getCompactSavedUrlLabel(url))
-                    .setMessage(url)
-                    .setPositiveButton("نسخ الرابط الكامل", (confirm, which) -> {
-                        ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-                        if (clipboard != null) {
-                            clipboard.setPrimaryClip(ClipData.newPlainText("URL", url));
-                            Toast.makeText(MainActivity.this, "تم نسخ الرابط الكامل", Toast.LENGTH_SHORT).show();
-                        }
-                    })
-                    .setNeutralButton("حذف الوسيط", (confirm, which) -> {
-                        org.json.JSONArray latest = readSavedMediaUrls();
-                        org.json.JSONArray kept = new org.json.JSONArray();
-                        for (int i = 0; i < latest.length(); i++) {
-                            String candidate = latest.optString(i, "");
-                            if (!url.equals(candidate)) kept.put(candidate);
-                        }
-                        prefs.edit().putString("saved_media_urls", kept.toString()).apply();
-                        dialog.dismiss();
-                        Toast.makeText(MainActivity.this, "تم حذف الوسيط المحفوظ", Toast.LENGTH_SHORT).show();
-                        showSavedMediaDialog();
-                    })
-                    .setNegativeButton("إغلاق", null)
-                    .show();
+            showLinkActionsDialog(getCompactSavedUrlLabel(url), url, () -> {
+                org.json.JSONArray latest = readSavedMediaUrls();
+                org.json.JSONArray kept = new org.json.JSONArray();
+                for (int i = 0; i < latest.length(); i++) {
+                    String candidate = latest.optString(i, "");
+                    if (!url.equals(candidate)) kept.put(candidate);
+                }
+                prefs.edit().putString("saved_media_urls", kept.toString()).apply();
+                dialog.dismiss();
+                Toast.makeText(MainActivity.this, "تم حذف الوسيط المحفوظ", Toast.LENGTH_SHORT).show();
+                showSavedMediaDialog();
+            }, () -> castUrlDirectlyToTv(url));
             return true;
         });
         dialog.show();
