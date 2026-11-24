@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <full-backup-content>
+    <!-- Receiver authentication secrets are encrypted with a device-bound Android Keystore key. -->
+    <exclude domain="sharedpref" path="AboEzzatSharePrefs.xml" />
     <!-- VPN profiles contain private WireGuard keys and must never enter Android backup. -->
     <exclude domain="sharedpref" path="abo_vpn_profiles.xml" />
     <exclude domain="file" path="vpn_profiles/" />
