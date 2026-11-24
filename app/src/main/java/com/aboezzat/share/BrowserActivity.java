@@ -2570,6 +2570,10 @@ public class BrowserActivity extends Activity {
     private void loadThumbnailAsync(final CapturedMedia media) {
         if (media == null || media.posterUrl == null || media.posterUrl.trim().isEmpty()) return;
         AsyncTask.execute(() -> {
+            if (!isSafePublicHttpUrl(media.posterUrl)) {
+                Log.w(TAG, "Blocked thumbnail request to a non-public host");
+                return;
+            }
             HttpURLConnection conn = null;
             InputStream input = null;
             try {
