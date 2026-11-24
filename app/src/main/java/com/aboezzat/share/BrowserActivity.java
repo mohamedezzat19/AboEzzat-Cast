@@ -681,38 +681,43 @@ public class BrowserActivity extends Activity {
                     .setPositiveButton("إغلاق", null).show();
             return;
         }
-        List<String> labels = new ArrayList<>();
-        for (String url : urls) {
-            String title = prefs.getString("history_title_" + url, url);
-            labels.add(title + "\\n" + url);
-        }
+
         android.widget.ListView list = new android.widget.ListView(this);
-        list.setBackgroundColor(Color.rgb(16, 26, 44));
-        list.setDivider(new android.graphics.drawable.ColorDrawable(Color.rgb(43, 59, 80)));
+        list.setBackgroundColor(Color.rgb(12, 22, 39));
+        list.setDivider(new android.graphics.drawable.ColorDrawable(Color.rgb(55, 75, 101)));
         list.setDividerHeight(dp(1));
-        list.setAdapter(new android.widget.ArrayAdapter<>(this, android.R.layout.simple_list_item_2,
-                android.R.id.text1, labels) {
+        list.setAdapter(new android.widget.ArrayAdapter<String>(this,
+                android.R.layout.simple_list_item_1, urls) {
             @Override public View getView(int position, View convertView, ViewGroup parent) {
-                View row = super.getView(position, convertView, parent);
-                row.setBackgroundColor(Color.rgb(23, 35, 54));
-                row.setPadding(dp(14), dp(10), dp(14), dp(10));
-                TextView first = row.findViewById(android.R.id.text1);
-                TextView second = row.findViewById(android.R.id.text2);
+                TextView row = (TextView) super.getView(position, convertView, parent);
                 String url = urls.get(position);
-                first.setText(prefs.getString("history_title_" + url, url));
-                second.setText(url);
-                first.setTextColor(Color.WHITE);
-                second.setTextColor(Color.LTGRAY);
+                String title = prefs.getString("history_title_" + url, "");
+                if (title == null || title.trim().isEmpty()) {
+                    try {
+                        String host = Uri.parse(url).getHost();
+                        title = host == null ? url : host;
+                    } catch (Exception ignored) { title = url; }
+                }
+                row.setText(title.trim());
+                row.setTextColor(Color.WHITE);
+                row.setTextSize(15);
+                row.setSingleLine(true);
+                row.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                row.setBackgroundColor(Color.rgb(23, 35, 54));
+                row.setPadding(dp(16), dp(14), dp(16), dp(14));
                 return row;
             }
         });
-        AlertDialog dialog = new AlertDialog.Builder(this, R.style.ModernDialogTheme).setTitle("سجل التصفح • " + urls.size())
+
+        AlertDialog dialog = new AlertDialog.Builder(this, R.style.ModernDialogTheme)
+                .setTitle("سجل التصفح • " + urls.size())
                 .setView(list).setNegativeButton("إغلاق", null)
                 .setNeutralButton("مسح السجل", (d, w) -> {
                     prefs.edit().putStringSet("browser_history", new HashSet<String>())
                             .putLong("history_cleared_at", System.currentTimeMillis()).apply();
                     Toast.makeText(this, "تم مسح سجل التصفح", Toast.LENGTH_SHORT).show();
                 }).create();
+
         list.setOnItemClickListener((parent, view, position, id) -> {
             if (position >= 0 && position < urls.size()) {
                 loadTargetUrl(urls.get(position));
@@ -721,14 +726,29 @@ public class BrowserActivity extends Activity {
         });
         list.setOnItemLongClickListener((parent, view, position, id) -> {
             if (position < 0 || position >= urls.size()) return true;
-            String url = urls.get(position);
-            Set<String> updated = new HashSet<>(prefs.getStringSet("browser_history", new HashSet<String>()));
-            updated.remove(url);
-            prefs.edit().putStringSet("browser_history", updated)
-                    .remove("history_title_" + url).remove("history_time_" + url)
-                    .remove("visit_count_" + url).apply();
-            dialog.dismiss();
-            showBrowserHistoryDialog();
+            String selectedUrl = urls.get(position);
+            new AlertDialog.Builder(this, R.style.ModernDialogTheme)
+                    .setTitle("عنوان الموقع الكامل")
+                    .setMessage(selectedUrl)
+                    .setItems(new String[]{"نسخ العنوان الكامل", "حذف من سجل التصفح"}, (actionDialog, which) -> {
+                        if (which == 0) {
+                            ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                            if (clipboard != null) {
+                                clipboard.setPrimaryClip(ClipData.newPlainText("URL", selectedUrl));
+                                Toast.makeText(this, "تم نسخ العنوان الكامل", Toast.LENGTH_SHORT).show();
+                            }
+                        } else {
+                            Set<String> updated = new HashSet<>(prefs.getStringSet(
+                                    "browser_history", new HashSet<String>()));
+                            updated.remove(selectedUrl);
+                            prefs.edit().putStringSet("browser_history", updated)
+                                    .remove("history_title_" + selectedUrl)
+                                    .remove("history_time_" + selectedUrl)
+                                    .remove("visit_count_" + selectedUrl).apply();
+                            dialog.dismiss();
+                            showBrowserHistoryDialog();
+                        }
+                    }).setNegativeButton("إغلاق", null).show();
             return true;
         });
         dialog.show();
