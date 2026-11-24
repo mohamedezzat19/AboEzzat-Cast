@@ -147,7 +147,7 @@ public class MainActivity extends Activity {
         String pendingSendUrl = getIntent().getStringExtra("send_saved_url_to_tv");
         if (pendingSendUrl != null && !pendingSendUrl.trim().isEmpty()) {
             final String urlToSend = pendingSendUrl.trim();
-            new Handler(Looper.getMainLooper()).post(() -> castUrlDirectlyToTv(urlToSend));
+            new Handler(Looper.getMainLooper()).post(() -> sendUrlToTvFromUi(urlToSend));
             getIntent().removeExtra("send_saved_url_to_tv");
         }
         if (getIntent().getBooleanExtra("open_media_picker", false)) {
@@ -781,7 +781,7 @@ public class MainActivity extends Activity {
                 dialog.dismiss();
                 Toast.makeText(MainActivity.this, "تم حذف الصفحة من السجل", Toast.LENGTH_SHORT).show();
                 showBrowserHistory(mostVisited);
-            }, () -> castUrlDirectlyToTv(url));
+            }, () -> sendUrlToTvFromUi(url));
             return true;
         });
         dialog.show();
@@ -870,7 +870,7 @@ public class MainActivity extends Activity {
                         browserPrefs.edit().putStringSet("custom_sites", updated).apply();
                         Toast.makeText(MainActivity.this, "تم حذف العلامة المرجعية", Toast.LENGTH_SHORT).show();
                         showLibraryDialog();
-                    }, () -> castUrlDirectlyToTv(urls.get(index)));
+                    }, () -> sendUrlToTvFromUi(urls.get(index)));
                     return true;
                 });
             }
@@ -899,7 +899,7 @@ public class MainActivity extends Activity {
                             .remove("visit_count_" + pageUrl).apply();
                     Toast.makeText(MainActivity.this, "تم حذف الصفحة من السجل", Toast.LENGTH_SHORT).show();
                     showLibraryDialog();
-                }, () -> castUrlDirectlyToTv(pageUrl));
+                }, () -> sendUrlToTvFromUi(pageUrl));
                 return true;
             });
         }
@@ -1134,7 +1134,7 @@ public class MainActivity extends Activity {
                 dialog.dismiss();
                 Toast.makeText(MainActivity.this, "تم حذف العلامة المرجعية", Toast.LENGTH_SHORT).show();
                 showBookmarksDialog();
-            }, () -> castUrlDirectlyToTv(urls.get(position)));
+            }, () -> sendUrlToTvFromUi(urls.get(position)));
             return true;
         });
         dialog.show();
@@ -1189,7 +1189,7 @@ public class MainActivity extends Activity {
                 dialog.dismiss();
                 Toast.makeText(MainActivity.this, "تم حذف الوسيط المحفوظ", Toast.LENGTH_SHORT).show();
                 showSavedMediaDialog();
-            }, () -> castUrlDirectlyToTv(url));
+            }, () -> sendUrlToTvFromUi(url));
             return true;
         });
         dialog.show();
@@ -1283,7 +1283,7 @@ private void showManualIpDialog() {
         setIntent(intent);
         String url = intent == null ? null : intent.getStringExtra("send_saved_url_to_tv");
         if (url != null && !url.trim().isEmpty()) {
-            castUrlDirectlyToTv(url.trim());
+            sendUrlToTvFromUi(url.trim());
             intent.removeExtra("send_saved_url_to_tv");
         }
     }
@@ -1989,6 +1989,36 @@ private void showManualIpDialog() {
             });
         } catch (Exception ignored) {
             if (clipboardShortcutLaunch) finish();
+        }
+    }
+
+    private void sendUrlToTvFromUi(String mediaUrl) {
+        String tvIp = prefs.getString("tv_ip", "").trim();
+        if (tvIp.isEmpty()) {
+            Toast.makeText(this, "احفظ عنوان IP الشاشة أولاً", Toast.LENGTH_LONG).show();
+            return;
+        }
+        try {
+            String endpoint = tvIp;
+            if (!endpoint.startsWith("http")) endpoint = "http://" + endpoint;
+            if (!endpoint.contains(":" + TARGET_PORT)) endpoint += ":" + TARGET_PORT;
+            String fullUrl = endpoint + "/?url=" + URLEncoder.encode(mediaUrl, "UTF-8");
+            Request req = new Request.Builder().url(fullUrl).build();
+            client.newCall(req).enqueue(new Callback() {
+                @Override public void onFailure(Call call, IOException error) {
+                    runOnUiThread(() -> Toast.makeText(MainActivity.this,
+                            "تعذر إرسال الرابط إلى الشاشة", Toast.LENGTH_LONG).show());
+                }
+                @Override public void onResponse(Call call, Response response) {
+                    boolean successful = response.isSuccessful();
+                    response.close();
+                    runOnUiThread(() -> Toast.makeText(MainActivity.this,
+                            successful ? "✅ تم إرسال الرابط إلى الشاشة" : "تعذر إرسال الرابط إلى الشاشة",
+                            Toast.LENGTH_SHORT).show());
+                }
+            });
+        } catch (Exception error) {
+            Toast.makeText(this, "تعذر تجهيز الرابط للإرسال", Toast.LENGTH_SHORT).show();
         }
     }
 
