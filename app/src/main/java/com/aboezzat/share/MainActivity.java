@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.DownloadManager;
 import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.speech.RecognizerIntent;
@@ -684,6 +685,31 @@ public class MainActivity extends Activity {
         edit.commit();
     }
 
+    private String getCompactSavedUrlLabel(String url) {
+        if (url == null || url.trim().isEmpty()) return "رابط محفوظ";
+        try {
+            Uri parsed = Uri.parse(url);
+            String host = parsed.getHost();
+            if (host != null && !host.trim().isEmpty()) return host;
+        } catch (Exception ignored) {}
+        return "رابط محفوظ";
+    }
+
+    private void showFullUrlDialog(String title, String url) {
+        new AlertDialog.Builder(this, R.style.ModernDialogTheme)
+                .setTitle(title == null || title.trim().isEmpty() ? "العنوان الكامل" : title)
+                .setMessage(url == null ? "" : url)
+                .setPositiveButton("نسخ الرابط", (d, w) -> {
+                    ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                    if (clipboard != null && url != null) {
+                        clipboard.setPrimaryClip(ClipData.newPlainText("URL", url));
+                        Toast.makeText(this, "تم نسخ الرابط الكامل", Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setNegativeButton("إغلاق", null)
+                .show();
+    }
+
     private void showBrowserHistory(boolean mostVisited) {
         SharedPreferences browserPrefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE | MODE_MULTI_PROCESS);
         Set<String> saved = new HashSet<>(browserPrefs.getStringSet("browser_history", new HashSet<String>()));
@@ -707,9 +733,10 @@ public class MainActivity extends Activity {
         String[] labels = new String[urls.size()];
         for (int i = 0; i < urls.size(); i++) {
             String url = urls.get(i);
-            String title = browserPrefs.getString("history_title_" + url, url);
+            String title = browserPrefs.getString("history_title_" + url, "");
+            if (title == null || title.trim().isEmpty() || title.equals(url)) title = getCompactSavedUrlLabel(url);
             labels[i] = (mostVisited ? (browserPrefs.getInt("visit_count_" + url, 0) + " زيارة · ") : "")
-                    + title + "\n" + url;
+                    + title;
         }
 
         android.widget.ListView listView = new android.widget.ListView(this);
@@ -734,10 +761,19 @@ public class MainActivity extends Activity {
         listView.setOnItemLongClickListener((parent, view, position, id) -> {
             String url = urls.get(position);
             String title = browserPrefs.getString("history_title_" + url, url);
+            String title = browserPrefs.getString("history_title_" + url, "");
+            if (title == null || title.trim().isEmpty() || title.equals(url)) title = getCompactSavedUrlLabel(url);
             new AlertDialog.Builder(MainActivity.this, R.style.ModernDialogTheme)
-                    .setTitle("حذف الصفحة من السجل؟")
-                    .setMessage(title + "\n" + url)
-                    .setPositiveButton("حذف", (confirm, which) -> {
+                    .setTitle(title)
+                    .setMessage(url)
+                    .setPositiveButton("نسخ الرابط", (confirm, which) -> {
+                        ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                        if (clipboard != null) {
+                            clipboard.setPrimaryClip(ClipData.newPlainText("URL", url));
+                            Toast.makeText(MainActivity.this, "تم نسخ الرابط الكامل", Toast.LENGTH_SHORT).show();
+                        }
+                    })
+                    .setNeutralButton("حذف من السجل", (confirm, which) -> {
                         Set<String> updated = new HashSet<>(browserPrefs.getStringSet("browser_history", new HashSet<String>()));
                         updated.remove(url);
                         browserPrefs.edit().putStringSet("browser_history", updated)
@@ -748,7 +784,7 @@ public class MainActivity extends Activity {
                         Toast.makeText(MainActivity.this, "تم حذف الصفحة من السجل", Toast.LENGTH_SHORT).show();
                         showBrowserHistory(mostVisited);
                     })
-                    .setNegativeButton("إلغاء", null)
+                    .setNegativeButton("إغلاق", null)
                     .show();
             return true;
         });
@@ -855,7 +891,9 @@ public class MainActivity extends Activity {
                 browserPrefs.getLong("history_time_" + a, 0)));
         for (String url : historyUrls) {
             final String pageUrl = url;
-            String pageTitle = browserPrefs.getString("history_title_" + url, url);
+            String pageTitle = browserPrefs.getString("history_title_" + url, "");
+            if (pageTitle == null || pageTitle.trim().isEmpty() || pageTitle.equals(url))
+                pageTitle = getCompactSavedUrlLabel(url);
             TextView card = addLibraryCard(content, pageTitle);
             card.setOnClickListener(v -> openLibraryUrl(pageUrl));
             card.setOnLongClickListener(v -> {
@@ -1080,7 +1118,7 @@ public class MainActivity extends Activity {
             urls.add(url);
             String host;
             try { host = Uri.parse(url).getHost(); } catch (Exception ignored) { host = null; }
-            labels.add((host == null || host.trim().isEmpty() ? "وسائط محفوظة" : host) + "\n" + url);
+            labels.add(host == null || host.trim().isEmpty() ? "وسائط محفوظة" : host);
         }
 
         android.widget.ListView list = new android.widget.ListView(this);
@@ -1100,9 +1138,16 @@ public class MainActivity extends Activity {
         list.setOnItemLongClickListener((parent, view, position, id) -> {
             String url = urls.get(position);
             new AlertDialog.Builder(MainActivity.this, R.style.ModernDialogTheme)
-                    .setTitle("حذف الوسيط المحفوظ؟")
+                    .setTitle(getCompactSavedUrlLabel(url))
                     .setMessage(url)
-                    .setPositiveButton("حذف", (confirm, which) -> {
+                    .setPositiveButton("نسخ الرابط الكامل", (confirm, which) -> {
+                        ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                        if (clipboard != null) {
+                            clipboard.setPrimaryClip(ClipData.newPlainText("URL", url));
+                            Toast.makeText(MainActivity.this, "تم نسخ الرابط الكامل", Toast.LENGTH_SHORT).show();
+                        }
+                    })
+                    .setNeutralButton("حذف الوسيط", (confirm, which) -> {
                         org.json.JSONArray latest = readSavedMediaUrls();
                         org.json.JSONArray kept = new org.json.JSONArray();
                         for (int i = 0; i < latest.length(); i++) {
@@ -1114,7 +1159,7 @@ public class MainActivity extends Activity {
                         Toast.makeText(MainActivity.this, "تم حذف الوسيط المحفوظ", Toast.LENGTH_SHORT).show();
                         showSavedMediaDialog();
                     })
-                    .setNegativeButton("إلغاء", null)
+                    .setNegativeButton("إغلاق", null)
                     .show();
             return true;
         });
@@ -1739,7 +1784,8 @@ private void showManualIpDialog() {
                 return;
             }
             String[] labels = new String[urls.size()];
-            for (int i = 0; i < urls.size(); i++) labels[i] = (i + 1) + ". " + urls.get(i);
+            for (int i = 0; i < urls.size(); i++)
+                labels[i] = (i + 1) + ". " + getCompactSavedUrlLabel(urls.get(i));
             android.widget.ListView list = new android.widget.ListView(this);
             list.setAdapter(new android.widget.ArrayAdapter<String>(this,
                     android.R.layout.simple_list_item_1, labels));
@@ -1753,6 +1799,13 @@ private void showManualIpDialog() {
                         finish();
                     })
                     .create();
+            list.setOnItemLongClickListener((parent, view, position, id) -> {
+                if (position >= 0 && position < urls.size()) {
+                    String selectedUrl = urls.get(position);
+                    showFullUrlDialog("رابط Web Video Caster الكامل", selectedUrl);
+                }
+                return true;
+            });
             list.setOnItemClickListener((parent, view, position, id) -> {
                 String selectedUrl = urls.get(position);
                 new AlertDialog.Builder(this, R.style.ModernDialogTheme)
