@@ -134,22 +134,39 @@ public class ShareActivity extends Activity {
 
     private String extractUrl(String text) {
         // Accept both fully-qualified links and copied links beginning with www.
+        if (text == null || text.length() > 8192) return null;
         Pattern pattern = Pattern.compile("(?i)((?:https?://|www\\.)[\\w\\-\\.\\?\\=\\&\\%\\/\\#\\+]+)");
         Matcher matcher = pattern.matcher(text);
-        if (matcher.find()) {
-            String url = matcher.group(1);
-            return url.regionMatches(true, 0, "www.", 0, 4) ? "https://" + url : url;
+        if (!matcher.find()) return null;
+        String url = matcher.group(1);
+        if (url.regionMatches(true, 0, "www.", 0, 4)) url = "https://" + url;
+        if (url.length() > 4096) return null;
+        try {
+            Uri parsed = Uri.parse(url);
+            String scheme = parsed.getScheme();
+            String host = parsed.getHost();
+            if (scheme == null || host == null || host.trim().isEmpty()
+                    || parsed.getUserInfo() != null
+                    || !("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme))) {
+                return null;
+            }
+            for (int i = 0; i < host.length(); i++) {
+                char ch = host.charAt(i);
+                if (!(Character.isLetterOrDigit(ch) || ch == '.' || ch == '-')) return null;
+            }
+            return url;
+        } catch (Exception ignored) {
+            return null;
         }
-        return null;
     }
 
     private void dispatchPlatformRoute(String url) {
         SharedPreferences prefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
         targetTvIp = prefs.getString("tv_ip", "").trim();
 
-        String lowerUrl = url.toLowerCase();
+        String lowerUrl = url.toLowerCase(Locale.ROOT);\n        Uri parsedUrl = Uri.parse(url);\n        String host = parsedUrl.getHost() == null ? "" : parsedUrl.getHost().toLowerCase(Locale.ROOT);
 
-        if (lowerUrl.contains("instagram.com")) {
+        if (host.equals("instagram.com") || host.endsWith(".instagram.com")) {
             Intent browserIntent = new Intent(this, BrowserActivity.class);
             browserIntent.setAction(Intent.ACTION_VIEW);
             browserIntent.setData(Uri.parse(url));
@@ -160,7 +177,7 @@ public class ShareActivity extends Activity {
 
         // Threads shared links belong to the full in-app browser capture flow.
         // Keep this separate from ShareActivity's background/direct media handlers.
-        if (lowerUrl.contains("threads.net") || lowerUrl.contains("threads.com")) {
+        if (host.equals("threads.net") || host.endsWith(".threads.net")\n                || host.equals("threads.com") || host.endsWith(".threads.com")) {
             openThreadsInBrowser(url);
             return;
         }
@@ -216,7 +233,7 @@ public class ShareActivity extends Activity {
             return;
         }
 
-        if (lowerUrl.contains("tiktok.com")) {
+        if (host.equals("tiktok.com") || host.endsWith(".tiktok.com")) {
 
             handleTikTok(url);
             return;
@@ -240,9 +257,16 @@ public class ShareActivity extends Activity {
 
     private boolean isTikTokLiveUrl(String value) {
         if (value == null) return false;
-        String lower = value.toLowerCase(Locale.ROOT);
-        return lower.contains("live.tiktok.com")
-                || lower.matches(".*tiktok\\.com/@[^/]+/live(?:[/?#].*)?");
+        try {
+            Uri uri = Uri.parse(value.trim());
+            String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase(Locale.ROOT);
+            String path = uri.getPath() == null ? "" : uri.getPath();
+            return host.equals("live.tiktok.com")
+                    || ((host.equals("tiktok.com") || host.endsWith(".tiktok.com"))
+                    && path.matches("(?i)^/@[^/]+/live/?$"));
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 
     // A LIVE page may deliver its stream from a TikTok CDN host that does not
