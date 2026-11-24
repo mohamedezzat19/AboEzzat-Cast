@@ -1958,7 +1958,7 @@ private void showManualIpDialog() {
             String endpoint = tvIp;
             if (!endpoint.startsWith("http")) endpoint = "http://" + endpoint;
             if (!endpoint.contains(":" + TARGET_PORT)) endpoint += ":" + TARGET_PORT;
-            String fullUrl = endpoint + "/?url=" + URLEncoder.encode(mediaUrl, "UTF-8");
+            String fullUrl = endpoint + "/?url=" + URLEncoder.encode(mediaUrl, "UTF-8") + "&open=browser";
             Request req = new Request.Builder().url(fullUrl).build();
             AtomicBoolean requestHeadersSent = new AtomicBoolean(false);
             OkHttpClient trackedClient = client.newBuilder()
