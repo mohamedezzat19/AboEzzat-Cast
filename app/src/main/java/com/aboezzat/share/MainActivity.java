@@ -1365,8 +1365,11 @@ private void showManualIpDialog() {
                             endpoint = "http://" + endpoint;
                         if (!endpoint.contains(":" + TARGET_PORT)) endpoint += ":" + TARGET_PORT;
                         final String pairedHost = Uri.parse(endpoint).getHost();
-                        String pairUrl = endpoint + "/pair?code=" + URLEncoder.encode(code, "UTF-8");
-                        Request request = new Request.Builder().url(pairUrl).get().build();
+                        String pairUrl = endpoint + "/pair";
+                        okhttp3.RequestBody pairingBody = okhttp3.RequestBody.create(
+                                okhttp3.MediaType.parse("application/json; charset=utf-8"),
+                                new org.json.JSONObject().put("code", code).toString());
+                        Request request = new Request.Builder().url(pairUrl).post(pairingBody).build();
                         client.newCall(request).enqueue(new Callback() {
                             @Override public void onFailure(Call call, IOException error) {
                                 runOnUiThread(() -> Toast.makeText(MainActivity.this,
