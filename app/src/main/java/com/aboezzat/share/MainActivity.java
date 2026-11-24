@@ -1000,23 +1000,24 @@ public class MainActivity extends Activity {
         actions.setOrientation(LinearLayout.HORIZONTAL);
         actions.setGravity(Gravity.CENTER);
         panel.addView(actions);
-        addLinkActionButton(actions, "🗑️", "مسح الرابط", deleteAction, 0xFFB3261E);
-        addLinkActionButton(actions, "📋", "نسخ الرابط", () -> {
+        AlertDialog dialog = new AlertDialog.Builder(this, R.style.ModernDialogTheme)
+                .setTitle(title == null || title.trim().isEmpty() ? "إجراءات الرابط" : title)
+                .setView(panel)
+                .setNegativeButton("إغلاق", null)
+                .create();
+        addLinkActionButton(actions, dialog, "🗑️", "مسح الرابط", deleteAction, 0xFFB3261E);
+        addLinkActionButton(actions, dialog, "📋", "نسخ الرابط", () -> {
             ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
             if (clipboard != null) {
                 clipboard.setPrimaryClip(ClipData.newPlainText("URL", url));
                 Toast.makeText(this, "تم نسخ الرابط", Toast.LENGTH_SHORT).show();
             }
         }, 0xFF245B8F);
-        addLinkActionButton(actions, "📤", "إرسال الرابط", sendAction, 0xFF287A52);
-        new AlertDialog.Builder(this, R.style.ModernDialogTheme)
-                .setTitle(title == null || title.trim().isEmpty() ? "إجراءات الرابط" : title)
-                .setView(panel)
-                .setNegativeButton("إغلاق", null)
-                .show();
+        addLinkActionButton(actions, dialog, "📤", "إرسال الرابط", sendAction, 0xFF287A52);
+        dialog.show();
     }
 
-    private void addLinkActionButton(LinearLayout parent, String icon, String label,
+    private void addLinkActionButton(LinearLayout parent, AlertDialog dialog, String icon, String label,
                                      Runnable action, int backgroundColor) {
         TextView button = new TextView(this);
         button.setText(icon + "\\n" + label);
@@ -1033,12 +1034,8 @@ public class MainActivity extends Activity {
         params.setMargins(dp(4), 0, dp(4), 0);
         parent.addView(button, params);
         button.setOnClickListener(v -> {
-            // Close the action sheet before performing the selected operation.
+            dialog.dismiss();
             if (action != null) action.run();
-            View root = (View) parent.getParent();
-            if (root != null) {
-                android.content.Context context = root.getContext();
-            }
         });
     }
 
