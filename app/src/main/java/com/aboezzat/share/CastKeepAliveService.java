@@ -129,6 +129,9 @@ public class CastKeepAliveService extends Service {
         if (localServer != null) return;
         try {
             localServer = new LocalMediaServer(8088);
+            // TLS-only listener: do not expose plaintext HTTP if identity setup fails.
+            localServer.makeSecure(CastTlsIdentity.getServerSocketFactory(),
+                    new String[]{"TLSv1.2"});
             localServer.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
             localServerReady = true;
         } catch (Exception e) {
