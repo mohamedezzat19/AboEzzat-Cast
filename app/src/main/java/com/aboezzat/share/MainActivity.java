@@ -144,6 +144,12 @@ public class MainActivity extends Activity {
         setupNavigationDrawer();
         setupBottomNavigation();
         applyDarkMode(findViewById(R.id.drawer_layout), prefs.getBoolean("dark_mode", true));
+        String pendingSendUrl = getIntent().getStringExtra("send_saved_url_to_tv");
+        if (pendingSendUrl != null && !pendingSendUrl.trim().isEmpty()) {
+            final String urlToSend = pendingSendUrl.trim();
+            new Handler(Looper.getMainLooper()).post(() -> castUrlDirectlyToTv(urlToSend));
+            getIntent().removeExtra("send_saved_url_to_tv");
+        }
         if (getIntent().getBooleanExtra("open_media_picker", false)) {
             new Handler(Looper.getMainLooper()).post(() -> openMediaPicker(false));
         } else if (getIntent().getBooleanExtra("open_library", false)) {
@@ -1269,6 +1275,17 @@ private void showManualIpDialog() {
         if (etHomeSearch == null) return;
         InputMethodManager imm = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
         if (imm != null) imm.hideSoftInputFromWindow(etHomeSearch.getWindowToken(), 0);
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        String url = intent == null ? null : intent.getStringExtra("send_saved_url_to_tv");
+        if (url != null && !url.trim().isEmpty()) {
+            castUrlDirectlyToTv(url.trim());
+            intent.removeExtra("send_saved_url_to_tv");
+        }
     }
 
     @Override
