@@ -789,7 +789,16 @@ public class BrowserActivity extends Activity {
                 TextView title = row.findViewById(android.R.id.text1);
                 TextView address = row.findViewById(android.R.id.text2);
                 title.setText(entry.substring(0, split));
-                address.setText(entry.substring(split + 1));
+                String fullUrl = entry.substring(split + 1);
+                String host;
+                try {
+                    host = Uri.parse(fullUrl).getHost();
+                } catch (Exception ignored) {
+                    host = null;
+                }
+                address.setText(host == null || host.trim().isEmpty() ? "موقع محفوظ" : host);
+                address.setSingleLine(true);
+                address.setEllipsize(android.text.TextUtils.TruncateAt.END);
                 title.setTextColor(Color.WHITE);
                 address.setTextColor(Color.LTGRAY);
                 return row;
@@ -807,12 +816,29 @@ public class BrowserActivity extends Activity {
         list.setOnItemLongClickListener((parent, view, position, id) -> {
             if (position < 0 || position >= entries.size()) return true;
             String entry = entries.get(position);
-            Set<String> updated = new HashSet<>(prefs.getStringSet("custom_sites", new HashSet<String>()));
-            updated.remove(entry);
-            prefs.edit().putStringSet("custom_sites", updated).apply();
-            dialog.dismiss();
-            showQuickSitesDialog();
-            Toast.makeText(this, "تم حذف الموقع من المفضلة", Toast.LENGTH_SHORT).show();
+            int split = entry.indexOf('|');
+            String siteName = entry.substring(0, split);
+            String fullUrl = entry.substring(split + 1);
+            new AlertDialog.Builder(this, R.style.ModernDialogTheme)
+                    .setTitle(siteName)
+                    .setMessage(fullUrl)
+                    .setPositiveButton("نسخ الرابط الكامل", (d, w) -> {
+                        ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                        if (clipboard != null) {
+                            clipboard.setPrimaryClip(ClipData.newPlainText("URL", fullUrl));
+                            Toast.makeText(this, "تم نسخ الرابط الكامل", Toast.LENGTH_SHORT).show();
+                        }
+                    })
+                    .setNeutralButton("حذف من المفضلة", (d, w) -> {
+                        Set<String> updated = new HashSet<>(prefs.getStringSet("custom_sites", new HashSet<String>()));
+                        updated.remove(entry);
+                        prefs.edit().putStringSet("custom_sites", updated).apply();
+                        dialog.dismiss();
+                        showQuickSitesDialog();
+                        Toast.makeText(this, "تم حذف الموقع من المفضلة", Toast.LENGTH_SHORT).show();
+                    })
+                    .setNegativeButton("إغلاق", null)
+                    .show();
             return true;
         });
         dialog.show();
