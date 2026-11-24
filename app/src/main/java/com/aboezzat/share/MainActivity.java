@@ -99,13 +99,12 @@ public class MainActivity extends Activity {
             .followSslRedirects(false)
             .addInterceptor(chain -> {
                 Request original = chain.request();
-                if (original.url().port() == TARGET_PORT) {
-                    if (!original.url().isHttps()) {
-                        throw new IOException("Receiver API requires pinned HTTPS");
-                    }
-                    boolean pairingRequest = "POST".equalsIgnoreCase(original.method())
-                            && "/pair".equals(original.url().encodedPath());
-                    if (!pairingRequest) {
+                if (!original.url().isHttps()) {
+                    throw new IOException("Receiver API requires pinned HTTPS");
+                }
+                boolean pairingRequest = "POST".equalsIgnoreCase(original.method())
+                        && "/pair".equals(original.url().encodedPath());
+                if (!pairingRequest) {
                         String secret = decryptReceiverSecret(getSharedPreferences("AboEzzatSharePrefs",
                                 MODE_PRIVATE | MODE_MULTI_PROCESS).getString(
                                         PREF_RECEIVER_SECRET + original.url().host(), ""));
@@ -145,7 +144,6 @@ public class MainActivity extends Activity {
                                 .header("X-AboEzzat-Signature", signature)
                                 .build();
                         return chain.proceed(signed);
-                    }
                 }
                 return chain.proceed(original);
             })
