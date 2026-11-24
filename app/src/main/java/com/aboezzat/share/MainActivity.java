@@ -760,7 +760,6 @@ public class MainActivity extends Activity {
         });
         listView.setOnItemLongClickListener((parent, view, position, id) -> {
             String url = urls.get(position);
-            String title = browserPrefs.getString("history_title_" + url, url);
             String title = browserPrefs.getString("history_title_" + url, "");
             if (title == null || title.trim().isEmpty() || title.equals(url)) title = getCompactSavedUrlLabel(url);
             new AlertDialog.Builder(MainActivity.this, R.style.ModernDialogTheme)
