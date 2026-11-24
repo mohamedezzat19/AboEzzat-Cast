@@ -1967,6 +1967,7 @@ public class BrowserActivity extends Activity {
             if (posterUrl != null && !isValidCapturedHttpUrl(posterUrl)) posterUrl = "";
             String youtubePage = getCurrentYouTubePageUrl();
             synchronized (BrowserActivity.this) {
+                String previousPlaybackKey = activePlaybackKey;
                 if (youtubePage != null) {
                     // YouTube changes its internal media source while a LIVE playlist refreshes.
                     // Keep one page-scoped playback identity so those refreshes never clear the list.
@@ -1978,6 +1979,10 @@ public class BrowserActivity extends Activity {
                         activePlaybackKey = key;
                         clearCapturedMedia();
                     }
+                }
+                if (!previousPlaybackKey.equals(activePlaybackKey)) {
+                    synchronized (mp4ProbeRequests) { mp4ProbeRequests.clear(); }
+                    synchronized (dramaLiveProbeRequests) { dramaLiveProbeRequests.clear(); }
                 }
                 if (title != null && !title.trim().isEmpty()) lastDiscoveredTitle = title.trim();
                 if (posterUrl != null && !posterUrl.trim().isEmpty()) lastDiscoveredPoster = posterUrl;
@@ -2089,6 +2094,15 @@ public class BrowserActivity extends Activity {
                 saveCustomSite(name, siteUrl);
                 loadHomePage();
             });
+        }
+    }
+
+    // Bound per-playback deduplication state so hostile pages cannot grow these sets forever.
+    private boolean addBoundedProbeRequest(Set<String> requests, String key) {
+        if (key == null || key.isEmpty() || key.length() > 8192) return false;
+        synchronized (requests) {
+            if (requests.contains(key) || requests.size() >= 256) return false;
+            return requests.add(key);
         }
     }
 
@@ -2418,7 +2432,8 @@ public class BrowserActivity extends Activity {
     }
 
     private void probeAndAddMp4(final String mediaUrl, final String title, final String posterUrl) {
-        if (mediaUrl == null || isBlockedAdUrl(mediaUrl) || activePlaybackKey.isEmpty() || !mp4ProbeRequests.add(mediaUrl)) return;
+        if (mediaUrl == null || isBlockedAdUrl(mediaUrl) || activePlaybackKey.isEmpty()
+                || !addBoundedProbeRequest(mp4ProbeRequests, mediaUrl)) return;
         final String captureKey = activePlaybackKey;
         AsyncTask.execute(() -> {
             if (!isSafePublicHttpUrl(mediaUrl)) {
@@ -2443,7 +2458,7 @@ public class BrowserActivity extends Activity {
         if (endpointUrl == null || !endpointUrl.startsWith("http") || captureKey == null
                 || !captureKey.equals(activePlaybackKey) || !isDramaLivePage(activePageUrl)) return;
         final String dedupe = captureKey + "|" + endpointUrl;
-        if (!dramaLiveProbeRequests.add(dedupe)) return;
+        if (!addBoundedProbeRequest(dramaLiveProbeRequests, dedupe)) return;
         final Map<String, String> headers = requestHeaders == null
                 ? new HashMap<>() : new HashMap<>(requestHeaders);
         AsyncTask.execute(() -> {
@@ -2524,7 +2539,9 @@ public class BrowserActivity extends Activity {
     // Active HTML5 video elements sometimes use extension-less CDN URLs.
     // Confirm the response MIME type before offering such a URL to the user.
     private void probeUnknownVideoByContentType(final String mediaUrl, final String title, final String posterUrl) {
-        if (mediaUrl == null || isBlockedAdUrl(mediaUrl) || !mediaUrl.startsWith("http") || activePlaybackKey.isEmpty() || !mp4ProbeRequests.add("mime:" + mediaUrl)) return;
+        if (mediaUrl == null || isBlockedAdUrl(mediaUrl) || !mediaUrl.startsWith("http")
+                || activePlaybackKey.isEmpty()
+                || !addBoundedProbeRequest(mp4ProbeRequests, "mime:" + mediaUrl)) return;
         final String captureKey = activePlaybackKey;
         String lower = mediaUrl.toLowerCase(Locale.ROOT);
         if (lower.matches(".*\\.(jpg|jpeg|png|webp|gif|bmp|svg|ts|m4s|js|css)(?:[?#].*)?$")) return;
@@ -3041,8 +3058,9 @@ public class BrowserActivity extends Activity {
                 int count;
                 int total = 0;
                 while ((count = input.read(buffer)) != -1 && total < 512 * 1024) {
-                    output.write(buffer, 0, count);
-                    total += count;
+                    int take = Math.min(count, 512 * 1024 - total);
+                    output.write(buffer, 0, take);
+                    total += take;
                 }
                 input.close();
                 String html = output.toString("UTF-8");
