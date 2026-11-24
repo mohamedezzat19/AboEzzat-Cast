@@ -50,6 +50,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.security.KeyStore;
 import java.security.cert.X509Certificate;
+import javax.net.ssl.X509TrustManager;
 import java.nio.ByteBuffer;
 import javax.crypto.Mac;
 import javax.crypto.Cipher;
