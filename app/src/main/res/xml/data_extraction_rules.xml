@@ -7,7 +7,8 @@
         <exclude domain="file" path="abo_vpn.conf" />
     </cloud-backup>
     <device-transfer>
-        <!-- Do not transfer private VPN keys to another device through backup. -->
+        <!-- Do not transfer device-bound receiver secrets or private VPN keys. -->
+        <exclude domain="sharedpref" path="AboEzzatSharePrefs.xml" />
         <exclude domain="sharedpref" path="abo_vpn_profiles.xml" />
         <exclude domain="file" path="vpn_profiles/" />
         <exclude domain="file" path="abo_vpn.conf" />
