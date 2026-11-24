@@ -1026,7 +1026,7 @@ public class MainActivity extends Activity {
     private void addLinkActionButton(LinearLayout parent, AlertDialog dialog, String icon, String label,
                                      Runnable action, int backgroundColor) {
         TextView button = new TextView(this);
-        button.setText(icon + "\\n" + label);
+        button.setText(icon + "\n" + label);
         button.setTextColor(0xFFFFFFFF);
         button.setTextSize(12);
         button.setTypeface(null, Typeface.BOLD);
