@@ -446,7 +446,7 @@ public class MainActivity extends Activity {
             closeDrawer();
             new AlertDialog.Builder(MainActivity.this, R.style.ModernDialogTheme)
                     .setTitle("إعدادات Abo Ezzat Share")
-                    .setItems(new String[]{"التحقق من التحديثات", "إعداد عنوان IP الشاشة", "تفعيل الاختصار العائم عند نسخ رابط", "تشخيص مشكلة الفقاعة", "إعدادات أندرويد وأذونات التطبيق", "إعداد VPN داخل التطبيق", "🔐 ربط آمن مع الريسيفر"}, (dialog, which) -> {
+                    .setItems(new String[]{"التحقق من التحديثات", "إعداد عنوان IP الشاشة", "تفعيل الاختصار العائم عند نسخ رابط", "تشخيص مشكلة الفقاعة", "إعدادات أندرويد وأذونات التطبيق", "إعداد VPN داخل التطبيق", "🔐 ربط مع الريسيفر"}, (dialog, which) -> {
                         if (which == 0) {
                             new AppUpdater(MainActivity.this).checkForUpdate(true);
                         } else if (which == 1) {
@@ -1351,7 +1351,7 @@ private void showManualIpDialog() {
         panel.addView(instructions);
         panel.addView(codeInput);
         new AlertDialog.Builder(this, R.style.ModernDialogTheme)
-                .setTitle("🔐 ربط آمن مع الريسيفر")
+                .setTitle("🔐 ربط مع الريسيفر")
                 .setView(panel)
                 .setPositiveButton("ربط الآن", (dialog, which) -> {
                     String code = codeInput.getText().toString().trim();
@@ -1409,7 +1409,7 @@ private void showManualIpDialog() {
                                         prefs.edit().putString(PREF_RECEIVER_SECRET + pairedHost,
                                                 protectedSecret).apply();
                                         Toast.makeText(MainActivity.this,
-                                                "✅ تم الربط الآمن بنجاح. تقدر تبعت للشاشة دلوقتي.",
+                                                "✅ تم الربط بنجاح. تقدر تبعت للشاشة دلوقتي.",
                                                 Toast.LENGTH_LONG).show();
                                     } else {
                                         Toast.makeText(MainActivity.this,
@@ -2217,7 +2217,7 @@ private void showManualIpDialog() {
     }
 
     private void showPairingRequiredMessage() {
-        Toast.makeText(this, "لازم تعمل ربط آمن مع الريسيفر أولاً من الإعدادات > ربط آمن مع الريسيفر.", Toast.LENGTH_LONG).show();
+        Toast.makeText(this, "لازم تعمل ربط مع الريسيفر أولاً من الإعدادات > ربط مع الريسيفر.", Toast.LENGTH_LONG).show();
     }
 
     private void sendUrlToTvFromUi(String mediaUrl) {
