@@ -173,6 +173,7 @@ public class MainActivity extends Activity {
     private boolean clipboardShortcutLaunch;
     private boolean webVideoCasterCaptureLaunch;
     private boolean accessibilityReminderShown;
+    private String pendingPairingReceiverIp = "";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -457,7 +458,7 @@ public class MainActivity extends Activity {
             closeDrawer();
             new AlertDialog.Builder(MainActivity.this, R.style.ModernDialogTheme)
                     .setTitle("إعدادات Abo Ezzat Share")
-                    .setItems(new String[]{"التحقق من التحديثات", "إعداد عنوان IP الشاشة", "تفعيل الاختصار العائم عند نسخ رابط", "تشخيص مشكلة الفقاعة", "إعدادات أندرويد وأذونات التطبيق", "إعداد VPN داخل التطبيق", "🔐 ربط مع الريسيفر"}, (dialog, which) -> {
+                    .setItems(new String[]{"التحقق من التحديثات", "إعداد عنوان IP الشاشة", "تفعيل الاختصار العائم عند نسخ رابط", "تشخيص مشكلة الفقاعة", "إعدادات أندرويد وأذونات التطبيق", "إعداد VPN داخل التطبيق"}, (dialog, which) -> {
                         if (which == 0) {
                             new AppUpdater(MainActivity.this).checkForUpdate(true);
                         } else if (which == 1) {
@@ -470,8 +471,6 @@ public class MainActivity extends Activity {
                             openAppPermissionSettings();
                         } else if (which == 5) {
                             startActivity(new Intent(MainActivity.this, VpnActivity.class));
-                        } else if (which == 6) {
-                            showReceiverPairingDialog();
                         }
                     })
                     .setNegativeButton("إغلاق", null)
@@ -1380,6 +1379,11 @@ private void showManualIpDialog() {
             }
             String host = payload.optString("host", "").trim();
             int port = payload.optInt("port", -1);
+            String expectedHost = pendingPairingReceiverIp == null ? "" : pendingPairingReceiverIp.trim();
+            if (!expectedHost.isEmpty() && !expectedHost.equalsIgnoreCase(host)) {
+                Toast.makeText(this, "رمز QR ده لجهاز مختلف عن الجهاز اللي اخترته. امسح QR الخاص بالجهاز المحدد.", Toast.LENGTH_LONG).show();
+                return;
+            }
             String code = payload.optString("code", "");
             String fingerprint = payload.optString("fingerprint", "");
             if (!host.matches("[0-9]{1,3}(\\.[0-9]{1,3}){3}")) {
@@ -1500,6 +1504,7 @@ private void showManualIpDialog() {
                             }
                             if (etTvIp != null) etTvIp.setText(savedAddress);
                             updateReceiverStatus();
+                            pendingPairingReceiverIp = "";
                             Toast.makeText(MainActivity.this,
                                     "✅ تم الربط بالريسيفر والتحقق من بصمته بنجاح.",
                                     Toast.LENGTH_LONG).show();
@@ -1736,6 +1741,12 @@ private void showManualIpDialog() {
         if (etTvIp != null) etTvIp.setText(device.ip);
         updateReceiverStatus();
         if (dialog != null) dialog.dismiss();
+        if (hasSecureReceiverPairing()) {
+            pendingPairingReceiverIp = "";
+            Toast.makeText(this, "تم اختيار " + device.name, Toast.LENGTH_SHORT).show();
+        } else {
+            requestPairingForCurrentReceiver();
+        }
     }
 
     private boolean isReceiverOnline(String ip) {
@@ -2478,7 +2489,31 @@ private void showManualIpDialog() {
     }
 
     private void showPairingRequiredMessage() {
-        Toast.makeText(this, "لازم تعمل ربط مع الريسيفر أولاً من الإعدادات > ربط مع الريسيفر.", Toast.LENGTH_LONG).show();
+        requestPairingForCurrentReceiver();
+    }
+
+    private void requestPairingForCurrentReceiver() {
+        String selectedIp = prefs.getString("tv_ip", "").trim();
+        if (selectedIp.isEmpty()) {
+            Toast.makeText(this, "اختار جهازًا من قائمة الأجهزة المحفوظة أولاً.", Toast.LENGTH_LONG).show();
+            showSavedReceiverDialog();
+            return;
+        }
+        try {
+            String endpoint = buildReceiverHttpsEndpoint(selectedIp);
+            String host = Uri.parse(endpoint).getHost();
+            if (host == null) throw new IllegalArgumentException("Invalid receiver host");
+            pendingPairingReceiverIp = host;
+            new AlertDialog.Builder(this, R.style.ModernDialogTheme)
+                    .setTitle("الجهاز غير مربوط")
+                    .setMessage("الجهاز ده لسه مش مربوط بأبو عزت كاست. افتح شاشة الريسيفر وامسح رمز QR منها علشان نتحقق من هويته ونحفظ الربط الآمن. مش هتحتاج تكرر الخطوة دي بعد نجاح الربط.")
+                    .setPositiveButton("مسح QR والربط", (dialog, which) -> startReceiverQrScanner())
+                    .setNegativeButton("إلغاء", (dialog, which) -> pendingPairingReceiverIp = "")
+                    .show();
+        } catch (Exception invalidAddress) {
+            pendingPairingReceiverIp = "";
+            Toast.makeText(this, "عنوان الجهاز المحفوظ غير صالح. عدّله من الأجهزة المحفوظة.", Toast.LENGTH_LONG).show();
+        }
     }
 
     private void sendUrlToTvFromUi(String mediaUrl) {
