@@ -1347,7 +1347,7 @@ private void showManualIpDialog() {
         int padding = (int) (20 * getResources().getDisplayMetrics().density + 0.5f);
         panel.setPadding(padding, padding / 2, padding, 0);
         TextView instructions = new TextView(this);
-        instructions.setText("على جهاز الريسيفر: الإعدادات > إظهار كود الربط الآمن. تأكد أن الجهازين على نفس شبكة Wi-Fi، ثم أدخل الكود الظاهر على الشاشة.");
+        instructions.setText("على جهاز الريسيفر: الإعدادات > إظهار كود الربط. تأكد أن الجهازين على نفس شبكة Wi-Fi، ثم أدخل الكود الظاهر على الشاشة.");
         panel.addView(instructions);
         panel.addView(codeInput);
         new AlertDialog.Builder(this, R.style.ModernDialogTheme)
