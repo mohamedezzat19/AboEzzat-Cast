@@ -1278,17 +1278,6 @@ private void showManualIpDialog() {
     }
 
     @Override
-    protected void onNewIntent(Intent intent) {
-        super.onNewIntent(intent);
-        setIntent(intent);
-        String url = intent == null ? null : intent.getStringExtra("send_saved_url_to_tv");
-        if (url != null && !url.trim().isEmpty()) {
-            sendUrlToTvFromUi(url.trim());
-            intent.removeExtra("send_saved_url_to_tv");
-        }
-    }
-
-    @Override
     protected void onResume() {
         super.onResume();
         if (etHomeSearch != null) {
@@ -1722,6 +1711,13 @@ private void showManualIpDialog() {
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
+
+        String sendUrl = intent == null ? null : intent.getStringExtra("send_saved_url_to_tv");
+        if (sendUrl != null && !sendUrl.trim().isEmpty()) {
+            intent.removeExtra("send_saved_url_to_tv");
+            sendUrlToTvFromUi(sendUrl.trim());
+            return;
+        }
 
         if (handleClipboardCastShortcut(intent)) return;
         if (handleIncomingShareIntent(intent)) return;
