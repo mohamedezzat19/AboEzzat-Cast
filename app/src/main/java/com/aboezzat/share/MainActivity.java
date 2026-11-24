@@ -1432,17 +1432,27 @@ private void showManualIpDialog() {
             pinnedClient.newCall(request).enqueue(new Callback() {
                 @Override public void onFailure(Call call, IOException error) {
                     android.util.Log.e("AboEzzatCast", "Receiver TLS pairing request failed", error);
-                    String reason = error.getClass().getSimpleName();
-                    String detail = error.getMessage();
-                    if (detail != null && !detail.trim().isEmpty()) {
-                        detail = detail.replace("\\n", " ").replace("\\r", " ");
-                        if (detail.length() > 100) detail = detail.substring(0, 100);
-                        reason += ": " + detail;
+                    StringBuilder reasonBuilder = new StringBuilder();
+                    Throwable cause = error;
+                    int causeDepth = 0;
+                    while (cause != null && causeDepth < 5) {
+                        if (causeDepth > 0) reasonBuilder.append("\\n↳ ");
+                        reasonBuilder.append(cause.getClass().getSimpleName());
+                        String detail = cause.getMessage();
+                        if (detail != null && !detail.trim().isEmpty()) {
+                            detail = detail.replace("\\n", " ").replace("\\r", " ");
+                            if (detail.length() > 180) detail = detail.substring(0, 180);
+                            reasonBuilder.append(": ").append(detail);
+                        }
+                        cause = cause.getCause();
+                        causeDepth++;
                     }
-                    final String failureReason = reason;
-                    runOnUiThread(() -> Toast.makeText(MainActivity.this,
-                            "فشل اتصال الريسيفر: " + failureReason,
-                            Toast.LENGTH_LONG).show());
+                    final String failureReason = reasonBuilder.toString();
+                    runOnUiThread(() -> new AlertDialog.Builder(MainActivity.this)
+                            .setTitle("فشل اتصال الريسيفر")
+                            .setMessage("تفاصيل خطأ الاتصال المشفر:\\n\\n" + failureReason)
+                            .setPositiveButton("حسنًا", null)
+                            .show());
                 }
                 @Override public void onResponse(Call call, Response response) throws IOException {
                     String responseText = response.body() == null ? "" : response.body().string();
