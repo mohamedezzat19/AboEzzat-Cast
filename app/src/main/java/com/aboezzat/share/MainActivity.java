@@ -1383,8 +1383,15 @@ private void showManualIpDialog() {
                                 runOnUiThread(() -> {
                                     if (successful && pairedSecret.length() >= 40) {
                                         String pairedHost = Uri.parse(endpoint).getHost();
+                                        String protectedSecret = encryptReceiverSecret(pairedSecret);
+                                        if (pairedHost == null || protectedSecret.isEmpty()) {
+                                            Toast.makeText(MainActivity.this,
+                                                    "تعذر حفظ مفتاح الربط الآمن على الجهاز.",
+                                                    Toast.LENGTH_LONG).show();
+                                            return;
+                                        }
                                         prefs.edit().putString(PREF_RECEIVER_SECRET + pairedHost,
-                                                encryptReceiverSecret(pairedSecret)).apply();
+                                                protectedSecret).apply();
                                         Toast.makeText(MainActivity.this,
                                                 "✅ تم الربط الآمن بنجاح. تقدر تبعت للشاشة دلوقتي.",
                                                 Toast.LENGTH_LONG).show();
@@ -2186,7 +2193,8 @@ private void showManualIpDialog() {
             String address = savedIp.startsWith("http://") || savedIp.startsWith("https://")
                     ? savedIp : "http://" + savedIp;
             String host = Uri.parse(address).getHost();
-            return host != null && !prefs.getString(PREF_RECEIVER_SECRET + host, "").isEmpty();
+            return host != null
+                    && decryptReceiverSecret(prefs.getString(PREF_RECEIVER_SECRET + host, "")).length() >= 40;
         } catch (Exception ignored) {
             return false;
         }
