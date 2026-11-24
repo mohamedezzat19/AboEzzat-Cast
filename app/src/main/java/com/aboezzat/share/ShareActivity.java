@@ -164,7 +164,9 @@ public class ShareActivity extends Activity {
         SharedPreferences prefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
         targetTvIp = prefs.getString("tv_ip", "").trim();
 
-        String lowerUrl = url.toLowerCase(Locale.ROOT);\n        Uri parsedUrl = Uri.parse(url);\n        String host = parsedUrl.getHost() == null ? "" : parsedUrl.getHost().toLowerCase(Locale.ROOT);
+        String lowerUrl = url.toLowerCase(Locale.ROOT);
+        Uri parsedUrl = Uri.parse(url);
+        String host = parsedUrl.getHost() == null ? "" : parsedUrl.getHost().toLowerCase(Locale.ROOT);
 
         if (host.equals("instagram.com") || host.endsWith(".instagram.com")) {
             Intent browserIntent = new Intent(this, BrowserActivity.class);
@@ -177,7 +179,8 @@ public class ShareActivity extends Activity {
 
         // Threads shared links belong to the full in-app browser capture flow.
         // Keep this separate from ShareActivity's background/direct media handlers.
-        if (host.equals("threads.net") || host.endsWith(".threads.net")\n                || host.equals("threads.com") || host.endsWith(".threads.com")) {
+        if (host.equals("threads.net") || host.endsWith(".threads.net")
+                || host.equals("threads.com") || host.endsWith(".threads.com")) {
             openThreadsInBrowser(url);
             return;
         }
@@ -316,14 +319,16 @@ public class ShareActivity extends Activity {
                             || "sec-fetch-mode".equals(lower) || "sec-fetch-dest".equals(lower)
                             || "sec-ch-ua".equals(lower) || "sec-ch-ua-mobile".equals(lower)
                             || "sec-ch-ua-platform".equals(lower))
-                            && value.length() <= 2048 && !value.contains("\r") && !value.contains("\n")) {
+                            && value.length() <= 2048 && !value.contains("\r") && !value.contains("
+")) {
                         tikTokRequestHeaders.put(lower, value);
                     }
                 }
             }
             String cookie = CookieManager.getInstance().getCookie(mediaUrl);
             if (cookie != null && !cookie.isEmpty() && cookie.length() <= 8192
-                    && !cookie.contains("\r") && !cookie.contains("\n")) {
+                    && !cookie.contains("\r") && !cookie.contains("
+")) {
                 tikTokRequestHeaders.put("cookie", cookie);
             }
         }
@@ -713,7 +718,8 @@ public class ShareActivity extends Activity {
                                             || "sec-fetch-mode".equals(lower) || "sec-fetch-dest".equals(lower)
                                             || "sec-ch-ua".equals(lower) || "sec-ch-ua-mobile".equals(lower)
                                             || "sec-ch-ua-platform".equals(lower))
-                                            && value.length() <= 2048 && !value.contains("\r") && !value.contains("\n")) {
+                                            && value.length() <= 2048 && !value.contains("\r") && !value.contains("
+")) {
                                         tikTokLiveRequestHeaders.put(lower, value);
                                     }
                                 }
@@ -890,7 +896,8 @@ public class ShareActivity extends Activity {
         String liveUa = getTikTokLiveUserAgent();
         boolean desktopUa = liveUa.toLowerCase(Locale.ROOT).contains("windows nt");
         tikTokDiagnosticAgent.setText((desktopUa ? "نوع المتصفح: Desktop / Windows" :
-                "نوع المتصفح: Mobile / Android") + "\nUser-Agent: " + liveUa);
+                "نوع المتصفح: Mobile / Android") + "
+User-Agent: " + liveUa);
         tikTokDiagnosticAgent.setTextColor(Color.LTGRAY);
         tikTokDiagnosticAgent.setTextSize(11);
         tikTokDiagnosticAgent.setTextIsSelectable(true);
@@ -1246,7 +1253,8 @@ public class ShareActivity extends Activity {
                         String value = mediaHeaders.get(key);
                         int max = "cookie".equals(key) ? 8192 : 2048;
                         if (value != null && !value.isEmpty() && value.length() <= max
-                                && !value.contains("\r") && !value.contains("\n")) {
+                                && !value.contains("\r") && !value.contains("
+")) {
                             supplied.put(key, value);
                         }
                     }
