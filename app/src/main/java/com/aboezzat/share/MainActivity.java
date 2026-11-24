@@ -102,10 +102,15 @@ public class MainActivity extends Activity {
                     if (!original.url().isHttps()) {
                         throw new IOException("Receiver API requires pinned HTTPS");
                     }
-                    if (!"/pair".equals(original.url().encodedPath())) {
-                    String secret = decryptReceiverSecret(getSharedPreferences("AboEzzatSharePrefs",
-                            MODE_PRIVATE | MODE_MULTI_PROCESS).getString(PREF_RECEIVER_SECRET + original.url().host(), ""));
-                    if (secret != null && !secret.isEmpty()) {
+                    boolean pairingRequest = "POST".equalsIgnoreCase(original.method())
+                            && "/pair".equals(original.url().encodedPath());
+                    if (!pairingRequest) {
+                        String secret = decryptReceiverSecret(getSharedPreferences("AboEzzatSharePrefs",
+                                MODE_PRIVATE | MODE_MULTI_PROCESS).getString(
+                                        PREF_RECEIVER_SECRET + original.url().host(), ""));
+                        if (secret == null || secret.isEmpty()) {
+                            throw new IOException("Receiver pairing secret is unavailable");
+                        }
                         long timestamp = System.currentTimeMillis();
                         String nonce = UUID.randomUUID().toString();
                         String pathAndQuery = original.url().encodedPath()
@@ -122,8 +127,8 @@ public class MainActivity extends Activity {
                             String bodyHash = Base64.encodeToString(
                                     java.security.MessageDigest.getInstance("SHA-256").digest(requestBody),
                                     Base64.URL_SAFE | Base64.NO_WRAP | Base64.NO_PADDING);
-                            String canonical = original.method() + "\n" + pathAndQuery
-                                    + "\n" + bodyHash + "\n" + timestamp + "\n" + nonce;
+                            String canonical = original.method() + "\\n" + pathAndQuery
+                                    + "\\n" + bodyHash + "\\n" + timestamp + "\\n" + nonce;
                             Mac mac = Mac.getInstance("HmacSHA256");
                             mac.init(new SecretKeySpec(secret.getBytes(java.nio.charset.StandardCharsets.UTF_8),
                                     "HmacSHA256"));
@@ -139,7 +144,6 @@ public class MainActivity extends Activity {
                                 .header("X-AboEzzat-Signature", signature)
                                 .build();
                         return chain.proceed(signed);
-                    }
                     }
                 }
                 return chain.proceed(original);
@@ -1744,7 +1748,7 @@ private void showManualIpDialog() {
             edit.setOnClickListener(v -> showEditReceiverDialog(device));
             delete.setOnClickListener(v -> new AlertDialog.Builder(this, R.style.ModernDialogTheme)
                     .setTitle("حذف الجهاز؟")
-                    .setMessage("سيتم حذف " + device.name + " من القائمة المحفوظة.")
+                    .setMessage("سيتم حذف " + device.name + " من القائمة المحفوظة ومسح مفتاح الربط وبصمة الشهادة الخاصة به.")
                     .setNegativeButton("إلغاء", null)
                     .setPositiveButton("حذف", (d, w) -> {
                         List<SavedReceiverDevice> latest = loadSavedReceiverDevices();
