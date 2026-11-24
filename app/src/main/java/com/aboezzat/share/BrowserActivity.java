@@ -1853,6 +1853,20 @@ public class BrowserActivity extends Activity {
         view.evaluateJavascript(js, null);
     }
 
+    private boolean isValidCapturedHttpUrl(String value) {
+        if (value == null || value.trim().isEmpty() || value.length() > 4096) return false;
+        try {
+            Uri uri = Uri.parse(value.trim());
+            String scheme = uri.getScheme();
+            return scheme != null
+                    && (scheme.equalsIgnoreCase("http") || scheme.equalsIgnoreCase("https"))
+                    && uri.getHost() != null && !uri.getHost().trim().isEmpty()
+                    && uri.getUserInfo() == null;
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
     private class JsBridge {
         private final WebView bridgeWebView;
 
@@ -1863,9 +1877,12 @@ public class BrowserActivity extends Activity {
         @JavascriptInterface
         public void onMetaFound(String title, String posterUrl) {
             if (title != null && !title.isEmpty()) {
-                lastDiscoveredTitle = title.replace("Instagram: ", "").replace("on Instagram", "").trim();
+                String cleanTitle = title.replace("Instagram: ", "").replace("on Instagram", "").trim();
+                lastDiscoveredTitle = cleanTitle.length() > 160 ? cleanTitle.substring(0, 160) : cleanTitle;
             }
-            if (posterUrl != null && !posterUrl.isEmpty()) lastDiscoveredPoster = posterUrl;
+            if (isValidCapturedHttpUrl(posterUrl)) {
+                lastDiscoveredPoster = posterUrl.length() > 2048 ? posterUrl.substring(0, 2048) : posterUrl;
+            }
         }
 
         @JavascriptInterface
@@ -1945,7 +1962,9 @@ public class BrowserActivity extends Activity {
 
         @JavascriptInterface
         public void onActiveVideoChanged(String key, String title, String posterUrl) {
-            if (key == null || key.isEmpty()) return;
+            if (key == null || key.isEmpty() || key.length() > 256) return;
+            if (title != null && title.length() > 160) title = title.substring(0, 160);
+            if (posterUrl != null && !isValidCapturedHttpUrl(posterUrl)) posterUrl = "";
             String youtubePage = getCurrentYouTubePageUrl();
             synchronized (BrowserActivity.this) {
                 if (youtubePage != null) {
@@ -2241,8 +2260,10 @@ public class BrowserActivity extends Activity {
 
     private synchronized void addCapturedMedia(String url, String title, String format, String posterUrl,
                                                int mediaType, java.util.Map<String, String> requestHeaders) {
-        if (isBlockedAdUrl(url)) return;
+        if (!isValidCapturedHttpUrl(url) || isBlockedAdUrl(url)) return;
         if ((mediaType != 1 && mediaType != 2) || activePlaybackKey.isEmpty()) return;
+        if (posterUrl != null && !posterUrl.isEmpty() && !isValidCapturedHttpUrl(posterUrl)) posterUrl = "";
+        if (posterUrl != null && posterUrl.length() > 2048) posterUrl = posterUrl.substring(0, 2048);
         boolean added = false;
         synchronized (capturedList) {
             for (CapturedMedia item : capturedList) {
