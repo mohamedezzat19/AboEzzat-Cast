@@ -708,7 +708,7 @@ public class BrowserActivity extends Activity {
     private void addBrowserLinkAction(LinearLayout parent, AlertDialog dialog, String icon, String label,
                                       Runnable action, int backgroundColor) {
         TextView button = new TextView(this);
-        button.setText(icon + "\\n" + label);
+        button.setText(icon + "\n" + label);
         button.setTextColor(Color.WHITE);
         button.setTextSize(12);
         button.setTypeface(null, android.graphics.Typeface.BOLD);
