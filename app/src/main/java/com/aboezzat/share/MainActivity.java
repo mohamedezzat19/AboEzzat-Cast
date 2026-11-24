@@ -1381,7 +1381,6 @@ private void showManualIpDialog() {
             String host = payload.optString("host", "").trim();
             int port = payload.optInt("port", -1);
             String code = payload.optString("code", "");
-            String fingerprint = payload.optString("fingerprint", "");
             if (!host.matches("[0-9]{1,3}(\\.[0-9]{1,3}){3}")) {
                 throw new IllegalArgumentException("Invalid receiver IP");
             }
@@ -1391,24 +1390,15 @@ private void showManualIpDialog() {
                     || address.isMulticastAddress()) {
                 throw new IllegalArgumentException("Receiver must be on a private LAN");
             }
-            if (port < 1 || port > 65535 || !code.matches("[0-9]{8}")
-                    || !isValidReceiverFingerprint(fingerprint)) {
+            if (port < 1 || port > 65535 || !code.matches("[0-9]{8}")) {
                 throw new IllegalArgumentException("Invalid pairing details");
             }
-
             String endpoint = buildReceiverHttpsEndpoint(host + ":" + port);
             String pairedHost = Uri.parse(endpoint).getHost();
             if (pairedHost == null || !pairedHost.equals(host)) {
                 throw new IllegalArgumentException("Receiver address mismatch");
             }
-            String existingPin = prefs.getString(PREF_RECEIVER_TLS_PIN + pairedHost, "");
-            if (isValidReceiverFingerprint(existingPin) && !existingPin.equals(fingerprint)) {
-                Toast.makeText(this,
-                        "بصمة QR مختلفة عن البصمة المحفوظة لهذا الريسيفر. لن نغيّرها تلقائيًا؛ احذف الربط القديم بعد التأكد من الجهاز.",
-                        Toast.LENGTH_LONG).show();
-                return;
-            }
-            performReceiverPairing(endpoint, pairedHost, fingerprint, code);
+            performReceiverPairing(endpoint, pairedHost, "", code);
         } catch (Exception invalidQr) {
             android.util.Log.w("AboEzzatCast", "Rejected receiver pairing QR", invalidQr);
             Toast.makeText(this, "QR غير صالح أو لا يحتوي بيانات ريسيفر مدعومة.", Toast.LENGTH_LONG).show();
@@ -1416,103 +1406,81 @@ private void showManualIpDialog() {
     }
 
     private void performReceiverPairing(String endpoint, String pairedHost,
-                                        String fingerprint, String code) {
-        if (!code.matches("[0-9]{8}") || !isValidReceiverFingerprint(fingerprint)) {
-            Toast.makeText(this, "بيانات الربط غير صحيحة", Toast.LENGTH_LONG).show();
+                                        String ignoredFingerprint, String code) {
+        if (!code.matches("[0-9]{8}")) {
+            Toast.makeText(this, "أدخل كود ربط صحيحًا من 8 أرقام", Toast.LENGTH_LONG).show();
             return;
         }
         try {
-            OkHttpClient pinnedClient = createPinnedReceiverClient(pairedHost, fingerprint);
+            OkHttpClient receiverClient = client.newBuilder()
+                    .followRedirects(false).followSslRedirects(false).build();
             String pairUrl = endpoint + "/pair";
             okhttp3.RequestBody pairingBody = okhttp3.RequestBody.create(
                     okhttp3.MediaType.parse("application/json; charset=utf-8"),
                     new org.json.JSONObject().put("code", code).toString());
             Request request = new Request.Builder().url(pairUrl).post(pairingBody).build();
-            Toast.makeText(this, "جارٍ التحقق والربط بالريسيفر…", Toast.LENGTH_SHORT).show();
-            pinnedClient.newCall(request).enqueue(new Callback() {
+            Toast.makeText(this, "جارٍ ربط الريسيفر بالكود…", Toast.LENGTH_SHORT).show();
+            receiverClient.newCall(request).enqueue(new Callback() {
                 @Override public void onFailure(Call call, IOException error) {
-                    android.util.Log.e("AboEzzatCast", "Receiver TLS pairing request failed", error);
-                    StringBuilder reasonBuilder = new StringBuilder();
-                    Throwable cause = error;
-                    int causeDepth = 0;
-                    while (cause != null && causeDepth < 5) {
-                        if (causeDepth > 0) reasonBuilder.append("\\n↳ ");
-                        reasonBuilder.append(cause.getClass().getSimpleName());
-                        String detail = cause.getMessage();
-                        if (detail != null && !detail.trim().isEmpty()) {
-                            detail = detail.replace("\\n", " ").replace("\\r", " ");
-                            if (detail.length() > 180) detail = detail.substring(0, 180);
-                            reasonBuilder.append(": ").append(detail);
-                        }
-                        cause = cause.getCause();
-                        causeDepth++;
-                    }
-                    final String failureReason = reasonBuilder.toString();
+                    android.util.Log.e("AboEzzatCast", "Receiver pairing request failed", error);
                     runOnUiThread(() -> new AlertDialog.Builder(MainActivity.this)
-                            .setTitle("فشل اتصال الريسيفر")
-                            .setMessage("تفاصيل خطأ الاتصال المشفر:\\n\\n" + failureReason)
-                            .setPositiveButton("حسنًا", null)
-                            .show());
+                            .setTitle("تعذر الاتصال بالريسيفر")
+                            .setMessage("تأكد أن الجهازين على نفس شبكة Wi-Fi وأن الريسيفر مفتوح، ثم حاول مرة أخرى.")
+                            .setPositiveButton("حسنًا", null).show());
                 }
                 @Override public void onResponse(Call call, Response response) throws IOException {
                     String responseText = response.body() == null ? "" : response.body().string();
                     boolean successful = response.isSuccessful();
                     response.close();
                     String secret = "";
-                    boolean paired = false;
-                    boolean validSecret = false;
+                    boolean validPairingResponse = false;
                     try {
                         if (successful) {
                             org.json.JSONObject pairingResult = new org.json.JSONObject(responseText);
-                            paired = pairingResult.optBoolean("paired", false);
                             secret = pairingResult.optString("secret", "");
-                            if (secret.matches("[A-Za-z0-9_-]{43}")) {
-                                byte[] decodedSecret = android.util.Base64.decode(secret,
-                                        android.util.Base64.URL_SAFE | android.util.Base64.NO_WRAP
-                                                | android.util.Base64.NO_PADDING);
-                                validSecret = decodedSecret.length == 32;
-                            }
+                            byte[] decoded = android.util.Base64.decode(secret,
+                                    android.util.Base64.URL_SAFE | android.util.Base64.NO_WRAP
+                                            | android.util.Base64.NO_PADDING);
+                            validPairingResponse = pairingResult.optBoolean("paired", false)
+                                    && decoded.length == 32;
                         }
                     } catch (Exception ignored) { }
                     final String pairedSecret = secret;
-                    final boolean validPairingResponse = paired && validSecret;
+                    final boolean valid = validPairingResponse;
                     runOnUiThread(() -> {
-                        if (successful && validPairingResponse) {
+                        if (successful && valid) {
                             String protectedSecret = encryptReceiverSecret(pairedSecret);
                             if (protectedSecret.isEmpty()) {
                                 Toast.makeText(MainActivity.this,
-                                        "تعذر حفظ مفتاح الربط على الجهاز.",
-                                        Toast.LENGTH_LONG).show();
+                                        "تعذر حفظ مفتاح الربط على الجهاز.", Toast.LENGTH_LONG).show();
                                 return;
                             }
                             int port = Uri.parse(endpoint).getPort();
                             String savedAddress = pairedHost + ":" + (port > 0 ? port : TARGET_PORT);
                             boolean saved = prefs.edit()
                                     .putString(PREF_RECEIVER_SECRET + pairedHost, protectedSecret)
-                                    .putString(PREF_RECEIVER_TLS_PIN + pairedHost, fingerprint)
-                                    .putString("tv_ip", savedAddress)
-                                    .commit();
+                                    .remove(PREF_RECEIVER_TLS_PIN + pairedHost)
+                                    .putString("tv_ip", savedAddress).commit();
                             if (!saved) {
                                 Toast.makeText(MainActivity.this,
-                                        "تعذر حفظ بيانات الربط. أعد المحاولة.",
-                                        Toast.LENGTH_LONG).show();
+                                        "تعذر حفظ بيانات الربط. أعد المحاولة.", Toast.LENGTH_LONG).show();
                                 return;
                             }
                             if (etTvIp != null) etTvIp.setText(savedAddress);
                             updateReceiverStatus();
                             Toast.makeText(MainActivity.this,
-                                    "✅ تم الربط بالريسيفر والتحقق من بصمته بنجاح.",
+                                    "تم الربط بالريسيفر بنجاح باستخدام الكود.",
                                     Toast.LENGTH_LONG).show();
                         } else {
                             Toast.makeText(MainActivity.this,
-                                    "فشل الربط: الكود غير صحيح أو انتهت صلاحيته. اعرض QR أو كودًا جديدًا من الريسيفر.",
+                                    "فشل الربط: الكود غير صحيح أو انتهت صلاحيته. اعرض كودًا جديدًا من الريسيفر.",
                                     Toast.LENGTH_LONG).show();
                         }
                     });
                 }
             });
         } catch (Exception error) {
-            Toast.makeText(this, "تعذر إعداد اتصال TLS المثبت بالبصمة", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "تعذر تجهيز اتصال الريسيفر", Toast.LENGTH_LONG).show();
         }
     }
 
@@ -1523,29 +1491,15 @@ private void showManualIpDialog() {
             showManualIpDialog();
             return;
         }
-
         final String endpoint;
         final String pairedHost;
-        final String existingPin;
         try {
             endpoint = buildReceiverHttpsEndpoint(tvIp);
             pairedHost = Uri.parse(endpoint).getHost();
             if (pairedHost == null) throw new IllegalArgumentException("Invalid receiver host");
-            String storedPin = prefs.getString(PREF_RECEIVER_TLS_PIN + pairedHost, "");
-            existingPin = isValidReceiverFingerprint(storedPin) ? storedPin : "";
         } catch (Exception invalidAddress) {
             Toast.makeText(this, "عنوان الريسيفر غير صالح", Toast.LENGTH_LONG).show();
             return;
-        }
-
-        EditText fingerprintInput = new EditText(this);
-        fingerprintInput.setSingleLine(true);
-        fingerprintInput.setInputType(android.text.InputType.TYPE_CLASS_TEXT
-                | android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-        fingerprintInput.setHint("بصمة شهادة الريسيفر (43 حرفًا)");
-        if (!existingPin.isEmpty()) {
-            fingerprintInput.setText(existingPin);
-            fingerprintInput.setEnabled(false);
         }
 
         EditText codeInput = new EditText(this);
@@ -1558,35 +1512,20 @@ private void showManualIpDialog() {
         int padding = (int) (20 * getResources().getDisplayMetrics().density + 0.5f);
         panel.setPadding(padding, padding / 2, padding, 0);
         TextView instructions = new TextView(this);
-        instructions.setText(existingPin.isEmpty()
-                ? "على جهاز الريسيفر افتح الإعدادات > إظهار كود الربط. انسخ بصمة شهادة الاتصال الظاهرة هناك وأدخلها هنا كما هي، ثم أدخل كود الربط. لا توافق على بصمة مختلفة عن شاشة الريسيفر."
-                : "بصمة شهادة هذا الريسيفر محفوظة ومثبتة على الجهاز. أدخل كود الربط الظاهر على شاشة الريسيفر.");
+        instructions.setText("على جهاز الريسيفر افتح الإعدادات > إظهار كود الربط، ثم أدخل الكود المكوّن من 8 أرقام هنا.");
         panel.addView(instructions);
-        panel.addView(fingerprintInput);
         panel.addView(codeInput);
 
         new AlertDialog.Builder(this, R.style.ModernDialogTheme)
-                .setTitle("🔐 ربط مع الريسيفر")
+                .setTitle("ربط مع الريسيفر")
                 .setView(panel)
                 .setPositiveButton("ربط الآن", (dialog, which) -> {
                     String code = codeInput.getText().toString().trim();
-                    String fingerprint = fingerprintInput.getText().toString().trim();
                     if (!code.matches("[0-9]{8}")) {
                         Toast.makeText(this, "أدخل كودًا صحيحًا من 8 أرقام", Toast.LENGTH_LONG).show();
                         return;
                     }
-                    if (!isValidReceiverFingerprint(fingerprint)) {
-                        Toast.makeText(this, "أدخل بصمة شهادة صحيحة من شاشة الريسيفر", Toast.LENGTH_LONG).show();
-                        return;
-                    }
-                    if (!existingPin.isEmpty() && !existingPin.equals(fingerprint)) {
-                        Toast.makeText(this,
-                                "بصمة هذا الريسيفر مختلفة عن البصمة المحفوظة. احذف الجهاز المحفوظ أولاً ثم أعد التحقق من البصمة.",
-                                Toast.LENGTH_LONG).show();
-                        return;
-                    }
-
-                    performReceiverPairing(endpoint, pairedHost, fingerprint, code);
+                    performReceiverPairing(endpoint, pairedHost, "", code);
                 })
                 .setNegativeButton("إلغاء", null)
                 .show();
@@ -2379,7 +2318,7 @@ private void showManualIpDialog() {
         String value = address == null ? "" : address.trim();
         if (value.isEmpty()) throw new IllegalArgumentException("Empty receiver address");
         if (!value.startsWith("http://") && !value.startsWith("https://")) {
-            value = "https://" + value;
+            value = "http://" + value;
         }
         Uri parsed = Uri.parse(value);
         String scheme = parsed.getScheme();
@@ -2394,7 +2333,7 @@ private void showManualIpDialog() {
         int port = parsed.getPort() < 0 ? TARGET_PORT : parsed.getPort();
         if (port < 1 || port > 65535) throw new IllegalArgumentException("Invalid receiver port");
         String authorityHost = host.indexOf(':') >= 0 ? "[" + host + "]" : host;
-        return "https://" + authorityHost + ":" + port;
+        return "http://" + authorityHost + ":" + port;
     }
 
     private boolean isValidReceiverFingerprint(String fingerprint) {
@@ -2468,11 +2407,10 @@ private void showManualIpDialog() {
     }
 
     private OkHttpClient getPinnedReceiverClient(String host) throws Exception {
-        String fingerprint = prefs.getString(PREF_RECEIVER_TLS_PIN + host, "");
-        if (!isValidReceiverFingerprint(fingerprint)) {
-            throw new IOException("Receiver certificate has not been pinned");
+        if (host == null || host.trim().isEmpty()) {
+            throw new IOException("Receiver host is missing");
         }
-        return createPinnedReceiverClient(host, fingerprint);
+        return client.newBuilder().followRedirects(false).followSslRedirects(false).build();
     }
 
     private boolean hasSecureReceiverPairing() {
@@ -2481,8 +2419,7 @@ private void showManualIpDialog() {
         try {
             String endpoint = buildReceiverHttpsEndpoint(savedIp);
             String host = Uri.parse(endpoint).getHost();
-            String fingerprint = prefs.getString(PREF_RECEIVER_TLS_PIN + host, "");
-            return host != null && isValidReceiverFingerprint(fingerprint)
+            return host != null
                     && decryptReceiverSecret(prefs.getString(PREF_RECEIVER_SECRET + host, "")).length() >= 40;
         } catch (Exception ignored) {
             return false;
