@@ -63,7 +63,7 @@ import okhttp3.Response;
 public class MainActivity extends Activity {
 
     private static final int TARGET_PORT = 8081;
-    private static final String PREF_RECEIVER_SECRET = "receiver_auth_secret";
+    private static final String PREF_RECEIVER_SECRET = "receiver_auth_secret_";
     private static final int PICK_MEDIA_REQUEST = 101;
     private static final int PICK_SLIDESHOW_REQUEST = 102;
     private static final int VOICE_SEARCH_REQUEST = 103;
@@ -89,7 +89,7 @@ public class MainActivity extends Activity {
                 if (original.url().port() == TARGET_PORT
                         && !"/pair".equals(original.url().encodedPath())) {
                     String secret = getSharedPreferences("AboEzzatSharePrefs",
-                            MODE_PRIVATE | MODE_MULTI_PROCESS).getString(PREF_RECEIVER_SECRET, "");
+                            MODE_PRIVATE | MODE_MULTI_PROCESS).getString(PREF_RECEIVER_SECRET + original.url().host(), "");
                     if (secret != null && !secret.isEmpty()) {
                         long timestamp = System.currentTimeMillis();
                         String nonce = UUID.randomUUID().toString();
@@ -1374,7 +1374,8 @@ private void showManualIpDialog() {
                                 final String pairedSecret = secret;
                                 runOnUiThread(() -> {
                                     if (successful && pairedSecret.length() >= 40) {
-                                        prefs.edit().putString(PREF_RECEIVER_SECRET, pairedSecret).apply();
+                                        String pairedHost = Uri.parse(endpoint).getHost();
+                                        prefs.edit().putString(PREF_RECEIVER_SECRET + pairedHost, pairedSecret).apply();
                                         Toast.makeText(MainActivity.this,
                                                 "✅ تم الربط الآمن بنجاح. تقدر تبعت للشاشة دلوقتي.",
                                                 Toast.LENGTH_LONG).show();
@@ -2073,6 +2074,11 @@ private void showManualIpDialog() {
 
     private void castUrlDirectlyToTv(String mediaUrl) {
         String tvIp = prefs.getString("tv_ip", "").trim();
+        if (!tvIp.isEmpty() && !hasSecureReceiverPairing()) {
+            showPairingRequiredMessage();
+            if (clipboardShortcutLaunch) finish();
+            return;
+        }
         if (tvIp.isEmpty()) {
             if (clipboardShortcutLaunch) finish();
             return;
@@ -2111,10 +2117,31 @@ private void showManualIpDialog() {
         }
     }
 
+    private boolean hasSecureReceiverPairing() {
+        String savedIp = prefs.getString("tv_ip", "").trim();
+        if (savedIp.isEmpty()) return false;
+        try {
+            String address = savedIp.startsWith("http://") || savedIp.startsWith("https://")
+                    ? savedIp : "http://" + savedIp;
+            String host = Uri.parse(address).getHost();
+            return host != null && !prefs.getString(PREF_RECEIVER_SECRET + host, "").isEmpty();
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    private void showPairingRequiredMessage() {
+        Toast.makeText(this, "لازم تعمل ربط آمن مع الريسيفر أولاً من الإعدادات > ربط آمن مع الريسيفر.", Toast.LENGTH_LONG).show();
+    }
+
     private void sendUrlToTvFromUi(String mediaUrl) {
         String tvIp = prefs.getString("tv_ip", "").trim();
         if (tvIp.isEmpty()) {
             Toast.makeText(this, "احفظ عنوان IP الشاشة أولاً", Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (!hasSecureReceiverPairing()) {
+            showPairingRequiredMessage();
             return;
         }
         try {
@@ -2306,6 +2333,10 @@ private void showManualIpDialog() {
     private void castLocalMediaToTv(boolean showToast) {
         String tvIp = prefs.getString("tv_ip", "").trim();
         if (tvIp.isEmpty()) return;
+        if (!hasSecureReceiverPairing()) {
+            if (showToast) showPairingRequiredMessage();
+            return;
+        }
         String phoneIp = getDeviceIpAddress();
         if (phoneIp.isEmpty() || phoneIp.equals("0.0.0.0")) return;
 
@@ -2345,6 +2376,10 @@ private void showManualIpDialog() {
     private void sendRemoteCommand(String cmd) {
         String tvIp = prefs.getString("tv_ip", "").trim();
         if (tvIp.isEmpty()) return;
+        if (!hasSecureReceiverPairing()) {
+            showPairingRequiredMessage();
+            return;
+        }
 
         try {
             String endpoint = tvIp;
