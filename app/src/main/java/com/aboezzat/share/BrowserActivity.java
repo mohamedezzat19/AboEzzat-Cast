@@ -2099,9 +2099,12 @@ public class BrowserActivity extends Activity {
 
     // Bound per-playback deduplication state so hostile pages cannot grow these sets forever.
     private boolean addBoundedProbeRequest(Set<String> requests, String key) {
-        if (key == null || key.isEmpty() || key.length() > 8192) return false;
+        // URLs are already validated at capture boundaries; keep a second strict
+        // ceiling here because this set controls background network work.
+        if (key == null || key.isEmpty() || key.length() > 4096) return false;
         synchronized (requests) {
-            if (requests.contains(key) || requests.size() >= 256) return false;
+            // A single active playback should never schedule hundreds of native probes.
+            if (requests.contains(key) || requests.size() >= 64) return false;
             return requests.add(key);
         }
     }
