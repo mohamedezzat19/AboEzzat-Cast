@@ -1431,8 +1431,17 @@ private void showManualIpDialog() {
             Toast.makeText(this, "جارٍ التحقق والربط بالريسيفر…", Toast.LENGTH_SHORT).show();
             pinnedClient.newCall(request).enqueue(new Callback() {
                 @Override public void onFailure(Call call, IOException error) {
+                    android.util.Log.e("AboEzzatCast", "Receiver TLS pairing request failed", error);
+                    String reason = error.getClass().getSimpleName();
+                    String detail = error.getMessage();
+                    if (detail != null && !detail.trim().isEmpty()) {
+                        detail = detail.replace("\\n", " ").replace("\\r", " ");
+                        if (detail.length() > 100) detail = detail.substring(0, 100);
+                        reason += ": " + detail;
+                    }
+                    final String failureReason = reason;
                     runOnUiThread(() -> Toast.makeText(MainActivity.this,
-                            "فشل الاتصال المشفر أو لم تتطابق بصمة الريسيفر. تأكد أن الجهازين على نفس الشبكة.",
+                            "فشل اتصال الريسيفر: " + failureReason,
                             Toast.LENGTH_LONG).show());
                 }
                 @Override public void onResponse(Call call, Response response) throws IOException {
