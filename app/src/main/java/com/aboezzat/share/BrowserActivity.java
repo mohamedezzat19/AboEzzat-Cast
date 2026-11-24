@@ -2649,11 +2649,46 @@ public class BrowserActivity extends Activity {
                 conn.setInstanceFollowRedirects(false);
                 conn.setRequestProperty("User-Agent", WebSettings.getDefaultUserAgent(BrowserActivity.this));
                 conn.setRequestProperty("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8");
-                String cookie = CookieManager.getInstance().getCookie(media.posterUrl);
-                if (cookie != null && !cookie.isEmpty()) conn.setRequestProperty("Cookie", cookie);
-                if (activePageUrl != null && !activePageUrl.isEmpty()) conn.setRequestProperty("Referer", activePageUrl);
+                int responseCode = conn.getResponseCode();
+                if (responseCode != HttpURLConnection.HTTP_OK) {
+                    throw new IOException("Thumbnail HTTP status: " + responseCode);
+                }
+                String contentType = conn.getContentType();
+                if (contentType == null || !contentType.toLowerCase(Locale.ROOT).startsWith("image/")) {
+                    throw new IOException("Thumbnail response is not an image");
+                }
+                int contentLength = conn.getContentLength();
+                final int maxThumbnailBytes = 2 * 1024 * 1024;
+                if (contentLength > maxThumbnailBytes) {
+                    throw new IOException("Thumbnail exceeds size limit");
+                }
                 input = conn.getInputStream();
-                Bitmap bitmap = BitmapFactory.decodeStream(input);
+                java.io.ByteArrayOutputStream output = new java.io.ByteArrayOutputStream();
+                byte[] buffer = new byte[8192];
+                int totalBytes = 0;
+                int read;
+                while ((read = input.read(buffer)) != -1) {
+                    totalBytes += read;
+                    if (totalBytes > maxThumbnailBytes) {
+                        throw new IOException("Thumbnail exceeds size limit");
+                    }
+                    output.write(buffer, 0, read);
+                }
+                byte[] imageBytes = output.toByteArray();
+                BitmapFactory.Options bounds = new BitmapFactory.Options();
+                bounds.inJustDecodeBounds = true;
+                BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.length, bounds);
+                if (bounds.outWidth <= 0 || bounds.outHeight <= 0
+                        || bounds.outWidth > 4096 || bounds.outHeight > 4096) {
+                    throw new IOException("Thumbnail dimensions are invalid or too large");
+                }
+                BitmapFactory.Options decodeOptions = new BitmapFactory.Options();
+                int sampleSize = 1;
+                while (Math.max(bounds.outWidth / sampleSize, bounds.outHeight / sampleSize) > 512) {
+                    sampleSize *= 2;
+                }
+                decodeOptions.inSampleSize = sampleSize;
+                Bitmap bitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.length, decodeOptions);
                 if (bitmap != null) {
                     media.posterBitmap = bitmap;
                     runOnUiThread(() -> {
