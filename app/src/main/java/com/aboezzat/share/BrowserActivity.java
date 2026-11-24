@@ -20,6 +20,7 @@ import android.media.MediaExtractor;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
 import android.net.Uri;
+import android.net.http.SslError;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Environment;
@@ -43,6 +44,7 @@ import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
+import android.webkit.SslErrorHandler;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.webkit.ValueCallback;
@@ -967,6 +969,20 @@ public class BrowserActivity extends Activity {
 
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
+        // The browser does not need local-file or content-provider access.
+        // Keep uploads on the explicit Android file-picker path instead.
+        settings.setAllowFileAccess(false);
+        settings.setAllowContentAccess(false);
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.JELLY_BEAN) {
+            settings.setAllowFileAccessFromFileURLs(false);
+            settings.setAllowUniversalAccessFromFileURLs(false);
+        }
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+            settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
+        }
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            settings.setSafeBrowsingEnabled(true);
+        }
         settings.setDomStorageEnabled(true);
         settings.setDatabaseEnabled(true);
         settings.setMediaPlaybackRequiresUserGesture(false);
@@ -1114,6 +1130,14 @@ public class BrowserActivity extends Activity {
         });
 
         webView.setWebViewClient(new WebViewClient() {
+            @Override
+            public void onReceivedSslError(WebView view, SslErrorHandler handler, SslError error) {
+                // Never allow a page to bypass certificate validation, even after a user prompt.
+                handler.cancel();
+                Log.w(TAG, "Blocked HTTPS navigation with certificate error: "
+                        + (error == null ? "unknown" : error.toString()));
+            }
+
             @Override
             public void doUpdateVisitedHistory(WebView view, String loadedUrl, boolean isReload) {
                 super.doUpdateVisitedHistory(view, loadedUrl, isReload);
