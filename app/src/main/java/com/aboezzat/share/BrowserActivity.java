@@ -62,6 +62,7 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
+import java.net.InetAddress;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.util.ArrayList;
@@ -2318,10 +2319,67 @@ public class BrowserActivity extends Activity {
         }
     }
 
+    private boolean isSafePublicHttpUrl(String value) {
+        if (value == null || value.length() > 4096) return false;
+        try {
+            Uri uri = Uri.parse(value.trim());
+            String scheme = uri.getScheme();
+            String host = uri.getHost();
+            if (scheme == null || !(scheme.equalsIgnoreCase("http") || scheme.equalsIgnoreCase("https"))
+                    || host == null || host.trim().isEmpty() || uri.getUserInfo() != null) return false;
+            String lowerHost = host.toLowerCase(Locale.ROOT);
+            if (lowerHost.equals("localhost") || lowerHost.endsWith(".localhost")
+                    || lowerHost.endsWith(".local") || lowerHost.endsWith(".lan")
+                    || lowerHost.endsWith(".internal") || lowerHost.endsWith(".home")
+                    || lowerHost.endsWith(".invalid")) return false;
+
+            InetAddress[] addresses = InetAddress.getAllByName(host);
+            if (addresses == null || addresses.length == 0) return false;
+            for (InetAddress address : addresses) {
+                if (address.isAnyLocalAddress() || address.isLoopbackAddress()
+                        || address.isLinkLocalAddress() || address.isSiteLocalAddress()
+                        || address.isMulticastAddress()) return false;
+                byte[] bytes = address.getAddress();
+                if (bytes.length == 4) {
+                    int a = bytes[0] & 255, b = bytes[1] & 255;
+                    if (a == 0 || a == 10 || a == 127 || a >= 224
+                            || (a == 100 && b >= 64 && b <= 127)
+                            || (a == 169 && b == 254)
+                            || (a == 172 && b >= 16 && b <= 31)
+                            || (a == 192 && (b == 0 || b == 168))
+                            || (a == 198 && (b == 18 || b == 19))) return false;
+                } else if (bytes.length == 16) {
+                    // Reject IPv6 unique-local and link-local ranges, including mapped private IPv4.
+                    if ((bytes[0] & 0xfe) == 0xfc
+                            || ((bytes[0] & 255) == 0xfe && (bytes[1] & 0xc0) == 0x80)) return false;
+                    boolean mappedIpv4 = true;
+                    for (int i = 0; i < 10; i++) if (bytes[i] != 0) mappedIpv4 = false;
+                    mappedIpv4 = mappedIpv4 && (bytes[10] & 255) == 255 && (bytes[11] & 255) == 255;
+                    if (mappedIpv4) {
+                        int a = bytes[12] & 255, b = bytes[13] & 255;
+                        if (a == 0 || a == 10 || a == 127 || a >= 224
+                                || (a == 100 && b >= 64 && b <= 127)
+                                || (a == 169 && b == 254)
+                                || (a == 172 && b >= 16 && b <= 31)
+                                || (a == 192 && (b == 0 || b == 168))
+                                || (a == 198 && (b == 18 || b == 19))) return false;
+                    }
+                }
+            }
+            return true;
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
     private void probeAndAddMp4(final String mediaUrl, final String title, final String posterUrl) {
         if (mediaUrl == null || isBlockedAdUrl(mediaUrl) || activePlaybackKey.isEmpty() || !mp4ProbeRequests.add(mediaUrl)) return;
         final String captureKey = activePlaybackKey;
         AsyncTask.execute(() -> {
+            if (!isSafePublicHttpUrl(mediaUrl)) {
+                Log.w(TAG, "Blocked media probe to a non-public host");
+                return;
+            }
             int type = Mp4TrackInspector.inspect(mediaUrl);
             if (type == 0 || !captureKey.equals(activePlaybackKey)) return;
             String clean = mediaUrl.replaceAll("&bytestart=\\d+", "")
@@ -2344,6 +2402,10 @@ public class BrowserActivity extends Activity {
         final Map<String, String> headers = requestHeaders == null
                 ? new HashMap<>() : new HashMap<>(requestHeaders);
         AsyncTask.execute(() -> {
+            if (!isSafePublicHttpUrl(endpointUrl)) {
+                Log.w(TAG, "Blocked player endpoint probe to a non-public host");
+                return;
+            }
             HttpURLConnection connection = null;
             try {
                 connection = (HttpURLConnection) new URL(endpointUrl).openConnection();
@@ -2422,6 +2484,10 @@ public class BrowserActivity extends Activity {
         String lower = mediaUrl.toLowerCase(Locale.ROOT);
         if (lower.matches(".*\\.(jpg|jpeg|png|webp|gif|bmp|svg|ts|m4s|js|css)(?:[?#].*)?$")) return;
         AsyncTask.execute(() -> {
+            if (!isSafePublicHttpUrl(mediaUrl)) {
+                Log.w(TAG, "Blocked media verification request to a non-public host");
+                return;
+            }
             HttpURLConnection connection = null;
             try {
                 connection = (HttpURLConnection) new URL(mediaUrl).openConnection();
