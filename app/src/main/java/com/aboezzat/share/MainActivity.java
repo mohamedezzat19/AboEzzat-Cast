@@ -2602,13 +2602,26 @@ private void showManualIpDialog() {
         }
         String mediaPath = (mime != null && mime.startsWith("image/"))
                 ? "/media.jpg" : "/media.mp4";
-        String targetUrl = "http://" + phoneIp + ":8088" + mediaPath
+        final String mediaTlsPin;
+        try {
+            mediaTlsPin = CastTlsIdentity.getCertificateFingerprint();
+        } catch (Exception tlsIdentityError) {
+            Toast.makeText(this, "تعذر تجهيز شهادة تشفير الوسائط؛ أعد تشغيل التطبيق.",
+                    Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (mediaTlsPin == null || !mediaTlsPin.matches("[A-Za-z0-9_-]{43}")) {
+            Toast.makeText(this, "بصمة شهادة الوسائط غير صالحة.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        String targetUrl = "https://" + phoneIp + ":8088" + mediaPath
                 + "?token=" + mediaToken;
         try {
             String endpoint = buildReceiverHttpsEndpoint(tvIp);
             String receiverHost = Uri.parse(endpoint).getHost();
             OkHttpClient pinnedClient = getPinnedReceiverClient(receiverHost);
-            String fullUrl = endpoint + "/?url=" + URLEncoder.encode(targetUrl, "UTF-8");
+            String fullUrl = endpoint + "/?url=" + URLEncoder.encode(targetUrl, "UTF-8")
+                    + "&mediaPin=" + mediaTlsPin;
             Request req = new Request.Builder().url(fullUrl).get().build();
             AtomicBoolean requestHeadersSent = new AtomicBoolean(false);
             OkHttpClient trackedClient = pinnedClient.newBuilder()
