@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <data-extraction-rules>
     <cloud-backup>
+        <!-- Receiver credentials and local device addresses must not enter cloud backup. -->
+        <exclude domain="sharedpref" path="AboEzzatSharePrefs.xml" />
         <!-- VPN profiles contain private WireGuard keys. -->
         <exclude domain="sharedpref" path="abo_vpn_profiles.xml" />
         <exclude domain="file" path="vpn_profiles/" />
