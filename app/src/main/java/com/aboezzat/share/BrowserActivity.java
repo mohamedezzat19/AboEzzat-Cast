@@ -98,6 +98,10 @@ public class BrowserActivity extends Activity {
     // Canonical YouTube watch URL reported by the page itself; WebView navigation callbacks
     // alone miss YouTube SPA transitions from the home feed to an in-page video player.
     private volatile String activeYouTubeWatchUrl = "";
+    // The privileged custom-site bridge is available only on the app-owned home document.
+    private static final String INTERNAL_HOME_BASE_URL = "https://abo-ezzat-home.invalid/home/";
+    private volatile WebView homeBridgeWebView;
+    private volatile boolean homePageBridgeActive = false;
 
     private LinearLayout rootLayout;
     private LinearLayout topBar;
@@ -1153,6 +1157,10 @@ public class BrowserActivity extends Activity {
 
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                if (request.isForMainFrame()) {
+                    homePageBridgeActive = false;
+                    homeBridgeWebView = null;
+                }
                 String targetUrl = request.getUrl().toString();
                 String lower = targetUrl.toLowerCase(Locale.ROOT);
 
@@ -1355,6 +1363,11 @@ public class BrowserActivity extends Activity {
             @Override
             public void onPageStarted(WebView view, String loadedUrl, android.graphics.Bitmap favicon) {
                 super.onPageStarted(view, loadedUrl, favicon);
+                if (view != homeBridgeWebView || loadedUrl == null
+                        || !loadedUrl.startsWith(INTERNAL_HOME_BASE_URL)) {
+                    homePageBridgeActive = false;
+                    homeBridgeWebView = null;
+                }
                 navigationStartedAt.put(view, System.currentTimeMillis());
                 if (view == activeWebView) {
                     activePageUrl = loadedUrl == null ? "" : loadedUrl;
@@ -2015,8 +2028,15 @@ public class BrowserActivity extends Activity {
 
         @JavascriptInterface
         public void onNewCustomSite(String name, String siteUrl) {
-            saveCustomSite(name, siteUrl);
-            runOnUiThread(() -> loadHomePage());
+            final WebView source = activeWebView;
+            runOnUiThread(() -> {
+                if (!isInternalHomeBridgeAllowed(source)) {
+                    Log.w(TAG, "Rejected custom-site bridge call outside the app home page");
+                    return;
+                }
+                saveCustomSite(name, siteUrl);
+                loadHomePage();
+            });
         }
     }
 
@@ -2665,6 +2685,8 @@ public class BrowserActivity extends Activity {
         WebView current = getCurrentWebView();
         if (current == null || target.isEmpty()) return;
 
+        homePageBridgeActive = false;
+        homeBridgeWebView = null;
         capturedList.clear();
         lastDiscoveredPoster = "";
         lastDiscoveredTitle = "";
@@ -2819,14 +2841,35 @@ public class BrowserActivity extends Activity {
                 "}" +
                 "</script></body></html>";
 
-        current.loadDataWithBaseURL("https://www.google.com.eg", homeHtml, "text/html", "UTF-8", null);
+        homeBridgeWebView = current;
+        homePageBridgeActive = true;
+        current.loadDataWithBaseURL(INTERNAL_HOME_BASE_URL, homeHtml, "text/html", "UTF-8", null);
+    }
+
+    private boolean isInternalHomeBridgeAllowed(WebView source) {
+        if (!homePageBridgeActive || source == null || source != homeBridgeWebView
+                || source != getCurrentWebView()) return false;
+        String currentUrl = source.getUrl();
+        if (currentUrl == null || !currentUrl.startsWith(INTERNAL_HOME_BASE_URL)) return false;
+        Uri uri = Uri.parse(currentUrl);
+        return "https".equalsIgnoreCase(uri.getScheme())
+                && "abo-ezzat-home.invalid".equalsIgnoreCase(uri.getHost())
+                && "/home/".equals(uri.getPath());
     }
 
     private void saveCustomSite(String name, String url) {
         if (name == null || url == null) return;
         name = name.trim();
         url = url.trim();
-        if (name.isEmpty() || !(url.startsWith("http://") || url.startsWith("https://"))) return;
+        if (name.isEmpty() || name.length() > 80 || name.indexOf('|') >= 0
+                || name.indexOf('\n') >= 0 || name.indexOf('\r') >= 0
+                || url.isEmpty() || url.length() > 2048) return;
+        Uri parsed;
+        try { parsed = Uri.parse(url); } catch (Exception ignored) { return; }
+        String scheme = parsed.getScheme();
+        if (scheme == null || !(scheme.equalsIgnoreCase("http") || scheme.equalsIgnoreCase("https"))
+                || parsed.getHost() == null || parsed.getHost().trim().isEmpty()
+                || parsed.getUserInfo() != null) return;
         final String siteName = name;
         final String siteUrl = url;
         SharedPreferences prefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
@@ -2835,6 +2878,10 @@ public class BrowserActivity extends Activity {
             String[] parts = entry.split("\\|", 2);
             return parts.length == 2 && parts[1].equalsIgnoreCase(siteUrl);
         });
+        if (set.size() >= 100 && !set.contains(siteName + "|" + siteUrl)) {
+            Toast.makeText(this, "وصلت للحد الأقصى للمواقع المحفوظة (100)", Toast.LENGTH_SHORT).show();
+            return;
+        }
         set.add(siteName + "|" + siteUrl);
         prefs.edit().putStringSet("custom_sites", set).apply();
         fetchCustomSitePreview(siteName, siteUrl);
