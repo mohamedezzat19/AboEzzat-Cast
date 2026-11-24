@@ -96,10 +96,19 @@ public class MainActivity extends Activity {
                         String pathAndQuery = original.url().encodedPath()
                                 + (original.url().encodedQuery() == null ? ""
                                 : "?" + original.url().encodedQuery());
-                        String canonical = original.method() + "\n" + pathAndQuery
-                                + "\n" + timestamp + "\n" + nonce;
                         String signature;
                         try {
+                            byte[] requestBody = new byte[0];
+                            if (original.body() != null) {
+                                okio.Buffer bodyBuffer = new okio.Buffer();
+                                original.body().writeTo(bodyBuffer);
+                                requestBody = bodyBuffer.readByteArray();
+                            }
+                            String bodyHash = Base64.encodeToString(
+                                    java.security.MessageDigest.getInstance("SHA-256").digest(requestBody),
+                                    Base64.URL_SAFE | Base64.NO_WRAP | Base64.NO_PADDING);
+                            String canonical = original.method() + "\n" + pathAndQuery
+                                    + "\n" + bodyHash + "\n" + timestamp + "\n" + nonce;
                             Mac mac = Mac.getInstance("HmacSHA256");
                             mac.init(new SecretKeySpec(secret.getBytes(java.nio.charset.StandardCharsets.UTF_8),
                                     "HmacSHA256"));
