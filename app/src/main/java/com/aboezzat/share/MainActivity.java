@@ -24,6 +24,7 @@ import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.format.Formatter;
+import android.util.Base64;
 import android.view.View;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
@@ -44,6 +45,9 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -59,6 +63,7 @@ import okhttp3.Response;
 public class MainActivity extends Activity {
 
     private static final int TARGET_PORT = 8081;
+    private static final String PREF_RECEIVER_SECRET = "receiver_auth_secret";
     private static final int PICK_MEDIA_REQUEST = 101;
     private static final int PICK_SLIDESHOW_REQUEST = 102;
     private static final int VOICE_SEARCH_REQUEST = 103;
@@ -78,7 +83,38 @@ public class MainActivity extends Activity {
     private EditText etHomeSearch;
     private TextView tvStatusBadge;
     private SharedPreferences prefs;
-    private final OkHttpClient client = new OkHttpClient();
+    private final OkHttpClient client = new OkHttpClient.Builder()
+            .addInterceptor(chain -> {
+                Request original = chain.request();
+                if (original.url().port() == TARGET_PORT
+                        && !"/pair".equals(original.url().encodedPath())) {
+                    String secret = getSharedPreferences("AboEzzatSharePrefs",
+                            MODE_PRIVATE | MODE_MULTI_PROCESS).getString(PREF_RECEIVER_SECRET, "");
+                    if (secret != null && !secret.isEmpty()) {
+                        long timestamp = System.currentTimeMillis();
+                        String nonce = UUID.randomUUID().toString();
+                        String pathAndQuery = original.url().encodedPath()
+                                + (original.url().encodedQuery() == null ? ""
+                                : "?" + original.url().encodedQuery());
+                        String canonical = original.method() + "\\n" + pathAndQuery
+                                + "\\n" + timestamp + "\\n" + nonce;
+                        Mac mac = Mac.getInstance("HmacSHA256");
+                        mac.init(new SecretKeySpec(secret.getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                                "HmacSHA256"));
+                        String signature = Base64.encodeToString(
+                                mac.doFinal(canonical.getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+                                Base64.URL_SAFE | Base64.NO_WRAP | Base64.NO_PADDING);
+                        Request signed = original.newBuilder()
+                                .header("X-AboEzzat-Time", String.valueOf(timestamp))
+                                .header("X-AboEzzat-Nonce", nonce)
+                                .header("X-AboEzzat-Signature", signature)
+                                .build();
+                        return chain.proceed(signed);
+                    }
+                }
+                return chain.proceed(original);
+            })
+            .build();
     private Uri selectedMediaUri = null;
 
     private final List<Uri> slideshowQueue = new ArrayList<>();
@@ -388,7 +424,7 @@ public class MainActivity extends Activity {
             closeDrawer();
             new AlertDialog.Builder(MainActivity.this, R.style.ModernDialogTheme)
                     .setTitle("إعدادات Abo Ezzat Share")
-                    .setItems(new String[]{"التحقق من التحديثات", "إعداد عنوان IP الشاشة", "تفعيل الاختصار العائم عند نسخ رابط", "تشخيص مشكلة الفقاعة", "إعدادات أندرويد وأذونات التطبيق", "إعداد VPN داخل التطبيق"}, (dialog, which) -> {
+                    .setItems(new String[]{"التحقق من التحديثات", "إعداد عنوان IP الشاشة", "تفعيل الاختصار العائم عند نسخ رابط", "تشخيص مشكلة الفقاعة", "إعدادات أندرويد وأذونات التطبيق", "إعداد VPN داخل التطبيق", "🔐 ربط آمن مع الريسيفر"}, (dialog, which) -> {
                         if (which == 0) {
                             new AppUpdater(MainActivity.this).checkForUpdate(true);
                         } else if (which == 1) {
@@ -401,6 +437,8 @@ public class MainActivity extends Activity {
                             openAppPermissionSettings();
                         } else if (which == 5) {
                             startActivity(new Intent(MainActivity.this, VpnActivity.class));
+                        } else if (which == 6) {
+                            showReceiverPairingDialog();
                         }
                     })
                     .setNegativeButton("إغلاق", null)
@@ -1269,6 +1307,77 @@ private void showManualIpDialog() {
                         updateReceiverStatus();
                     }
                 }).setNegativeButton("إلغاء", null).show();
+    }
+
+    private void showReceiverPairingDialog() {
+        String tvIp = prefs.getString("tv_ip", "").trim();
+        if (tvIp.isEmpty()) {
+            Toast.makeText(this, "احفظ عنوان IP الشاشة أولاً", Toast.LENGTH_LONG).show();
+            showManualIpDialog();
+            return;
+        }
+        EditText codeInput = new EditText(this);
+        codeInput.setSingleLine(true);
+        codeInput.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+        codeInput.setHint("كود الربط المكوّن من 8 أرقام");
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        int padding = (int) (20 * getResources().getDisplayMetrics().density + 0.5f);
+        panel.setPadding(padding, padding / 2, padding, 0);
+        TextView instructions = new TextView(this);
+        instructions.setText("على جهاز الريسيفر: الإعدادات > إظهار كود الربط الآمن. تأكد أن الجهازين على نفس شبكة Wi-Fi، ثم أدخل الكود الظاهر على الشاشة.");
+        panel.addView(instructions);
+        panel.addView(codeInput);
+        new AlertDialog.Builder(this, R.style.ModernDialogTheme)
+                .setTitle("🔐 ربط آمن مع الريسيفر")
+                .setView(panel)
+                .setPositiveButton("ربط الآن", (dialog, which) -> {
+                    String code = codeInput.getText().toString().trim();
+                    if (!code.matches("[0-9]{8}")) {
+                        Toast.makeText(this, "أدخل كودًا صحيحًا من 8 أرقام", Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                    try {
+                        String endpoint = tvIp;
+                        if (!endpoint.startsWith("http://") && !endpoint.startsWith("https://"))
+                            endpoint = "http://" + endpoint;
+                        if (!endpoint.contains(":" + TARGET_PORT)) endpoint += ":" + TARGET_PORT;
+                        String pairUrl = endpoint + "/pair?code=" + URLEncoder.encode(code, "UTF-8");
+                        Request request = new Request.Builder().url(pairUrl).get().build();
+                        client.newCall(request).enqueue(new Callback() {
+                            @Override public void onFailure(Call call, IOException error) {
+                                runOnUiThread(() -> Toast.makeText(MainActivity.this,
+                                        "تعذر الاتصال بالريسيفر. تأكد من الشبكة وعنوان IP.", Toast.LENGTH_LONG).show());
+                            }
+                            @Override public void onResponse(Call call, Response response) throws IOException {
+                                String responseText = response.body() == null ? "" : response.body().string();
+                                boolean successful = response.isSuccessful();
+                                response.close();
+                                String secret = "";
+                                try {
+                                    if (successful) secret = new org.json.JSONObject(responseText).optString("secret", "");
+                                } catch (Exception ignored) { }
+                                final String pairedSecret = secret;
+                                runOnUiThread(() -> {
+                                    if (successful && pairedSecret.length() >= 40) {
+                                        prefs.edit().putString(PREF_RECEIVER_SECRET, pairedSecret).apply();
+                                        Toast.makeText(MainActivity.this,
+                                                "✅ تم الربط الآمن بنجاح. تقدر تبعت للشاشة دلوقتي.",
+                                                Toast.LENGTH_LONG).show();
+                                    } else {
+                                        Toast.makeText(MainActivity.this,
+                                                "فشل الربط: الكود غير صحيح أو انتهت صلاحيته. اعرض كودًا جديدًا من الريسيفر.",
+                                                Toast.LENGTH_LONG).show();
+                                    }
+                                });
+                            }
+                        });
+                    } catch (Exception error) {
+                        Toast.makeText(this, "تعذر تجهيز طلب الربط", Toast.LENGTH_SHORT).show();
+                    }
+                })
+                .setNegativeButton("إلغاء", null)
+                .show();
     }
 
     private void hideHomeSearchKeyboard() {
