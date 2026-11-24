@@ -29,6 +29,8 @@ import androidx.core.app.NotificationCompat;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.security.MessageDigest;
+import java.security.SecureRandom;
 import java.util.Locale;
 
 import fi.iki.elonen.NanoHTTPD;
@@ -40,6 +42,8 @@ public class CastKeepAliveService extends Service {
     private static final String PREFS_NAME = "AboEzzatSharePrefs";
     private static final String PREF_MEDIA_URI = "local_server_media_uri";
     private static volatile Uri selectedMediaUri;
+    private static volatile String mediaAccessToken = "";
+    private static final SecureRandom MEDIA_TOKEN_RANDOM = new SecureRandom();
     private LocalMediaServer localServer;
     private boolean localServerReady;
 
@@ -60,13 +64,35 @@ public class CastKeepAliveService extends Service {
         }
     }
 
-    public static void setSelectedMediaUri(Context context, Uri uri) {
+    public static synchronized void setSelectedMediaUri(Context context, Uri uri) {
         selectedMediaUri = uri;
+        mediaAccessToken = uri == null ? "" : createMediaAccessToken();
         SharedPreferences.Editor edit = context.getSharedPreferences(
                 PREFS_NAME, Context.MODE_PRIVATE | Context.MODE_MULTI_PROCESS).edit();
         if (uri == null) edit.remove(PREF_MEDIA_URI);
         else edit.putString(PREF_MEDIA_URI, uri.toString());
         edit.apply();
+    }
+
+    public static String getMediaAccessToken() {
+        return mediaAccessToken;
+    }
+
+    private static String createMediaAccessToken() {
+        byte[] token = new byte[32];
+        MEDIA_TOKEN_RANDOM.nextBytes(token);
+        return android.util.Base64.encodeToString(token,
+                android.util.Base64.URL_SAFE | android.util.Base64.NO_WRAP
+                        | android.util.Base64.NO_PADDING);
+    }
+
+    private static boolean isValidMediaToken(String supplied) {
+        String expected = mediaAccessToken;
+        if (expected == null || expected.length() != 43
+                || supplied == null || supplied.length() != 43) return false;
+        return MessageDigest.isEqual(
+                expected.getBytes(java.nio.charset.StandardCharsets.US_ASCII),
+                supplied.getBytes(java.nio.charset.StandardCharsets.US_ASCII));
     }
 
     @Override public void onCreate() {
@@ -75,8 +101,13 @@ public class CastKeepAliveService extends Service {
         String saved = getSharedPreferences(PREFS_NAME, MODE_PRIVATE | MODE_MULTI_PROCESS)
                 .getString(PREF_MEDIA_URI, null);
         if (saved != null) {
-            try { selectedMediaUri = Uri.parse(saved); }
-            catch (Exception ignored) { selectedMediaUri = null; }
+            try {
+                selectedMediaUri = Uri.parse(saved);
+                mediaAccessToken = createMediaAccessToken();
+            } catch (Exception ignored) {
+                selectedMediaUri = null;
+                mediaAccessToken = "";
+            }
         }
     }
 
@@ -98,6 +129,9 @@ public class CastKeepAliveService extends Service {
         if (localServer != null) return;
         try {
             localServer = new LocalMediaServer(8088);
+            // TLS-only listener: do not expose plaintext HTTP if identity setup fails.
+            localServer.makeSecure(CastTlsIdentity.getServerSocketFactory(),
+                    new String[]{"TLSv1.2"});
             localServer.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
             localServerReady = true;
         } catch (Exception e) {
@@ -207,6 +241,19 @@ public class CastKeepAliveService extends Service {
         LocalMediaServer(int port) { super(port); }
 
         @Override public Response serve(IHTTPSession session) {
+            String requestPath = session.getUri();
+            if (!"/media.mp4".equals(requestPath) && !"/media.jpg".equals(requestPath)) {
+                return newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "Not found");
+            }
+            String suppliedToken = session.getParms().get("token");
+            if (!isValidMediaToken(suppliedToken)) {
+                Response denied = newFixedLengthResponse(Response.Status.FORBIDDEN,
+                        "text/plain", "Access denied");
+                denied.addHeader("Cache-Control", "no-store, max-age=0");
+                denied.addHeader("Pragma", "no-cache");
+                denied.addHeader("X-Content-Type-Options", "nosniff");
+                return denied;
+            }
             final Uri mediaUri = selectedMediaUri;
             if (mediaUri == null) return newFixedLengthResponse(Response.Status.NOT_FOUND,
                     "text/plain", "No media selected");
@@ -219,8 +266,11 @@ public class CastKeepAliveService extends Service {
 
                 long fileLength = afd.getLength();
                 if (fileLength < 0) fileLength = queryMediaLength(mediaUri);
-                if (fileLength <= 0) return newFixedLengthResponse(Response.Status.INTERNAL_ERROR,
-                        "text/plain", "Unable to determine media length");
+                if (fileLength <= 0) {
+                    afd.close();
+                    return newFixedLengthResponse(Response.Status.INTERNAL_ERROR,
+                            "text/plain", "Unable to determine media length");
+                }
 
                 String mime = getContentResolver().getType(mediaUri);
                 if (mime == null || mime.trim().isEmpty()
@@ -264,6 +314,7 @@ public class CastKeepAliveService extends Service {
                         end = Math.min(end, fileLength - 1L);
                         partial = true;
                     } catch (Exception invalidRange) {
+                        try { afd.close(); } catch (IOException ignored) {}
                         Response response = newFixedLengthResponse(Response.Status.RANGE_NOT_SATISFIABLE,
                                 "text/plain", "");
                         response.addHeader("Content-Range", "bytes */" + fileLength);
@@ -296,12 +347,16 @@ public class CastKeepAliveService extends Service {
                         mime, stream, contentLength);
                 response.addHeader("Content-Length", String.valueOf(contentLength));
                 response.addHeader("Accept-Ranges", "bytes");
-                response.addHeader("Cache-Control", "no-store");
-                response.addHeader("Access-Control-Allow-Origin", "*");
+                response.addHeader("Cache-Control", "no-store, max-age=0");
+                response.addHeader("Pragma", "no-cache");
+                response.addHeader("X-Content-Type-Options", "nosniff");
                 if (partial) response.addHeader("Content-Range",
                         "bytes " + start + "-" + end + "/" + fileLength);
                 return response;
             } catch (Exception e) {
+                if (afd != null) {
+                    try { afd.close(); } catch (IOException ignored) {}
+                }
                 android.util.Log.e("AboEzzatCast", "Failed to serve local media", e);
                 return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "text/plain",
                         "Error loading local media");
