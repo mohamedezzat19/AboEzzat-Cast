@@ -164,7 +164,6 @@ public class ShareActivity extends Activity {
         SharedPreferences prefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
         targetTvIp = prefs.getString("tv_ip", "").trim();
 
-        String lowerUrl = url.toLowerCase(Locale.ROOT);
         Uri parsedUrl = Uri.parse(url);
         String host = parsedUrl.getHost() == null ? "" : parsedUrl.getHost().toLowerCase(Locale.ROOT);
 
@@ -200,8 +199,9 @@ public class ShareActivity extends Activity {
             return;
         }
 
-        if (lowerUrl.contains("youtube.com") || lowerUrl.contains("youtu.be")
-                || lowerUrl.contains("youtube-nocookie.com")) {
+        if (host.equals("youtube.com") || host.endsWith(".youtube.com")
+                || host.equals("youtu.be") || host.equals("youtube-nocookie.com")
+                || host.endsWith(".youtube-nocookie.com")) {
 
             YoutubeDirectExtractor.extract(url, new YoutubeDirectExtractor.Callback() {
                 @Override public void onSuccess(String videoUrl, String audioUrl, String title, String quality) {
@@ -229,7 +229,7 @@ public class ShareActivity extends Activity {
             return;
         }
 
-        if (isTikTokLiveUrl(lowerUrl)) {
+        if (isTikTokLiveUrl(url)) {
             // Capture LIVE in the background and send its stable CDN URL directly.
             tikTokLiveSourceUrl = url;
             startTikTokLiveLegacySniffer(url);
@@ -319,16 +319,14 @@ public class ShareActivity extends Activity {
                             || "sec-fetch-mode".equals(lower) || "sec-fetch-dest".equals(lower)
                             || "sec-ch-ua".equals(lower) || "sec-ch-ua-mobile".equals(lower)
                             || "sec-ch-ua-platform".equals(lower))
-                            && value.length() <= 2048 && !value.contains("\r") && !value.contains("
-")) {
+                            && value.length() <= 2048 && !value.contains("\r") && !value.contains("\n")) {
                         tikTokRequestHeaders.put(lower, value);
                     }
                 }
             }
             String cookie = CookieManager.getInstance().getCookie(mediaUrl);
             if (cookie != null && !cookie.isEmpty() && cookie.length() <= 8192
-                    && !cookie.contains("\r") && !cookie.contains("
-")) {
+                    && !cookie.contains("\r") && !cookie.contains("\n")) {
                 tikTokRequestHeaders.put("cookie", cookie);
             }
         }
@@ -718,8 +716,7 @@ public class ShareActivity extends Activity {
                                             || "sec-fetch-mode".equals(lower) || "sec-fetch-dest".equals(lower)
                                             || "sec-ch-ua".equals(lower) || "sec-ch-ua-mobile".equals(lower)
                                             || "sec-ch-ua-platform".equals(lower))
-                                            && value.length() <= 2048 && !value.contains("\r") && !value.contains("
-")) {
+                                            && value.length() <= 2048 && !value.contains("\r") && !value.contains("\n")) {
                                         tikTokLiveRequestHeaders.put(lower, value);
                                     }
                                 }
@@ -896,8 +893,7 @@ public class ShareActivity extends Activity {
         String liveUa = getTikTokLiveUserAgent();
         boolean desktopUa = liveUa.toLowerCase(Locale.ROOT).contains("windows nt");
         tikTokDiagnosticAgent.setText((desktopUa ? "نوع المتصفح: Desktop / Windows" :
-                "نوع المتصفح: Mobile / Android") + "
-User-Agent: " + liveUa);
+                "نوع المتصفح: Mobile / Android") + "\nUser-Agent: " + liveUa);
         tikTokDiagnosticAgent.setTextColor(Color.LTGRAY);
         tikTokDiagnosticAgent.setTextSize(11);
         tikTokDiagnosticAgent.setTextIsSelectable(true);
@@ -1253,8 +1249,7 @@ User-Agent: " + liveUa);
                         String value = mediaHeaders.get(key);
                         int max = "cookie".equals(key) ? 8192 : 2048;
                         if (value != null && !value.isEmpty() && value.length() <= max
-                                && !value.contains("\r") && !value.contains("
-")) {
+                                && !value.contains("\r") && !value.contains("\n")) {
                             supplied.put(key, value);
                         }
                     }
