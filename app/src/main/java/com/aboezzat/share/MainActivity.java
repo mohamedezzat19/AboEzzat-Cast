@@ -734,7 +734,9 @@ public class MainActivity extends Activity {
         for (int i = 0; i < urls.size(); i++) {
             String url = urls.get(i);
             String title = browserPrefs.getString("history_title_" + url, "");
-            if (title == null || title.trim().isEmpty() || title.equals(url)) title = getCompactSavedUrlLabel(url);
+            if (title == null || title.trim().isEmpty() || title.trim().equals(url)
+                    || title.trim().startsWith("http://") || title.trim().startsWith("https://"))
+                title = getCompactSavedUrlLabel(url);
             labels[i] = (mostVisited ? (browserPrefs.getInt("visit_count_" + url, 0) + " زيارة · ") : "")
                     + title;
         }
@@ -761,7 +763,9 @@ public class MainActivity extends Activity {
         listView.setOnItemLongClickListener((parent, view, position, id) -> {
             String url = urls.get(position);
             String title = browserPrefs.getString("history_title_" + url, "");
-            if (title == null || title.trim().isEmpty() || title.equals(url)) title = getCompactSavedUrlLabel(url);
+            if (title == null || title.trim().isEmpty() || title.trim().equals(url)
+                    || title.trim().startsWith("http://") || title.trim().startsWith("https://"))
+                title = getCompactSavedUrlLabel(url);
             new AlertDialog.Builder(MainActivity.this, R.style.ModernDialogTheme)
                     .setTitle(title)
                     .setMessage(url)
