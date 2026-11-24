@@ -1538,14 +1538,17 @@ private void showManualIpDialog() {
             return;
         }
 
-        EditText fingerprintInput = new EditText(this);
-        fingerprintInput.setSingleLine(true);
-        fingerprintInput.setInputType(android.text.InputType.TYPE_CLASS_TEXT
-                | android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-        fingerprintInput.setHint("بصمة شهادة الريسيفر (43 حرفًا)");
-        if (!existingPin.isEmpty()) {
-            fingerprintInput.setText(existingPin);
-            fingerprintInput.setEnabled(false);
+        // A first-time manual code-only pairing cannot authenticate the receiver.
+        // Use the QR, which carries the receiver certificate pin and is verified
+        // before the one-time code is sent over TLS.
+        if (existingPin.isEmpty()) {
+            new AlertDialog.Builder(this, R.style.ModernDialogTheme)
+                    .setTitle("ربط آمن بالريسيفر")
+                    .setMessage("لأمان الاتصال، امسح QR الظاهر على شاشة الريسيفر. التطبيق هيتحقق من هوية الريسيفر تلقائيًا، من غير ما تنسخ أو تكتب بصمة الشهادة.")
+                    .setPositiveButton("مسح QR", (dialog, which) -> startReceiverQrScanner())
+                    .setNegativeButton("إلغاء", null)
+                    .show();
+            return;
         }
 
         EditText codeInput = new EditText(this);
@@ -1558,35 +1561,20 @@ private void showManualIpDialog() {
         int padding = (int) (20 * getResources().getDisplayMetrics().density + 0.5f);
         panel.setPadding(padding, padding / 2, padding, 0);
         TextView instructions = new TextView(this);
-        instructions.setText(existingPin.isEmpty()
-                ? "على جهاز الريسيفر افتح الإعدادات > إظهار كود الربط. انسخ بصمة شهادة الاتصال الظاهرة هناك وأدخلها هنا كما هي، ثم أدخل كود الربط. لا توافق على بصمة مختلفة عن شاشة الريسيفر."
-                : "بصمة شهادة هذا الريسيفر محفوظة ومثبتة على الجهاز. أدخل كود الربط الظاهر على شاشة الريسيفر.");
+        instructions.setText("هوية الريسيفر محفوظة ومتحقق منها على هذا الجهاز. أدخل كود الربط الظاهر على شاشة الريسيفر.");
         panel.addView(instructions);
-        panel.addView(fingerprintInput);
         panel.addView(codeInput);
 
         new AlertDialog.Builder(this, R.style.ModernDialogTheme)
-                .setTitle("🔐 ربط مع الريسيفر")
+                .setTitle("ربط مع الريسيفر")
                 .setView(panel)
                 .setPositiveButton("ربط الآن", (dialog, which) -> {
                     String code = codeInput.getText().toString().trim();
-                    String fingerprint = fingerprintInput.getText().toString().trim();
                     if (!code.matches("[0-9]{8}")) {
                         Toast.makeText(this, "أدخل كودًا صحيحًا من 8 أرقام", Toast.LENGTH_LONG).show();
                         return;
                     }
-                    if (!isValidReceiverFingerprint(fingerprint)) {
-                        Toast.makeText(this, "أدخل بصمة شهادة صحيحة من شاشة الريسيفر", Toast.LENGTH_LONG).show();
-                        return;
-                    }
-                    if (!existingPin.isEmpty() && !existingPin.equals(fingerprint)) {
-                        Toast.makeText(this,
-                                "بصمة هذا الريسيفر مختلفة عن البصمة المحفوظة. احذف الجهاز المحفوظ أولاً ثم أعد التحقق من البصمة.",
-                                Toast.LENGTH_LONG).show();
-                        return;
-                    }
-
-                    performReceiverPairing(endpoint, pairedHost, fingerprint, code);
+                    performReceiverPairing(endpoint, pairedHost, existingPin, code);
                 })
                 .setNegativeButton("إلغاء", null)
                 .show();
