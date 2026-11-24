@@ -1364,6 +1364,7 @@ private void showManualIpDialog() {
                         if (!endpoint.startsWith("http://") && !endpoint.startsWith("https://"))
                             endpoint = "http://" + endpoint;
                         if (!endpoint.contains(":" + TARGET_PORT)) endpoint += ":" + TARGET_PORT;
+                        final String pairedHost = Uri.parse(endpoint).getHost();
                         String pairUrl = endpoint + "/pair?code=" + URLEncoder.encode(code, "UTF-8");
                         Request request = new Request.Builder().url(pairUrl).get().build();
                         client.newCall(request).enqueue(new Callback() {
@@ -1382,7 +1383,6 @@ private void showManualIpDialog() {
                                 final String pairedSecret = secret;
                                 runOnUiThread(() -> {
                                     if (successful && pairedSecret.length() >= 40) {
-                                        String pairedHost = Uri.parse(endpoint).getHost();
                                         String protectedSecret = encryptReceiverSecret(pairedSecret);
                                         if (pairedHost == null || protectedSecret.isEmpty()) {
                                             Toast.makeText(MainActivity.this,
