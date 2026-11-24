@@ -1380,12 +1380,25 @@ private void showManualIpDialog() {
                                 boolean successful = response.isSuccessful();
                                 response.close();
                                 String secret = "";
+                                boolean paired = false;
+                                boolean validSecret = false;
                                 try {
-                                    if (successful) secret = new org.json.JSONObject(responseText).optString("secret", "");
+                                    if (successful) {
+                                        org.json.JSONObject pairingResult = new org.json.JSONObject(responseText);
+                                        paired = pairingResult.optBoolean("paired", false);
+                                        secret = pairingResult.optString("secret", "");
+                                        if (secret.matches("[A-Za-z0-9_-]{43}")) {
+                                            byte[] decodedSecret = android.util.Base64.decode(secret,
+                                                    android.util.Base64.URL_SAFE | android.util.Base64.NO_WRAP
+                                                            | android.util.Base64.NO_PADDING);
+                                            validSecret = decodedSecret.length == 32;
+                                        }
+                                    }
                                 } catch (Exception ignored) { }
                                 final String pairedSecret = secret;
+                                final boolean validPairingResponse = paired && validSecret;
                                 runOnUiThread(() -> {
-                                    if (successful && pairedSecret.length() >= 40) {
+                                    if (successful && validPairingResponse) {
                                         String protectedSecret = encryptReceiverSecret(pairedSecret);
                                         if (pairedHost == null || protectedSecret.isEmpty()) {
                                             Toast.makeText(MainActivity.this,
