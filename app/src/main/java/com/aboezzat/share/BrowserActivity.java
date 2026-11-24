@@ -669,6 +669,64 @@ public class BrowserActivity extends Activity {
                 .show();
     }
 
+    private void showBrowserLinkActions(String title, String url, Runnable deleteAction) {
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(dp(18), dp(12), dp(18), dp(12));
+        TextView fullUrl = new TextView(this);
+        fullUrl.setText(url);
+        fullUrl.setTextColor(Color.WHITE);
+        fullUrl.setTextSize(12);
+        fullUrl.setTextIsSelectable(true);
+        fullUrl.setTextDirection(View.TEXT_DIRECTION_LTR);
+        fullUrl.setPadding(dp(4), dp(8), dp(4), dp(14));
+        panel.addView(fullUrl);
+        LinearLayout actions = new LinearLayout(this);
+        actions.setOrientation(LinearLayout.HORIZONTAL);
+        actions.setGravity(Gravity.CENTER);
+        panel.addView(actions);
+        AlertDialog dialog = new AlertDialog.Builder(this, R.style.ModernDialogTheme)
+                .setTitle(title == null || title.trim().isEmpty() ? "إجراءات الرابط" : title)
+                .setView(panel).setNegativeButton("إغلاق", null).create();
+        addBrowserLinkAction(actions, dialog, "🗑️", "مسح الرابط", deleteAction, 0xFFB3261E);
+        addBrowserLinkAction(actions, dialog, "📋", "نسخ الرابط", () -> {
+            ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+            if (clipboard != null) {
+                clipboard.setPrimaryClip(ClipData.newPlainText("URL", url));
+                Toast.makeText(this, "تم نسخ الرابط", Toast.LENGTH_SHORT).show();
+            }
+        }, 0xFF245B8F);
+        addBrowserLinkAction(actions, dialog, "📤", "إرسال الرابط", () -> {
+            Intent intent = new Intent(BrowserActivity.this, MainActivity.class);
+            intent.putExtra("send_saved_url_to_tv", url);
+            intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            startActivity(intent);
+        }, 0xFF287A52);
+        dialog.show();
+    }
+
+    private void addBrowserLinkAction(LinearLayout parent, AlertDialog dialog, String icon, String label,
+                                      Runnable action, int backgroundColor) {
+        TextView button = new TextView(this);
+        button.setText(icon + "\\n" + label);
+        button.setTextColor(Color.WHITE);
+        button.setTextSize(12);
+        button.setTypeface(null, android.graphics.Typeface.BOLD);
+        button.setGravity(Gravity.CENTER);
+        button.setPadding(dp(4), dp(12), dp(4), dp(12));
+        android.graphics.drawable.GradientDrawable shape = new android.graphics.drawable.GradientDrawable();
+        shape.setColor(backgroundColor);
+        shape.setCornerRadius(dp(12));
+        button.setBackground(shape);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(76), 1f);
+        params.setMargins(dp(4), 0, dp(4), 0);
+        parent.addView(button, params);
+        button.setOnClickListener(v -> {
+            dialog.dismiss();
+            if (action != null) action.run();
+        });
+    }
+
     private void showBrowserHistoryDialog() {
         SharedPreferences prefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
         Set<String> saved = prefs.getStringSet("browser_history", new HashSet<String>());
@@ -728,28 +786,17 @@ public class BrowserActivity extends Activity {
         list.setOnItemLongClickListener((parent, view, position, id) -> {
             if (position < 0 || position >= urls.size()) return true;
             String selectedUrl = urls.get(position);
-            new AlertDialog.Builder(this, R.style.ModernDialogTheme)
-                    .setTitle("عنوان الموقع الكامل")
-                    .setMessage(selectedUrl)
-                    .setItems(new String[]{"نسخ العنوان الكامل", "حذف من سجل التصفح"}, (actionDialog, which) -> {
-                        if (which == 0) {
-                            ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-                            if (clipboard != null) {
-                                clipboard.setPrimaryClip(ClipData.newPlainText("URL", selectedUrl));
-                                Toast.makeText(this, "تم نسخ العنوان الكامل", Toast.LENGTH_SHORT).show();
-                            }
-                        } else {
-                            Set<String> updated = new HashSet<>(prefs.getStringSet(
-                                    "browser_history", new HashSet<String>()));
-                            updated.remove(selectedUrl);
-                            prefs.edit().putStringSet("browser_history", updated)
-                                    .remove("history_title_" + selectedUrl)
-                                    .remove("history_time_" + selectedUrl)
-                                    .remove("visit_count_" + selectedUrl).apply();
-                            dialog.dismiss();
-                            showBrowserHistoryDialog();
-                        }
-                    }).setNegativeButton("إغلاق", null).show();
+            String savedTitle = prefs.getString("history_title_" + selectedUrl, "سجل التصفح");
+            showBrowserLinkActions(savedTitle, selectedUrl, () -> {
+                Set<String> updated = new HashSet<>(prefs.getStringSet("browser_history", new HashSet<String>()));
+                updated.remove(selectedUrl);
+                prefs.edit().putStringSet("browser_history", updated)
+                        .remove("history_title_" + selectedUrl)
+                        .remove("history_time_" + selectedUrl)
+                        .remove("visit_count_" + selectedUrl).apply();
+                dialog.dismiss();
+                showBrowserHistoryDialog();
+            });
             return true;
         });
         dialog.show();
@@ -820,26 +867,14 @@ public class BrowserActivity extends Activity {
             int split = entry.indexOf('|');
             String siteName = entry.substring(0, split);
             String fullUrl = entry.substring(split + 1);
-            new AlertDialog.Builder(this, R.style.ModernDialogTheme)
-                    .setTitle(siteName)
-                    .setMessage(fullUrl)
-                    .setPositiveButton("نسخ الرابط الكامل", (d, w) -> {
-                        ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-                        if (clipboard != null) {
-                            clipboard.setPrimaryClip(ClipData.newPlainText("URL", fullUrl));
-                            Toast.makeText(this, "تم نسخ الرابط الكامل", Toast.LENGTH_SHORT).show();
-                        }
-                    })
-                    .setNeutralButton("حذف من المفضلة", (d, w) -> {
-                        Set<String> updated = new HashSet<>(prefs.getStringSet("custom_sites", new HashSet<String>()));
-                        updated.remove(entry);
-                        prefs.edit().putStringSet("custom_sites", updated).apply();
-                        dialog.dismiss();
-                        showQuickSitesDialog();
-                        Toast.makeText(this, "تم حذف الموقع من المفضلة", Toast.LENGTH_SHORT).show();
-                    })
-                    .setNegativeButton("إغلاق", null)
-                    .show();
+            showBrowserLinkActions(siteName, fullUrl, () -> {
+                Set<String> updated = new HashSet<>(prefs.getStringSet("custom_sites", new HashSet<String>()));
+                updated.remove(entry);
+                prefs.edit().putStringSet("custom_sites", updated).apply();
+                dialog.dismiss();
+                showQuickSitesDialog();
+                Toast.makeText(this, "تم حذف الموقع من المفضلة", Toast.LENGTH_SHORT).show();
+            });
             return true;
         });
         dialog.show();
