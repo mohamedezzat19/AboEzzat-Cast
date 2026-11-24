@@ -263,8 +263,11 @@ public class CastKeepAliveService extends Service {
 
                 long fileLength = afd.getLength();
                 if (fileLength < 0) fileLength = queryMediaLength(mediaUri);
-                if (fileLength <= 0) return newFixedLengthResponse(Response.Status.INTERNAL_ERROR,
-                        "text/plain", "Unable to determine media length");
+                if (fileLength <= 0) {
+                    afd.close();
+                    return newFixedLengthResponse(Response.Status.INTERNAL_ERROR,
+                            "text/plain", "Unable to determine media length");
+                }
 
                 String mime = getContentResolver().getType(mediaUri);
                 if (mime == null || mime.trim().isEmpty()
@@ -308,6 +311,7 @@ public class CastKeepAliveService extends Service {
                         end = Math.min(end, fileLength - 1L);
                         partial = true;
                     } catch (Exception invalidRange) {
+                        try { afd.close(); } catch (IOException ignored) {}
                         Response response = newFixedLengthResponse(Response.Status.RANGE_NOT_SATISFIABLE,
                                 "text/plain", "");
                         response.addHeader("Content-Range", "bytes */" + fileLength);
@@ -347,6 +351,9 @@ public class CastKeepAliveService extends Service {
                         "bytes " + start + "-" + end + "/" + fileLength);
                 return response;
             } catch (Exception e) {
+                if (afd != null) {
+                    try { afd.close(); } catch (IOException ignored) {}
+                }
                 android.util.Log.e("AboEzzatCast", "Failed to serve local media", e);
                 return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "text/plain",
                         "Error loading local media");
