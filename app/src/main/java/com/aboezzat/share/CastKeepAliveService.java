@@ -248,6 +248,10 @@ public class CastKeepAliveService extends Service {
         return -1L;
     }
 
+
+    private class LocalMediaServer extends NanoHTTPD {
+        LocalMediaServer(int port) { super(port); }
+
     /**
      * Observe the first read from each accepted TLS socket. In NanoHTTPD 2.3.1,
      * the TLS handshake is triggered by the first socket read, before serve()
@@ -318,9 +322,6 @@ public class CastKeepAliveService extends Service {
 
         return new ClientHandler(monitoredInput, acceptedSocket);
     }
-
-    private class LocalMediaServer extends NanoHTTPD {
-        LocalMediaServer(int port) { super(port); }
 
         @Override public Response serve(IHTTPSession session) {
             String requestPath = session.getUri();
