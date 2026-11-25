@@ -752,25 +752,34 @@ public class BrowserActivity extends Activity {
         list.setDivider(new android.graphics.drawable.ColorDrawable(Color.rgb(55, 75, 101)));
         list.setDividerHeight(dp(1));
         list.setAdapter(new android.widget.ArrayAdapter<String>(this,
-                android.R.layout.simple_list_item_1, urls) {
+                android.R.layout.simple_list_item_2, android.R.id.text1, urls) {
             @Override public View getView(int position, View convertView, ViewGroup parent) {
-                TextView row = (TextView) super.getView(position, convertView, parent);
+                View row = super.getView(position, convertView, parent);
                 String url = urls.get(position);
                 String title = prefs.getString("history_title_" + url, "");
+                String host = "";
+                try {
+                    Uri parsed = Uri.parse(url);
+                    host = parsed.getHost() == null ? "" : parsed.getHost();
+                } catch (Exception ignored) { }
                 if (title == null || title.trim().isEmpty() || title.trim().equals(url)
                         || title.trim().startsWith("http://") || title.trim().startsWith("https://")) {
-                    try {
-                        String host = Uri.parse(url).getHost();
-                        title = host == null || host.trim().isEmpty() ? "موقع محفوظ" : host;
-                    } catch (Exception ignored) { title = "موقع محفوظ"; }
+                    title = host.isEmpty() ? "صفحة ويب" : host;
                 }
-                row.setText(title.trim());
-                row.setTextColor(Color.WHITE);
-                row.setTextSize(15);
-                row.setSingleLine(true);
-                row.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                TextView titleView = row.findViewById(android.R.id.text1);
+                TextView addressView = row.findViewById(android.R.id.text2);
+                titleView.setText(title.trim());
+                titleView.setTextColor(Color.WHITE);
+                titleView.setTextSize(15);
+                titleView.setSingleLine(true);
+                titleView.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                addressView.setText(host.isEmpty() ? "رابط محفوظ" : host);
+                addressView.setTextColor(Color.LTGRAY);
+                addressView.setTextSize(12);
+                addressView.setSingleLine(true);
+                addressView.setEllipsize(android.text.TextUtils.TruncateAt.END);
                 row.setBackgroundColor(Color.rgb(23, 35, 54));
-                row.setPadding(dp(16), dp(14), dp(16), dp(14));
+                row.setPadding(dp(16), dp(10), dp(16), dp(10));
                 return row;
             }
         });
