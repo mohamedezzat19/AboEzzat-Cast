@@ -462,6 +462,16 @@ public class CastKeepAliveService extends Service {
                 final AssetFileDescriptor responseAfd = afd;
                 FileInputStream rawStream = afd.createInputStream();
                 java.io.InputStream stream = new java.io.FilterInputStream(rawStream) {
+                    @Override public int read() throws IOException {
+                        int value = super.read();
+                        if (value >= 0) recordLocalTransferBytes(1L);
+                        return value;
+                    }
+                    @Override public int read(byte[] buffer, int offset, int length) throws IOException {
+                        int count = super.read(buffer, offset, length);
+                        if (count > 0) recordLocalTransferBytes(count);
+                        return count;
+                    }
                     @Override public void close() throws IOException {
                         try { super.close(); }
                         finally { try { responseAfd.close(); } catch (IOException ignored) {} }
