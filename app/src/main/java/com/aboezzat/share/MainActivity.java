@@ -1438,7 +1438,7 @@ private void showManualIpDialog() {
                         try {
                             contents = reader.decodeWithState(binary).getText();
                             if (contents != null && !contents.trim().isEmpty()) break;
-                        } catch (com.google.zxing.NotFoundException ignored) {
+                        } catch (com.google.zxing.ReaderException ignored) {
                             // Try the next image orientation.
                         } finally {
                             reader.reset();
@@ -1449,7 +1449,7 @@ private void showManualIpDialog() {
                     if (contents != null && !contents.trim().isEmpty()) break;
                 }
                 if (contents == null || contents.trim().isEmpty()) {
-                    throw new com.google.zxing.NotFoundException();
+                    throw new IOException("No QR code found in selected image");
                 }
             } catch (Exception error) {
                 failure = error;
