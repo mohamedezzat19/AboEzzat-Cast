@@ -154,6 +154,7 @@ public class MainActivity extends Activity {
     private final List<Uri> slideshowQueue = new ArrayList<>();
     private int currentSlideIndex = 0;
     private boolean isSlideshowRunning = false;
+    private long slideIntervalMs = 5000L;
 
     private final List<Uri> videoQueue = new ArrayList<>();
     private int currentVideoIndex = 0;
@@ -166,7 +167,7 @@ public class MainActivity extends Activity {
                 currentSlideIndex = (currentSlideIndex + 1) % slideshowQueue.size();
                 setSelectedMediaUri(slideshowQueue.get(currentSlideIndex));
                 castLocalMediaToTv(false);
-                slideHandler.postDelayed(this, 5000);
+                slideHandler.postDelayed(this, slideIntervalMs);
             }
         }
     };
@@ -1145,22 +1146,142 @@ public class MainActivity extends Activity {
     }
 
     private void showPlaylistDialog() {
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(dp(12), dp(8), dp(12), dp(8));
+        android.widget.ScrollView scroll = new android.widget.ScrollView(this);
+        LinearLayout rows = new LinearLayout(this);
+        rows.setOrientation(LinearLayout.VERTICAL);
+        scroll.addView(rows);
+        for (int i = 0; i < videoQueue.size(); i++) {
+            final int index = i;
+            Uri uri = videoQueue.get(i);
+            rows.addView(createMediaQueueRow(uri, getMediaDisplayName(uri, i), () -> {
+                currentVideoIndex = index;
+                setSelectedMediaUri(uri);
+                castLocalMediaToTv(true);
+            }, () -> {
+                videoQueue.remove(index);
+                if (videoQueue.isEmpty()) currentVideoIndex = 0;
+                else currentVideoIndex = Math.min(currentVideoIndex, videoQueue.size() - 1);
+                persistMediaQueues();
+                showPlaylistDialog();
+            }));
+        }
         if (videoQueue.isEmpty()) {
-            new AlertDialog.Builder(this, R.style.ModernDialogTheme).setTitle("قائمة التشغيل")
-                    .setMessage("قائمة التشغيل فارغة. أضف فيديوهات من زر الوسائط أولاً.")
-                    .setPositiveButton("إضافة فيديوهات", (d, w) -> openMediaPicker(false))
-                    .setNegativeButton("إغلاق", null).show();
+            TextView empty = new TextView(this);
+            empty.setText("قائمة التشغيل فارغة.");
+            empty.setTextColor(Color.WHITE);
+            rows.addView(empty);
+        }
+        panel.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1f));
+        AlertDialog dialog = new AlertDialog.Builder(this, R.style.ModernDialogTheme)
+                .setTitle("قائمة التشغيل (" + videoQueue.size() + ")")
+                .setView(panel)
+                .setPositiveButton("إضافة فيديوهات", (d, w) -> openMediaPicker(false))
+                .setNeutralButton("مسح القائمة", (d, w) -> new AlertDialog.Builder(this, R.style.ModernDialogTheme)
+                        .setTitle("مسح قائمة التشغيل؟")
+                        .setMessage("هيتم حذف عناصر القائمة فقط، من غير حذف الملفات الأصلية من الهاتف.")
+                        .setPositiveButton("مسح", (confirm, which) -> {
+                            videoQueue.clear();
+                            currentVideoIndex = 0;
+                            persistMediaQueues();
+                            Toast.makeText(this, "تم مسح قائمة التشغيل", Toast.LENGTH_SHORT).show();
+                        }).setNegativeButton("إلغاء", null).show())
+                .setNegativeButton("إغلاق", null).create();
+        dialog.show();
+    }
+
+    private LinearLayout createMediaQueueRow(Uri uri, String title, Runnable onClick, Runnable onRemove) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(8), dp(6), dp(8), dp(6));
+        ImageView thumb = new ImageView(this);
+        thumb.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        thumb.setBackground(libraryCardBackground(0xFF30343B));
+        LinearLayout.LayoutParams thumbParams = new LinearLayout.LayoutParams(dp(64), dp(64));
+        thumbParams.setMargins(0, 0, dp(10), 0);
+        row.addView(thumb, thumbParams);
+        try {
+            android.media.MediaMetadataRetriever retriever = new android.media.MediaMetadataRetriever();
+            retriever.setDataSource(this, uri);
+            android.graphics.Bitmap frame = retriever.getFrameAtTime(0);
+            if (frame != null) thumb.setImageBitmap(frame);
+            retriever.release();
+        } catch (Exception ignored) {
+            try { thumb.setImageURI(uri); } catch (Exception ignoredAgain) { }
+        }
+        TextView name = new TextView(this);
+        name.setText(title);
+        name.setTextColor(Color.WHITE);
+        name.setTextSize(13);
+        name.setMaxLines(2);
+        row.addView(name, new LinearLayout.LayoutParams(0, -2, 1f));
+        TextView remove = new TextView(this);
+        remove.setText("حذف");
+        remove.setTextColor(0xFFFFB4AB);
+        remove.setPadding(dp(10), dp(10), dp(10), dp(10));
+        row.addView(remove);
+        row.setOnClickListener(v -> { if (onClick != null) onClick.run(); });
+        remove.setOnClickListener(v -> { if (onRemove != null) onRemove.run(); });
+        View divider = new View(this);
+        divider.setBackgroundColor(0xFF374151);
+        LinearLayout.LayoutParams dividerParams = new LinearLayout.LayoutParams(-1, dp(1));
+        dividerParams.topMargin = dp(4);
+        row.addView(divider, dividerParams);
+        return row;
+    }
+
+    private void showSlideshowControls() {
+        if (slideshowQueue.isEmpty()) {
+            Toast.makeText(this, "مفيش صور في عرض الشرائح", Toast.LENGTH_SHORT).show();
             return;
         }
-        String[] items = new String[videoQueue.size()];
-        for (int i = 0; i < videoQueue.size(); i++) items[i] = getMediaDisplayName(videoQueue.get(i), i);
-        new AlertDialog.Builder(this, R.style.ModernDialogTheme).setTitle("قائمة التشغيل (" + videoQueue.size() + " ملفات)")
-                .setItems(items, (dialog, which) -> {
-                    currentVideoIndex = which;
-                    setSelectedMediaUri(videoQueue.get(currentVideoIndex));
-                    castLocalMediaToTv(true);
-                }).setPositiveButton("إضافة فيديوهات", (d, w) -> openMediaPicker(false))
-                .setNegativeButton("إغلاق", null).show();
+        String[] choices = {"السابق", isSlideshowRunning ? "إيقاف مؤقت" : "استكمال العرض",
+                "التالي", "مدة العرض", "إيقاف ومسح عرض الشرائح"};
+        new AlertDialog.Builder(this, R.style.ModernDialogTheme)
+                .setTitle("التحكم في عرض الصور")
+                .setItems(choices, (d, which) -> {
+                    if (which == 0) changeSlide(-1);
+                    else if (which == 1) {
+                        isSlideshowRunning = !isSlideshowRunning;
+                        slideHandler.removeCallbacks(slideRunnable);
+                        if (isSlideshowRunning) slideHandler.postDelayed(slideRunnable, slideIntervalMs);
+                        showSlideshowControls();
+                    } else if (which == 2) changeSlide(1);
+                    else if (which == 3) {
+                        String[] durations = {"3 ثوانٍ", "5 ثوانٍ", "10 ثوانٍ", "15 ثانية", "30 ثانية"};
+                        long[] values = {3000L, 5000L, 10000L, 15000L, 30000L};
+                        new AlertDialog.Builder(this, R.style.ModernDialogTheme)
+                                .setTitle("مدة عرض كل صورة")
+                                .setItems(durations, (dialog, index) -> {
+                                    slideIntervalMs = values[index];
+                                    prefs.edit().putLong("slideshow_interval_ms", slideIntervalMs).apply();
+                                    slideHandler.removeCallbacks(slideRunnable);
+                                    if (isSlideshowRunning) slideHandler.postDelayed(slideRunnable, slideIntervalMs);
+                                    Toast.makeText(this, "تم تغيير مدة العرض", Toast.LENGTH_SHORT).show();
+                                }).show();
+                    } else {
+                        isSlideshowRunning = false;
+                        slideHandler.removeCallbacks(slideRunnable);
+                        slideshowQueue.clear();
+                        currentSlideIndex = 0;
+                        persistMediaQueues();
+                        sendRemoteCommand("stop");
+                    }
+                }).setNegativeButton("إغلاق", null).show();
+    }
+
+    private void changeSlide(int delta) {
+        if (slideshowQueue.isEmpty()) return;
+        currentSlideIndex = (currentSlideIndex + delta + slideshowQueue.size()) % slideshowQueue.size();
+        setSelectedMediaUri(slideshowQueue.get(currentSlideIndex));
+        castLocalMediaToTv(true);
+        if (isSlideshowRunning) {
+            slideHandler.removeCallbacks(slideRunnable);
+            slideHandler.postDelayed(slideRunnable, slideIntervalMs);
+        }
     }
 
     private void showBookmarksDialog() {
@@ -1314,15 +1435,17 @@ public class MainActivity extends Activity {
             tvStatusBadge.setText("● اضغط لفحص الأجهزة • ضغطة مطولة لإدخال IP");
             return;
         }
-        tvStatusBadge.setText("● جارٍ التحقق من " + ip + "...");
+        String displayName = getSavedReceiverName(ip);
+        String displayTarget = displayName.isEmpty() ? ip : displayName;
+        tvStatusBadge.setText("● جارٍ التحقق من " + displayTarget + "...");
         AsyncTask.execute(() -> {
             boolean reachable = isReceiverOnline(ip);
             final boolean isReachable = reachable;
             final boolean paired = hasSecureReceiverPairing();
             runOnUiThread(() -> tvStatusBadge.setText(isReachable
-                    ? "● اتصال آمن بـ " + ip
-                    : paired ? "● محفوظ، تعذر الاتصال الآمن: " + ip
-                    : "● الجهاز محفوظ، يحتاج ربط QR: " + ip));
+                    ? "● اتصال آمن بـ " + displayTarget
+                    : paired ? "● محفوظ، تعذر الاتصال الآمن: " + displayTarget
+                    : "● الجهاز محفوظ، يحتاج ربط QR: " + displayTarget));
         });
     }
 private void showManualIpDialog() {
@@ -1491,6 +1614,8 @@ private void showManualIpDialog() {
             }
             String code = payload.optString("code", "");
             String fingerprint = payload.optString("fingerprint", "");
+            String receiverName = payload.optString("name", "").trim();
+            if (receiverName.length() > 48) receiverName = receiverName.substring(0, 48);
             if (!host.matches("[0-9]{1,3}(\\.[0-9]{1,3}){3}")) {
                 throw new IllegalArgumentException("Invalid receiver IP");
             }
@@ -1517,7 +1642,20 @@ private void showManualIpDialog() {
                         Toast.LENGTH_LONG).show();
                 return;
             }
-            performReceiverPairing(endpoint, pairedHost, fingerprint, code);
+            final String suggestedName = receiverName.isEmpty() ? "شاشة " + host : receiverName;
+            EditText nameInput = new EditText(this);
+            nameInput.setSingleLine(true);
+            nameInput.setText(suggestedName);
+            nameInput.setHint("اسم الجهاز");
+            new AlertDialog.Builder(this, R.style.ModernDialogTheme)
+                    .setTitle("اسم الريسيفر")
+                    .setMessage("تقدر تعدّل الاسم قبل حفظ الجهاز.")
+                    .setView(nameInput)
+                    .setPositiveButton("متابعة الربط", (d, w) ->
+                            performReceiverPairing(endpoint, pairedHost, fingerprint, code,
+                                    nameInput.getText().toString().trim().isEmpty()
+                                            ? suggestedName : nameInput.getText().toString().trim()))
+                    .setNegativeButton("إلغاء", null).show();
         } catch (Exception invalidQr) {
             android.util.Log.w("AboEzzatCast", "Rejected receiver pairing QR", invalidQr);
             Toast.makeText(this, "QR غير صالح أو لا يحتوي بيانات ريسيفر مدعومة.", Toast.LENGTH_LONG).show();
@@ -1525,7 +1663,7 @@ private void showManualIpDialog() {
     }
 
     private void performReceiverPairing(String endpoint, String pairedHost,
-                                        String fingerprint, String code) {
+                                        String fingerprint, String code, String receiverName) {
         if (!code.matches("[0-9]{8}") || !isValidReceiverFingerprint(fingerprint)) {
             Toast.makeText(this, "بيانات الربط غير صحيحة", Toast.LENGTH_LONG).show();
             return;
@@ -1607,6 +1745,14 @@ private void showManualIpDialog() {
                                         Toast.LENGTH_LONG).show();
                                 return;
                             }
+                            List<SavedReceiverDevice> savedDevices = loadSavedReceiverDevices();
+                            savedDevices.removeIf(item -> item.ip.equalsIgnoreCase(savedAddress)
+                                    || item.ip.equalsIgnoreCase(pairedHost));
+                            savedDevices.add(0, new SavedReceiverDevice(
+                                    receiverName == null || receiverName.trim().isEmpty()
+                                            ? "شاشة " + pairedHost : receiverName.trim(),
+                                    savedAddress));
+                            saveSavedReceiverDevices(savedDevices);
                             if (etTvIp != null) etTvIp.setText(savedAddress);
                             updateReceiverStatus();
                             pendingPairingReceiverIp = "";
@@ -1821,6 +1967,14 @@ private void showManualIpDialog() {
         return devices;
     }
 
+    private String getSavedReceiverName(String ip) {
+        if (ip == null || ip.trim().isEmpty()) return "";
+        for (SavedReceiverDevice device : loadSavedReceiverDevices()) {
+            if (device.ip.equalsIgnoreCase(ip.trim())) return device.name == null ? "" : device.name.trim();
+        }
+        return "";
+    }
+
     private boolean containsReceiverIp(List<SavedReceiverDevice> devices, String ip) {
         for (SavedReceiverDevice device : devices) {
             if (device.ip.equalsIgnoreCase(ip)) return true;
@@ -1985,6 +2139,12 @@ private void showManualIpDialog() {
                         List<SavedReceiverDevice> latest = loadSavedReceiverDevices();
                         latest.removeIf(item -> item.ip.equalsIgnoreCase(device.ip));
                         saveSavedReceiverDevices(latest);
+                        String selectedIp = prefs.getString("tv_ip", "").trim();
+                        if (selectedIp.equalsIgnoreCase(device.ip)) {
+                            prefs.edit().remove("tv_ip").apply();
+                            if (etTvIp != null) etTvIp.setText("");
+                            updateReceiverStatus();
+                        }
                         try {
                             String endpoint = buildReceiverHttpsEndpoint(device.ip);
                             String host = Uri.parse(endpoint).getHost();
@@ -2922,8 +3082,10 @@ private void showManualIpDialog() {
                     setSelectedMediaUri(slideshowQueue.get(0));
                     castLocalMediaToTv(true);
                     if (slideshowQueue.size() > 1) {
+                        slideIntervalMs = prefs.getLong("slideshow_interval_ms", 5000L);
+                        if (slideIntervalMs < 1000L || slideIntervalMs > 60000L) slideIntervalMs = 5000L;
                         isSlideshowRunning = true;
-                        slideHandler.postDelayed(slideRunnable, 5000);
+                        slideHandler.postDelayed(slideRunnable, slideIntervalMs);
                         Toast.makeText(this, "بدأ العرض التقديمي للصور (" + slideshowQueue.size() + ")", Toast.LENGTH_SHORT).show();
                     }
                 }
