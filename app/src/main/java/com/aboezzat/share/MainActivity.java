@@ -1432,7 +1432,7 @@ private void showManualIpDialog() {
                         com.google.zxing.RGBLuminanceSource source =
                                 new com.google.zxing.RGBLuminanceSource(width, height, pixels);
                         com.google.zxing.BinaryBitmap binary =
-                                new com.google.zxing.BinaryBitmap(new com.google.zxing.HybridBinarizer(source));
+                                new com.google.zxing.BinaryBitmap(new com.google.zxing.common.HybridBinarizer(source));
                         com.google.zxing.MultiFormatReader reader = new com.google.zxing.MultiFormatReader();
                         reader.setHints(hints);
                         try {
