@@ -1269,7 +1269,7 @@ public class ShareActivity extends Activity {
                 request = new Request.Builder().url(fullUrl).get().build();
             }
             AtomicBoolean requestHeadersSent = new AtomicBoolean(false);
-            OkHttpClient trackedClient = client.newBuilder()
+            OkHttpClient trackedClient = receiverClient.newBuilder()
                     .eventListener(new EventListener() {
                         @Override
                         public void requestHeadersEnd(Call call, Request request) {
