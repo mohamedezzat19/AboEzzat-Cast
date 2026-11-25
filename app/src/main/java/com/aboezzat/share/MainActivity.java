@@ -3076,16 +3076,17 @@ private void showManualIpDialog() {
                 }
                 @Override public void onResponse(Call call, Response response) {
                     boolean active = false;
+                    String confirmedMediaType = "video";
                     try {
                         if (response.isSuccessful() && response.body() != null) {
                             JSONObject state = new JSONObject(response.body().string());
                             long updatedAt = state.optLong("mediaStateUpdatedAt", 0L);
                             long age = System.currentTimeMillis() - updatedAt;
-                            String type = state.optString("mediaType", "none");
+                            confirmedMediaType = state.optString("mediaType", "none");
                             active = state.optBoolean("mediaActive", false)
                                     && updatedAt > 0L && age >= -5000L && age <= 60000L
-                                    && ("video".equals(type) || "audio".equals(type)
-                                            || "image".equals(type));
+                                    && ("video".equals(confirmedMediaType) || "audio".equals(confirmedMediaType)
+                                            || "image".equals(confirmedMediaType));
                         }
                     } catch (Exception ignored) {
                         active = false;
@@ -3097,7 +3098,7 @@ private void showManualIpDialog() {
                                 total, accepted, finished);
                         return;
                     }
-                    final String confirmedType = stateTypeForPrompt(type);\n                    runOnUiThread(() -> {
+                    final String confirmedType = stateTypeForPrompt(confirmedMediaType);\n                    runOnUiThread(() -> {
                         if (isFinishing() || isDestroyed()) {
                             finishUrlTarget(total, accepted, finished, finishWhenDone);
                             return;
