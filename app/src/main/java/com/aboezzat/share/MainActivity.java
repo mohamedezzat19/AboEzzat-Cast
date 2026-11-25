@@ -78,6 +78,7 @@ public class MainActivity extends Activity {
     private static final int PICK_MEDIA_REQUEST = 101;
     private static final int PICK_SLIDESHOW_REQUEST = 102;
     private static final int VOICE_SEARCH_REQUEST = 103;
+    private static final int PICK_RECEIVER_QR_IMAGE_REQUEST = 104;
 
     private static final String PREF_SAVED_RECEIVERS = "saved_receivers_json";
     private static class SavedReceiverDevice {
@@ -1343,8 +1344,9 @@ private void showManualIpDialog() {
     private void showReceiverPairingDialog() {
         new AlertDialog.Builder(this, R.style.ModernDialogTheme)
                 .setTitle("ربط أبو عزت كاست بالريسيفر")
-                .setItems(new String[]{"مسح QR للربط التلقائي", "الربط اليدوي"}, (dialog, which) -> {
+                .setItems(new String[]{"مسح QR بالكاميرا", "اختيار صورة QR من المعرض", "الربط اليدوي"}, (dialog, which) -> {
                     if (which == 0) startReceiverQrScanner();
+                    else if (which == 1) pickReceiverQrImage();
                     else showManualReceiverPairingDialog();
                 })
                 .setNegativeButton("إغلاق", null)
@@ -1364,6 +1366,109 @@ private void showManualIpDialog() {
         } catch (Exception error) {
             Toast.makeText(this, "تعذر فتح ماسح QR. استخدم الربط اليدوي.", Toast.LENGTH_LONG).show();
         }
+    }
+
+    private void pickReceiverQrImage() {
+        try {
+            Intent picker = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            picker.addCategory(Intent.CATEGORY_OPENABLE);
+            picker.setType("image/*");
+            picker.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            startActivityForResult(picker, PICK_RECEIVER_QR_IMAGE_REQUEST);
+        } catch (Exception error) {
+            Toast.makeText(this, "تعذر فتح معرض الصور.", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void decodeReceiverQrFromGallery(Uri imageUri) {
+        Toast.makeText(this, "جاري قراءة QR من الصورة…", Toast.LENGTH_SHORT).show();
+        AsyncTask.execute(() -> {
+            String contents = null;
+            Exception failure = null;
+            android.graphics.Bitmap bitmap = null;
+            try {
+                android.graphics.BitmapFactory.Options bounds = new android.graphics.BitmapFactory.Options();
+                bounds.inJustDecodeBounds = true;
+                try (java.io.InputStream input = getContentResolver().openInputStream(imageUri)) {
+                    if (input == null) throw new IOException("Unable to open selected image");
+                    android.graphics.BitmapFactory.decodeStream(input, null, bounds);
+                }
+                if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
+                    throw new IOException("Selected file is not a readable image");
+                }
+                int sample = 1;
+                while (Math.max(bounds.outWidth / sample, bounds.outHeight / sample) > 2048) {
+                    sample *= 2;
+                }
+                android.graphics.BitmapFactory.Options decode = new android.graphics.BitmapFactory.Options();
+                decode.inSampleSize = sample;
+                try (java.io.InputStream input = getContentResolver().openInputStream(imageUri)) {
+                    if (input == null) throw new IOException("Unable to reopen selected image");
+                    bitmap = android.graphics.BitmapFactory.decodeStream(input, null, decode);
+                }
+                if (bitmap == null) throw new IOException("Unable to decode selected image");
+
+                java.util.Map<com.google.zxing.DecodeHintType, Object> hints =
+                        new java.util.EnumMap<>(com.google.zxing.DecodeHintType.class);
+                hints.put(com.google.zxing.DecodeHintType.POSSIBLE_FORMATS,
+                        java.util.Collections.singletonList(com.google.zxing.BarcodeFormat.QR_CODE));
+                hints.put(com.google.zxing.DecodeHintType.TRY_HARDER, Boolean.TRUE);
+
+                for (int rotation : new int[]{0, 90, 180, 270}) {
+                    android.graphics.Bitmap candidate = bitmap;
+                    boolean rotatedCopy = false;
+                    if (rotation != 0) {
+                        android.graphics.Matrix matrix = new android.graphics.Matrix();
+                        matrix.postRotate(rotation);
+                        candidate = android.graphics.Bitmap.createBitmap(
+                                bitmap, 0, 0, bitmap.getWidth(), bitmap.getHeight(), matrix, true);
+                        rotatedCopy = candidate != bitmap;
+                    }
+                    try {
+                        int width = candidate.getWidth();
+                        int height = candidate.getHeight();
+                        int[] pixels = new int[width * height];
+                        candidate.getPixels(pixels, 0, width, 0, 0, width, height);
+                        com.google.zxing.RGBLuminanceSource source =
+                                new com.google.zxing.RGBLuminanceSource(width, height, pixels);
+                        com.google.zxing.BinaryBitmap binary =
+                                new com.google.zxing.BinaryBitmap(new com.google.zxing.HybridBinarizer(source));
+                        com.google.zxing.MultiFormatReader reader = new com.google.zxing.MultiFormatReader();
+                        reader.setHints(hints);
+                        try {
+                            contents = reader.decodeWithState(binary).getText();
+                            if (contents != null && !contents.trim().isEmpty()) break;
+                        } catch (com.google.zxing.NotFoundException ignored) {
+                            // Try the next image orientation.
+                        } finally {
+                            reader.reset();
+                        }
+                    } finally {
+                        if (rotatedCopy) candidate.recycle();
+                    }
+                    if (contents != null && !contents.trim().isEmpty()) break;
+                }
+                if (contents == null || contents.trim().isEmpty()) {
+                    throw new com.google.zxing.NotFoundException();
+                }
+            } catch (Exception error) {
+                failure = error;
+            } finally {
+                if (bitmap != null && !bitmap.isRecycled()) bitmap.recycle();
+            }
+            final String decodedContents = contents;
+            final Exception decodeFailure = failure;
+            runOnUiThread(() -> {
+                if (decodedContents != null && !decodedContents.trim().isEmpty()) {
+                    handleReceiverPairingQr(decodedContents);
+                } else {
+                    android.util.Log.w("AboEzzatCast", "Could not decode receiver QR image", decodeFailure);
+                    Toast.makeText(MainActivity.this,
+                            "مش قادر أقرأ QR من الصورة. اختار صورة أوضح ويكون الكود ظاهر بالكامل.",
+                            Toast.LENGTH_LONG).show();
+                }
+            });
+        });
     }
 
     private void handleReceiverPairingQr(String contents) {
@@ -2631,6 +2736,14 @@ private void showManualIpDialog() {
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (requestCode == PICK_RECEIVER_QR_IMAGE_REQUEST) {
+            if (resultCode == RESULT_OK && data != null && data.getData() != null) {
+                decodeReceiverQrFromGallery(data.getData());
+            } else {
+                Toast.makeText(this, "تم إلغاء اختيار صورة QR.", Toast.LENGTH_SHORT).show();
+            }
+            return;
+        }
         if (requestCode == com.google.zxing.integration.android.IntentIntegrator.REQUEST_CODE) {
             com.google.zxing.integration.android.IntentResult scanResult =
                     com.google.zxing.integration.android.IntentIntegrator.parseActivityResult(
