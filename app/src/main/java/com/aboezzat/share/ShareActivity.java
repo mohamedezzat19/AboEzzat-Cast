@@ -119,16 +119,44 @@ public class ShareActivity extends Activity {
                     return;
                 }
             }
+            Uri mediaUri = intent.getParcelableExtra(Intent.EXTRA_STREAM);
+            if (mediaUri != null) {
+                forwardLocalMediaToMainActivity(intent);
+                return;
+            }
         }
 
         if (Intent.ACTION_SEND_MULTIPLE.equals(action) && type != null) {
             ArrayList<Uri> mediaUris = intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM);
             if (mediaUris != null && !mediaUris.isEmpty()) {
-                sendMultipleMedia(mediaUris);
+                forwardLocalMediaToMainActivity(intent);
                 return;
             }
         }
 
+        finish();
+    }
+
+    private void forwardLocalMediaToMainActivity(Intent sourceIntent) {
+        Intent forward = new Intent(this, MainActivity.class);
+        forward.setAction(sourceIntent.getAction());
+        forward.setType(sourceIntent.getType());
+        Uri single = sourceIntent.getParcelableExtra(Intent.EXTRA_STREAM);
+        if (single != null) forward.putExtra(Intent.EXTRA_STREAM, single);
+        ArrayList<Uri> multiple = sourceIntent.getParcelableArrayListExtra(Intent.EXTRA_STREAM);
+        if (multiple != null) forward.putParcelableArrayListExtra(Intent.EXTRA_STREAM, multiple);
+        if (sourceIntent.getClipData() != null) {
+            forward.setClipData(sourceIntent.getClipData());
+        } else if (single != null) {
+            forward.setClipData(android.content.ClipData.newRawUri("shared media", single));
+        }
+        forward.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP
+                | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        try {
+            startActivity(forward);
+        } catch (Exception error) {
+            Toast.makeText(this, "تعذر فتح الملف في AboEzzat Cast", Toast.LENGTH_LONG).show();
+        }
         finish();
     }
 

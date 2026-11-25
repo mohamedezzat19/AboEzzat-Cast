@@ -2420,8 +2420,74 @@ private void showManualIpDialog() {
                     return true;
                 }
             }
+            Uri sharedMedia = intent.getParcelableExtra(Intent.EXTRA_STREAM);
+            if (sharedMedia != null) {
+                receiveSharedLocalMedia(java.util.Collections.singletonList(sharedMedia), intent.getType());
+                return false;
+            }
+        } else if (Intent.ACTION_SEND_MULTIPLE.equals(action) && intent.getType() != null) {
+            ArrayList<Uri> sharedMedia = intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM);
+            if (sharedMedia != null && !sharedMedia.isEmpty()) {
+                receiveSharedLocalMedia(sharedMedia, intent.getType());
+                return false;
+            }
         }
         return false;
+    }
+
+    private void receiveSharedLocalMedia(List<Uri> mediaUris, String sharedMime) {
+        if (mediaUris == null || mediaUris.isEmpty()) return;
+        videoQueue.clear();
+        slideshowQueue.clear();
+        boolean imageShare = sharedMime != null && sharedMime.toLowerCase(java.util.Locale.ROOT).startsWith("image/");
+        for (Uri uri : mediaUris) {
+            if (uri == null) continue;
+            try {
+                getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            } catch (Exception ignored) {
+                // Sharesheet grants are often temporary rather than persistable; the
+                // current activity still owns the read grant while the shared task runs.
+            }
+            if (imageShare) slideshowQueue.add(uri);
+            else videoQueue.add(uri);
+            addRecentMedia(uri);
+        }
+        if (imageShare && !slideshowQueue.isEmpty()) {
+            currentSlideIndex = 0;
+            persistMediaQueues();
+            setSelectedMediaUri(slideshowQueue.get(0));
+            if (slideshowQueue.size() > 1) {
+                isSlideshowRunning = true;
+                slideHandler.postDelayed(slideRunnable, 5000);
+            }
+        } else if (!videoQueue.isEmpty()) {
+            currentVideoIndex = 0;
+            persistMediaQueues();
+            setSelectedMediaUri(videoQueue.get(0));
+        } else {
+            return;
+        }
+
+        // The foreground media server starts asynchronously with MainActivity.
+        // Retry briefly until its TLS listener is ready instead of losing a valid share.
+        final Uri firstMedia = imageShare ? slideshowQueue.get(0) : videoQueue.get(0);
+        final int[] attempts = {0};
+        Handler retryHandler = new Handler(Looper.getMainLooper());
+        Runnable sendWhenReady = new Runnable() {
+            @Override public void run() {
+                if (isFinishing()) return;
+                if (CastKeepAliveService.isLocalServerReady()) {
+                    castLocalMediaToTv(true);
+                } else if (++attempts[0] < 20) {
+                    retryHandler.postDelayed(this, 300L);
+                } else {
+                    Toast.makeText(MainActivity.this,
+                            "خادم بث الملفات لم يصبح جاهزًا؛ افتح التطبيق وأعد إرسال الملف.",
+                            Toast.LENGTH_LONG).show();
+                }
+            }
+        };
+        retryHandler.postDelayed(sendWhenReady, 300L);
     }
 
     private void processSharedLink(String url) {
@@ -2927,15 +2993,24 @@ private void showManualIpDialog() {
     }
 
     private String getLocalMediaRoutePath(Uri uri, String mime) {
-        if (mime != null && mime.toLowerCase(java.util.Locale.ROOT).startsWith("image/")) {
+        String normalizedMime = mime == null ? "" : mime.trim().toLowerCase(java.util.Locale.ROOT);
+        if (normalizedMime.startsWith("image/")) {
             return "/media.jpg";
         }
+
         String extension = null;
-        if (mime != null) {
+        boolean unknownMime = normalizedMime.isEmpty()
+                || "application/octet-stream".equals(normalizedMime);
+        if (!unknownMime) {
             extension = android.webkit.MimeTypeMap.getSingleton()
-                    .getExtensionFromMimeType(mime.toLowerCase(java.util.Locale.ROOT));
+                    .getExtensionFromMimeType(normalizedMime);
         }
-        if (extension == null || extension.trim().isEmpty()) {
+
+        // SAF and cloud document providers often report application/octet-stream
+        // (or no MIME type) even for ordinary JPEG/PNG photos. In that case the
+        // display name is the only reliable media-type hint. Always inspect it
+        // instead of accidentally routing an image through the MP4 player.
+        if (unknownMime || extension == null || extension.trim().isEmpty()) {
             android.database.Cursor cursor = null;
             try {
                 cursor = getContentResolver().query(uri,
@@ -2958,8 +3033,19 @@ private void showManualIpDialog() {
                 if (cursor != null) cursor.close();
             }
         }
-        if (extension != null) extension = extension.toLowerCase(java.util.Locale.ROOT)
-                .replaceAll("[^a-z0-9]", "");
+
+        if (extension != null) {
+            extension = extension.toLowerCase(java.util.Locale.ROOT)
+                    .replaceAll("[^a-z0-9]", "");
+        }
+
+        // The receiver intentionally uses one stable image route; the HTTP
+        // response still carries the original MIME type from ContentResolver.
+        String imageExtensions = "|jpg|jpeg|jpe|png|webp|gif|bmp|avif|heic|heif|tif|tiff|";
+        if (extension != null && imageExtensions.contains("|" + extension + "|")) {
+            return "/media.jpg";
+        }
+
         String supported = "|mp4|m4v|mkv|webm|mov|avi|flv|mpg|mpeg|3gp|ogv|wmv|vob|ts|m2ts|mp3|m4a|aac|ogg|oga|opus|wav|flac|mid|midi|";
         if (extension == null || extension.isEmpty() || !supported.contains("|" + extension + "|")) {
             extension = "mp4";
