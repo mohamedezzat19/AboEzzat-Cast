@@ -458,7 +458,7 @@ public class MainActivity extends Activity {
         findViewById(R.id.menu_settings).setOnClickListener(v -> {
             closeDrawer();
             new AlertDialog.Builder(MainActivity.this, R.style.ModernDialogTheme)
-                    .setTitle("إعدادات Abo Ezzat Share")
+                    .setTitle("إعدادات أبو عزت كاست")
                     .setItems(new String[]{"التحقق من التحديثات", "إعداد عنوان IP الشاشة", "تفعيل الاختصار العائم عند نسخ رابط", "تشخيص مشكلة الفقاعة", "إعدادات أندرويد وأذونات التطبيق", "إعداد VPN داخل التطبيق"}, (dialog, which) -> {
                         if (which == 0) {
                             new AppUpdater(MainActivity.this).checkForUpdate(true);

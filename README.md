@@ -1,2 +1,2 @@
-# AboEzzat-Share
-Abo Ezzat Android Share App
+# AboEzzat Cast
+AboEzzat Cast - تطبيق أبو عزت كاست
