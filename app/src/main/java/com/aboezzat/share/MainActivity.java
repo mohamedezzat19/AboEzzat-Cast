@@ -3693,39 +3693,109 @@ private void showManualIpDialog() {
         java.util.concurrent.atomic.AtomicInteger accepted = new java.util.concurrent.atomic.AtomicInteger();
         java.util.concurrent.atomic.AtomicInteger finished = new java.util.concurrent.atomic.AtomicInteger();
         for (String tvIp : targets) {
-            try {
-                String endpoint = buildReceiverHttpsEndpoint(tvIp);
-                String receiverHost = Uri.parse(endpoint).getHost();
-                OkHttpClient pinnedClient = getPinnedReceiverClient(receiverHost);
-                String fullUrl = endpoint + "/?url=" + URLEncoder.encode(targetUrl, "UTF-8")
-                        + "&mediaPin=" + mediaTlsPin;
-                Request req = new Request.Builder().url(fullUrl).get().build();
-                pinnedClient.newCall(req).enqueue(new Callback() {
-                    @Override public void onFailure(Call call, IOException error) {
-                        if (finished.incrementAndGet() == targets.size() && showToast) runOnUiThread(() ->
-                                Toast.makeText(MainActivity.this, targets.size() > 1
-                                        ? "وصل المحتوى إلى " + accepted.get() + " من " + targets.size() + " أجهزة؛ الأجهزة الأخرى لم تستجب."
-                                        : (accepted.get() == 0 ? "تعذر إرسال المحتوى إلى الريسيفر" : "تم إرسال المحتوى إلى الريسيفر"),
-                                        Toast.LENGTH_LONG).show());
-                    }
-                    @Override public void onResponse(Call call, Response response) {
-                        try { if (response.isSuccessful() && response.code() == 200) accepted.incrementAndGet(); }
-                        finally { response.close(); }
-                        if (finished.incrementAndGet() == targets.size() && showToast) runOnUiThread(() ->
-                                Toast.makeText(MainActivity.this, targets.size() > 1
-                                        ? "وصل المحتوى إلى " + accepted.get() + " من " + targets.size() + " أجهزة."
-                                        : (accepted.get() == 0 ? "تعذر إرسال المحتوى إلى الريسيفر" : "تم إرسال المحتوى إلى الريسيفر"),
-                                        Toast.LENGTH_LONG).show());
-                    }
-                });
-            } catch (Exception error) {
-                if (finished.incrementAndGet() == targets.size() && showToast) runOnUiThread(() ->
-                        Toast.makeText(MainActivity.this, targets.size() > 1
-                                ? "وصل المحتوى إلى " + accepted.get() + " من " + targets.size() + " أجهزة؛ راجع الأجهزة غير المستجيبة."
-                                : (accepted.get() == 0 ? "تعذر إرسال المحتوى إلى الريسيفر" : "تم إرسال المحتوى إلى الريسيفر"),
-                                Toast.LENGTH_LONG).show());
-            }
+            probeReceiverBeforeLocalMediaSend(tvIp, targetUrl, mediaTlsPin, showToast,
+                    targets.size(), accepted, finished);
         }
+    }
+
+    private void probeReceiverBeforeLocalMediaSend(String tvIp, String mediaUrl, String mediaPin,
+            boolean showToast, int total, java.util.concurrent.atomic.AtomicInteger accepted,
+            java.util.concurrent.atomic.AtomicInteger finished) {
+        try {
+            String endpoint = buildReceiverHttpsEndpoint(tvIp);
+            String host = Uri.parse(endpoint).getHost();
+            if (host == null) throw new IOException("Invalid receiver host");
+            OkHttpClient client = getPinnedReceiverClient(host).newBuilder()
+                    .connectTimeout(1800, java.util.concurrent.TimeUnit.MILLISECONDS)
+                    .readTimeout(2200, java.util.concurrent.TimeUnit.MILLISECONDS)
+                    .callTimeout(3000, java.util.concurrent.TimeUnit.MILLISECONDS).build();
+            Request status = new Request.Builder().url(endpoint + "/?command=status").get().build();
+            client.newCall(status).enqueue(new Callback() {
+                @Override public void onFailure(Call call, IOException error) {
+                    sendLocalMediaToReceiver(tvIp, mediaUrl, mediaPin, showToast, total, accepted, finished);
+                }
+                @Override public void onResponse(Call call, Response response) {
+                    boolean active = false;
+                    String type = "none";
+                    try {
+                        if (response.isSuccessful() && response.body() != null) {
+                            JSONObject state = new JSONObject(response.body().string());
+                            long updated = state.optLong("mediaStateUpdatedAt", 0L);
+                            long age = System.currentTimeMillis() - updated;
+                            type = state.optString("mediaType", "none");
+                            active = state.optBoolean("mediaActive", false)
+                                    && updated > 0L && age >= -5000L && age <= 60000L
+                                    && ("video".equals(type) || "audio".equals(type) || "image".equals(type));
+                        }
+                    } catch (Exception ignored) {
+                        active = false;
+                    } finally {
+                        response.close();
+                    }
+                    if (!active) {
+                        sendLocalMediaToReceiver(tvIp, mediaUrl, mediaPin, showToast, total, accepted, finished);
+                        return;
+                    }
+                    final String label = stateTypeForPrompt(type);
+                    runOnUiThread(() -> {
+                        if (isFinishing() || isDestroyed()) {
+                            finishLocalMediaTarget(total, accepted, finished, showToast);
+                            return;
+                        }
+                        new AlertDialog.Builder(MainActivity.this, R.style.ModernDialogTheme)
+                                .setTitle("فيه محتوى شغال على الريسيفر")
+                                .setMessage("الريسيفر أكد وجود تشغيل فعلي (" + label
+                                        + "). هل تريد إيقافه وتشغيل الملف الجديد؟")
+                                .setPositiveButton("تشغيل بدل الحالي", (dialog, which) ->
+                                        sendLocalMediaToReceiver(tvIp, mediaUrl, mediaPin, showToast,
+                                                total, accepted, finished))
+                                .setNegativeButton("إلغاء", (dialog, which) ->
+                                        finishLocalMediaTarget(total, accepted, finished, showToast))
+                                .setOnCancelListener(dialog ->
+                                        finishLocalMediaTarget(total, accepted, finished, showToast))
+                                .show();
+                    });
+                }
+            });
+        } catch (Exception error) {
+            sendLocalMediaToReceiver(tvIp, mediaUrl, mediaPin, showToast, total, accepted, finished);
+        }
+    }
+
+    private void sendLocalMediaToReceiver(String tvIp, String mediaUrl, String mediaPin,
+            boolean showToast, int total, java.util.concurrent.atomic.AtomicInteger accepted,
+            java.util.concurrent.atomic.AtomicInteger finished) {
+        try {
+            String endpoint = buildReceiverHttpsEndpoint(tvIp);
+            String host = Uri.parse(endpoint).getHost();
+            if (host == null) throw new IOException("Invalid receiver host");
+            OkHttpClient pinnedClient = getPinnedReceiverClient(host);
+            String fullUrl = endpoint + "/?url=" + URLEncoder.encode(mediaUrl, "UTF-8")
+                    + "&mediaPin=" + mediaPin;
+            Request req = new Request.Builder().url(fullUrl).get().build();
+            pinnedClient.newCall(req).enqueue(new Callback() {
+                @Override public void onFailure(Call call, IOException error) {
+                    finishLocalMediaTarget(total, accepted, finished, showToast);
+                }
+                @Override public void onResponse(Call call, Response response) {
+                    try { if (response.isSuccessful() && response.code() == 200) accepted.incrementAndGet(); }
+                    finally { response.close(); }
+                    finishLocalMediaTarget(total, accepted, finished, showToast);
+                }
+            });
+        } catch (Exception error) {
+            finishLocalMediaTarget(total, accepted, finished, showToast);
+        }
+    }
+
+    private void finishLocalMediaTarget(int total, java.util.concurrent.atomic.AtomicInteger accepted,
+            java.util.concurrent.atomic.AtomicInteger finished, boolean showToast) {
+        if (finished.incrementAndGet() == total && showToast) runOnUiThread(() ->
+                Toast.makeText(this, total > 1
+                        ? "وصل المحتوى إلى " + accepted.get() + " من " + total + " أجهزة."
+                        : (accepted.get() == 0 ? "تعذر إرسال المحتوى إلى الريسيفر" : "تم إرسال المحتوى إلى الريسيفر"),
+                        Toast.LENGTH_LONG).show());
+
     }
 
     private void sendRemoteCommand(String cmd) {
