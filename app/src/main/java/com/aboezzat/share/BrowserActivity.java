@@ -3669,7 +3669,7 @@ public class BrowserActivity extends Activity {
                     bestVideo == null ? null : bestVideo.requestHeaders);
             final String receiverEndpoint = endpoint;
             AtomicBoolean requestHeadersSent = new AtomicBoolean(false);
-            OkHttpClient trackedClient = client.newBuilder()
+            OkHttpClient trackedClient = receiverClient.newBuilder()
                     .eventListener(new okhttp3.EventListener() {
                         @Override
                         public void requestHeadersEnd(Call call, Request request) {
@@ -3863,18 +3863,12 @@ public class BrowserActivity extends Activity {
             return;
         }
         try {
-            String endpoint = tvIp;
-            if (!endpoint.startsWith("http://") && !endpoint.startsWith("https://")) {
-                endpoint = "http://" + endpoint;
-            }
-            if (!endpoint.contains(":8081")) {
-                endpoint = endpoint + ":8081";
-            }
-
+            final String endpoint = ReceiverApiClient.buildEndpoint(tvIp);
+            OkHttpClient receiverClient = ReceiverApiClient.create(this, Uri.parse(endpoint).getHost());
             Request req = buildReceiverPlayRequest(endpoint, mediaUrl, audioUrl, capturedHeaders);
             final String receiverEndpoint = endpoint;
             AtomicBoolean requestHeadersSent = new AtomicBoolean(false);
-            OkHttpClient trackedClient = client.newBuilder()
+            OkHttpClient trackedClient = receiverClient.newBuilder()
                     .eventListener(new okhttp3.EventListener() {
                         @Override
                         public void requestHeadersEnd(Call call, Request request) {
