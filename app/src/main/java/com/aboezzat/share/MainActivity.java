@@ -2926,6 +2926,47 @@ private void showManualIpDialog() {
         return "";
     }
 
+    private String getLocalMediaRoutePath(Uri uri, String mime) {
+        if (mime != null && mime.toLowerCase(java.util.Locale.ROOT).startsWith("image/")) {
+            return "/media.jpg";
+        }
+        String extension = null;
+        if (mime != null) {
+            extension = android.webkit.MimeTypeMap.getSingleton()
+                    .getExtensionFromMimeType(mime.toLowerCase(java.util.Locale.ROOT));
+        }
+        if (extension == null || extension.trim().isEmpty()) {
+            android.database.Cursor cursor = null;
+            try {
+                cursor = getContentResolver().query(uri,
+                        new String[]{android.provider.OpenableColumns.DISPLAY_NAME},
+                        null, null, null);
+                if (cursor != null && cursor.moveToFirst()) {
+                    int index = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME);
+                    if (index >= 0) {
+                        String name = cursor.getString(index);
+                        if (name != null) {
+                            int dot = name.lastIndexOf('.');
+                            if (dot >= 0 && dot < name.length() - 1) {
+                                extension = name.substring(dot + 1);
+                            }
+                        }
+                    }
+                }
+            } catch (Exception ignored) {
+            } finally {
+                if (cursor != null) cursor.close();
+            }
+        }
+        if (extension != null) extension = extension.toLowerCase(java.util.Locale.ROOT)
+                .replaceAll("[^a-z0-9]", "");
+        String supported = "|mp4|m4v|mkv|webm|mov|avi|flv|mpg|mpeg|3gp|ogv|wmv|vob|ts|m2ts|mp3|m4a|aac|ogg|oga|opus|wav|flac|mid|midi|";
+        if (extension == null || extension.isEmpty() || !supported.contains("|" + extension + "|")) {
+            extension = "mp4";
+        }
+        return "/media." + extension;
+    }
+
     private void castLocalMediaToTv(boolean showToast) {
         String tvIp = prefs.getString("tv_ip", "").trim();
         if (tvIp.isEmpty()) return;
@@ -2950,8 +2991,7 @@ private void showManualIpDialog() {
                     Toast.LENGTH_LONG).show();
             return;
         }
-        String mediaPath = (mime != null && mime.startsWith("image/"))
-                ? "/media.jpg" : "/media.mp4";
+        String mediaPath = getLocalMediaRoutePath(selectedMediaUri, mime);
         final String mediaTlsPin;
         try {
             mediaTlsPin = CastTlsIdentity.getCertificateFingerprint();
