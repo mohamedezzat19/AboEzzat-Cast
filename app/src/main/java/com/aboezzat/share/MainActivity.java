@@ -1003,6 +1003,8 @@ public class MainActivity extends Activity {
         recent.setOnClickListener(v -> showRecentMediaDialog());
         TextView playlist = addLibraryCard(content, "قائمة التشغيل");
         playlist.setOnClickListener(v -> showPlaylistDialog());
+        TextView slideshowControls = addLibraryCard(content, "التحكم في عرض الصور");
+        slideshowControls.setOnClickListener(v -> showSlideshowControls());
         AlertDialog dialog = new AlertDialog.Builder(this, R.style.ModernDialogTheme).create();
         dialog.setView(scroll);
         dialog.show();
