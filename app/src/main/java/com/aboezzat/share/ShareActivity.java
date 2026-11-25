@@ -145,6 +145,11 @@ public class ShareActivity extends Activity {
         if (single != null) forward.putExtra(Intent.EXTRA_STREAM, single);
         ArrayList<Uri> multiple = sourceIntent.getParcelableArrayListExtra(Intent.EXTRA_STREAM);
         if (multiple != null) forward.putParcelableArrayListExtra(Intent.EXTRA_STREAM, multiple);
+        if (sourceIntent.getClipData() != null) {
+            forward.setClipData(sourceIntent.getClipData());
+        } else if (single != null) {
+            forward.setClipData(android.content.ClipData.newRawUri("shared media", single));
+        }
         forward.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP
                 | Intent.FLAG_GRANT_READ_URI_PERMISSION);
         try {
