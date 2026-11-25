@@ -27,11 +27,17 @@ import android.webkit.MimeTypeMap;
 import androidx.core.app.NotificationCompat;
 
 import java.io.FileInputStream;
+import java.io.FilterInputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.net.Socket;
 import java.net.InetSocketAddress;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.Locale;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import javax.net.ssl.SSLSocket;
 
 import fi.iki.elonen.NanoHTTPD;
 
@@ -240,6 +246,77 @@ public class CastKeepAliveService extends Service {
             if (cursor != null) cursor.close();
         }
         return -1L;
+    }
+
+    /**
+     * Observe the first read from each accepted TLS socket. In NanoHTTPD 2.3.1,
+     * the TLS handshake is triggered by the first socket read, before serve()
+     * is called, so logging inside serve() cannot diagnose handshake failures.
+     * Never log request bytes, URLs, query parameters, or media access tokens.
+     */
+    @Override
+    protected ClientHandler createClientHandler(final Socket acceptedSocket, final InputStream inputStream) {
+        if (!(acceptedSocket instanceof SSLSocket)) {
+            return super.createClientHandler(acceptedSocket, inputStream);
+        }
+
+        final SSLSocket tlsSocket = (SSLSocket) acceptedSocket;
+        final String peerAddress = acceptedSocket.getInetAddress() == null
+                ? "unknown" : acceptedSocket.getInetAddress().getHostAddress();
+        final AtomicBoolean handshakeOutcomeLogged = new AtomicBoolean(false);
+
+        InputStream monitoredInput = new FilterInputStream(inputStream) {
+            private void logHandshakeSuccess() {
+                if (!handshakeOutcomeLogged.compareAndSet(false, true)) return;
+                try {
+                    javax.net.ssl.SSLSession session = tlsSocket.getSession();
+                    android.util.Log.i("AboEzzatCast",
+                            "Media TLS handshake succeeded: peer=" + peerAddress
+                                    + " protocol=" + session.getProtocol()
+                                    + " cipher=" + session.getCipherSuite());
+                } catch (Exception diagnosticError) {
+                    android.util.Log.i("AboEzzatCast",
+                            "Media TLS handshake succeeded: peer=" + peerAddress
+                                    + " session_details=unavailable");
+                }
+            }
+
+            private void logHandshakeFailure(IOException error) {
+                if (!handshakeOutcomeLogged.compareAndSet(false, true)) return;
+                Throwable cause = error.getCause();
+                String detail = error.getClass().getSimpleName();
+                if (cause != null) detail += "/" + cause.getClass().getSimpleName();
+                android.util.Log.w("AboEzzatCast",
+                        "Media TLS handshake/read failed before HTTP request: peer="
+                                + peerAddress + " error=" + detail);
+            }
+
+            @Override
+            public int read() throws IOException {
+                try {
+                    int value = super.read();
+                    if (value >= 0) logHandshakeSuccess();
+                    return value;
+                } catch (IOException error) {
+                    logHandshakeFailure(error);
+                    throw error;
+                }
+            }
+
+            @Override
+            public int read(byte[] buffer, int offset, int length) throws IOException {
+                try {
+                    int count = super.read(buffer, offset, length);
+                    if (count > 0) logHandshakeSuccess();
+                    return count;
+                } catch (IOException error) {
+                    logHandshakeFailure(error);
+                    throw error;
+                }
+            }
+        };
+
+        return new ClientHandler(monitoredInput, acceptedSocket);
     }
 
     private class LocalMediaServer extends NanoHTTPD {
