@@ -121,22 +121,27 @@ public final class ReceiverApiClient {
                     String pathAndQuery = original.url().encodedPath()
                             + (original.url().encodedQuery() == null ? ""
                             : "?" + original.url().encodedQuery());
-                    byte[] requestBody = new byte[0];
-                    if (original.body() != null) {
-                        okio.Buffer buffer = new okio.Buffer();
-                        original.body().writeTo(buffer);
-                        requestBody = buffer.readByteArray();
+                    final String signature;
+                    try {
+                        byte[] requestBody = new byte[0];
+                        if (original.body() != null) {
+                            okio.Buffer buffer = new okio.Buffer();
+                            original.body().writeTo(buffer);
+                            requestBody = buffer.readByteArray();
+                        }
+                        String bodyHash = Base64.encodeToString(
+                                MessageDigest.getInstance("SHA-256").digest(requestBody),
+                                Base64.URL_SAFE | Base64.NO_WRAP | Base64.NO_PADDING);
+                        String canonical = original.method() + "\n" + pathAndQuery
+                                + "\n" + bodyHash + "\n" + timestamp + "\n" + nonce;
+                        Mac mac = Mac.getInstance("HmacSHA256");
+                        mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+                        signature = Base64.encodeToString(
+                                mac.doFinal(canonical.getBytes(StandardCharsets.UTF_8)),
+                                Base64.URL_SAFE | Base64.NO_WRAP | Base64.NO_PADDING);
+                    } catch (Exception signingError) {
+                        throw new IOException("Unable to sign Receiver request", signingError);
                     }
-                    String bodyHash = Base64.encodeToString(
-                            MessageDigest.getInstance("SHA-256").digest(requestBody),
-                            Base64.URL_SAFE | Base64.NO_WRAP | Base64.NO_PADDING);
-                    String canonical = original.method() + "\n" + pathAndQuery
-                            + "\n" + bodyHash + "\n" + timestamp + "\n" + nonce;
-                    Mac mac = Mac.getInstance("HmacSHA256");
-                    mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
-                    String signature = Base64.encodeToString(
-                            mac.doFinal(canonical.getBytes(StandardCharsets.UTF_8)),
-                            Base64.URL_SAFE | Base64.NO_WRAP | Base64.NO_PADDING);
                     Request signed = original.newBuilder()
                             .header("X-AboEzzat-Time", String.valueOf(timestamp))
                             .header("X-AboEzzat-Nonce", nonce)
