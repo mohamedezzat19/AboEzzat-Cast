@@ -249,6 +249,28 @@ public class CastKeepAliveService extends Service {
     }
 
 
+
+    private void recordLocalTransferBytes(long count) {
+        if (count <= 0L) return;
+        SharedPreferences usage = getSharedPreferences(PREFS_NAME, MODE_PRIVATE | MODE_MULTI_PROCESS);
+        java.text.SimpleDateFormat dayFormat = new java.text.SimpleDateFormat("yyyyMMdd", Locale.US);
+        java.text.SimpleDateFormat monthFormat = new java.text.SimpleDateFormat("yyyyMM", Locale.US);
+        String day = dayFormat.format(new java.util.Date());
+        String month = monthFormat.format(new java.util.Date());
+        synchronized (CastKeepAliveService.class) {
+            long total = usage.getLong("usage_local_transfer_total", 0L) + count;
+            long today = usage.getString("usage_local_transfer_day", "").equals(day)
+                    ? usage.getLong("usage_local_transfer_today", 0L) : 0L;
+            long monthly = usage.getString("usage_local_transfer_month_key", "").equals(month)
+                    ? usage.getLong("usage_local_transfer_month", 0L) : 0L;
+            usage.edit().putLong("usage_local_transfer_total", total)
+                    .putLong("usage_local_transfer_today", today + count)
+                    .putLong("usage_local_transfer_month", monthly + count)
+                    .putString("usage_local_transfer_day", day)
+                    .putString("usage_local_transfer_month_key", month).apply();
+        }
+    }
+
     private class LocalMediaServer extends NanoHTTPD {
         LocalMediaServer(int port) { super(port); }
 
@@ -373,6 +395,16 @@ public class CastKeepAliveService extends Service {
                     final AssetFileDescriptor responseAfd = afd;
                     FileInputStream rawStream = afd.createInputStream();
                     java.io.InputStream stream = new java.io.FilterInputStream(rawStream) {
+                        @Override public int read() throws IOException {
+                            int value = super.read();
+                            if (value >= 0) recordLocalTransferBytes(1L);
+                            return value;
+                        }
+                        @Override public int read(byte[] buffer, int offset, int length) throws IOException {
+                            int count = super.read(buffer, offset, length);
+                            if (count > 0) recordLocalTransferBytes(count);
+                            return count;
+                        }
                         @Override public void close() throws IOException {
                             try { super.close(); }
                             finally { try { responseAfd.close(); } catch (IOException ignored) {} }
