@@ -2790,28 +2790,49 @@ private void showManualIpDialog() {
     }
 
     private void castUrlDirectlyToTv(String mediaUrl) {
-        String tvIp = prefs.getString("tv_ip", "").trim();
-        if (!tvIp.isEmpty() && !hasSecureReceiverPairing()) {
-            showPairingRequiredMessage();
-            if (clipboardShortcutLaunch) finish();
+        sendUrlToAllReceivers(mediaUrl, clipboardShortcutLaunch || webVideoCasterCaptureLaunch);
+    }
+
+    private void sendUrlToAllReceivers(String mediaUrl, boolean finishWhenDone) {
+        List<String> targets = getPlaybackReceiverTargets();
+        if (targets.isEmpty()) {
+            Toast.makeText(this, "اختار ريسيفر مربوط بأمان أولاً", Toast.LENGTH_LONG).show();
+            if (finishWhenDone) finish();
             return;
         }
-        if (tvIp.isEmpty()) {
-            if (clipboardShortcutLaunch) finish();
-            return;
+        java.util.concurrent.atomic.AtomicInteger accepted = new java.util.concurrent.atomic.AtomicInteger();
+        java.util.concurrent.atomic.AtomicInteger finished = new java.util.concurrent.atomic.AtomicInteger();
+        for (String tvIp : targets) {
+            try {
+                String endpoint = buildReceiverHttpsEndpoint(tvIp);
+                String host = Uri.parse(endpoint).getHost();
+                OkHttpClient pinnedClient = getPinnedReceiverClient(host);
+                Request request = new Request.Builder()
+                        .url(endpoint + "/?url=" + URLEncoder.encode(mediaUrl, "UTF-8") + "&open=browser")
+                        .get().build();
+                pinnedClient.newCall(request).enqueue(new Callback() {
+                    @Override public void onFailure(Call call, IOException error) {
+                        finishUrlTarget(targets.size(), accepted, finished, finishWhenDone);
+                    }
+                    @Override public void onResponse(Call call, Response response) {
+                        try { if (response.isSuccessful()) accepted.incrementAndGet(); }
+                        finally { response.close(); }
+                        finishUrlTarget(targets.size(), accepted, finished, finishWhenDone);
+                    }
+                });
+            } catch (Exception error) {
+                finishUrlTarget(targets.size(), accepted, finished, finishWhenDone);
+            }
         }
-        try {
-            String endpoint = buildReceiverHttpsEndpoint(tvIp);
-            String receiverHost = Uri.parse(endpoint).getHost();
-            OkHttpClient pinnedClient = getPinnedReceiverClient(receiverHost);
-            String fullUrl = endpoint + "/?url=" + URLEncoder.encode(mediaUrl, "UTF-8") + "&open=browser";
-            Request req = new Request.Builder().url(fullUrl).build();
-            trackedClientForUrlSend(pinnedClient, req, mediaUrl);
-        } catch (Exception error) {
-            Toast.makeText(this, "تعذر تجهيز إرسال الرابط إلى الريسيفر",
+    }
+
+    private void finishUrlTarget(int total, java.util.concurrent.atomic.AtomicInteger accepted,
+                                 java.util.concurrent.atomic.AtomicInteger finished, boolean finishWhenDone) {
+        if (finished.incrementAndGet() == total) runOnUiThread(() -> {
+            Toast.makeText(this, "تم إرسال الرابط إلى " + accepted.get() + " من " + total + " أجهزة",
                     Toast.LENGTH_LONG).show();
-            if (clipboardShortcutLaunch || webVideoCasterCaptureLaunch) finish();
-        }
+            if (finishWhenDone) finish();
+        });
     }
 
     private void trackedClientForUrlSend(OkHttpClient pinnedClient, Request request, String mediaUrl) {
@@ -3044,37 +3065,7 @@ private void showManualIpDialog() {
     }
 
     private void sendUrlToTvFromUi(String mediaUrl) {
-        String tvIp = prefs.getString("tv_ip", "").trim();
-        if (tvIp.isEmpty()) {
-            Toast.makeText(this, "احفظ عنوان IP الشاشة أولاً", Toast.LENGTH_LONG).show();
-            return;
-        }
-        if (!hasSecureReceiverPairing()) {
-            showPairingRequiredMessage();
-            return;
-        }
-        try {
-            String endpoint = buildReceiverHttpsEndpoint(tvIp);
-            String receiverHost = Uri.parse(endpoint).getHost();
-            OkHttpClient pinnedClient = getPinnedReceiverClient(receiverHost);
-            String fullUrl = endpoint + "/?url=" + URLEncoder.encode(mediaUrl, "UTF-8") + "&open=browser";
-            Request req = new Request.Builder().url(fullUrl).build();
-            pinnedClient.newCall(req).enqueue(new Callback() {
-                @Override public void onFailure(Call call, IOException error) {
-                    runOnUiThread(() -> Toast.makeText(MainActivity.this,
-                            "تعذر إرسال الرابط إلى الشاشة", Toast.LENGTH_LONG).show());
-                }
-                @Override public void onResponse(Call call, Response response) {
-                    boolean successful = response.isSuccessful();
-                    response.close();
-                    runOnUiThread(() -> Toast.makeText(MainActivity.this,
-                            successful ? "✅ تم إرسال الرابط إلى الشاشة" : "تعذر إرسال الرابط إلى الشاشة",
-                            Toast.LENGTH_SHORT).show());
-                }
-            });
-        } catch (Exception error) {
-            Toast.makeText(this, "تعذر تجهيز الرابط للإرسال", Toast.LENGTH_SHORT).show();
-        }
+        sendUrlToAllReceivers(mediaUrl, false);
     }
 
     private void openMediaPicker(boolean multipleImages) {
