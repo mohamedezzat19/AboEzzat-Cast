@@ -1362,6 +1362,7 @@ private void showManualIpDialog() {
             scanner.setPrompt("وجّه الكاميرا إلى QR الظاهر على شاشة الريسيفر");
             scanner.setBeepEnabled(false);
             scanner.setOrientationLocked(false);
+            scanner.setCaptureActivity(ReceiverQrCaptureActivity.class);
             scanner.initiateScan();
         } catch (Exception error) {
             Toast.makeText(this, "تعذر فتح ماسح QR. استخدم الربط اليدوي.", Toast.LENGTH_LONG).show();
@@ -2745,6 +2746,14 @@ private void showManualIpDialog() {
             return;
         }
         if (requestCode == com.google.zxing.integration.android.IntentIntegrator.REQUEST_CODE) {
+            if (resultCode == RESULT_OK && data != null
+                    && data.hasExtra(ReceiverQrCaptureActivity.EXTRA_GALLERY_IMAGE_URI)) {
+                String selectedUri = data.getStringExtra(ReceiverQrCaptureActivity.EXTRA_GALLERY_IMAGE_URI);
+                if (selectedUri != null && !selectedUri.isEmpty()) {
+                    decodeReceiverQrFromGallery(Uri.parse(selectedUri));
+                }
+                return;
+            }
             com.google.zxing.integration.android.IntentResult scanResult =
                     com.google.zxing.integration.android.IntentIntegrator.parseActivityResult(
                             requestCode, resultCode, data);
