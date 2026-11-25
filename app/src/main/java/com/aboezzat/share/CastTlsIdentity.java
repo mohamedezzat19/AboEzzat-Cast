@@ -10,6 +10,7 @@ import java.security.SecureRandom;
 import java.security.cert.Certificate;
 import java.security.cert.X509Certificate;
 import java.util.Date;
+import java.security.spec.ECGenParameterSpec;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLServerSocketFactory;
@@ -17,8 +18,8 @@ import javax.security.auth.x500.X500Principal;
 
 /** Per-install TLS identity for the local media server. */
 public final class CastTlsIdentity {
-    private static final String KEY_ALIAS = "AboEzzatCast.MediaTlsIdentity.v2";
-    // Keep v1 installed for rollback; v2 is generated with TLS-compatible digest authorization.
+    private static final String KEY_ALIAS = "AboEzzatCast.MediaTlsIdentity.v3.EC";
+    // Keep the previous RSA alias intact so rollback remains possible.
     private static final String KEYSTORE_PROVIDER = "AndroidKeyStore";
     private CastTlsIdentity() { }
 
@@ -27,11 +28,11 @@ public final class CastTlsIdentity {
         keyStore.load(null);
         if (!keyStore.containsAlias(KEY_ALIAS)) {
             long now = System.currentTimeMillis();
-            KeyPairGenerator generator = KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_RSA, KEYSTORE_PROVIDER);
+            KeyPairGenerator generator = KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_EC, KEYSTORE_PROVIDER);
             KeyGenParameterSpec spec = new KeyGenParameterSpec.Builder(KEY_ALIAS, KeyProperties.PURPOSE_SIGN)
-                    .setKeySize(2048)
+                    .setAlgorithmParameterSpec(new ECGenParameterSpec("secp256r1"))
+                    .setKeySize(256)
                     .setDigests(KeyProperties.DIGEST_NONE, KeyProperties.DIGEST_SHA256)
-                    .setSignaturePaddings(KeyProperties.SIGNATURE_PADDING_RSA_PKCS1, KeyProperties.SIGNATURE_PADDING_RSA_PSS)
                     .setCertificateSubject(new X500Principal("CN=AboEzzat Cast Media"))
                     .setCertificateSerialNumber(BigInteger.valueOf(now))
                     .setCertificateNotBefore(new Date(now - 24L * 60L * 60L * 1000L))
@@ -41,6 +42,11 @@ public final class CastTlsIdentity {
             generator.generateKeyPair();
             keyStore.load(null);
         }
+        Certificate generated = keyStore.getCertificate(KEY_ALIAS);
+        if (!(generated instanceof X509Certificate)
+                || !"EC".equalsIgnoreCase(((X509Certificate) generated).getPublicKey().getAlgorithm())) {
+            throw new IllegalStateException("Cast TLS v3 identity is not a valid EC certificate");
+        }
         return keyStore;
     }
 
@@ -49,6 +55,7 @@ public final class CastTlsIdentity {
         if (!(certificate instanceof X509Certificate)) throw new IllegalStateException("Cast TLS certificate is unavailable");
         X509Certificate x509 = (X509Certificate) certificate;
         x509.checkValidity();
+        if (!"EC".equalsIgnoreCase(x509.getPublicKey().getAlgorithm())) throw new IllegalStateException("Cast TLS identity is not EC");
         return x509;
     }
 
