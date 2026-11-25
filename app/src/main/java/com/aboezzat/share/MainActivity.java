@@ -2927,15 +2927,24 @@ private void showManualIpDialog() {
     }
 
     private String getLocalMediaRoutePath(Uri uri, String mime) {
-        if (mime != null && mime.toLowerCase(java.util.Locale.ROOT).startsWith("image/")) {
+        String normalizedMime = mime == null ? "" : mime.trim().toLowerCase(java.util.Locale.ROOT);
+        if (normalizedMime.startsWith("image/")) {
             return "/media.jpg";
         }
+
         String extension = null;
-        if (mime != null) {
+        boolean unknownMime = normalizedMime.isEmpty()
+                || "application/octet-stream".equals(normalizedMime);
+        if (!unknownMime) {
             extension = android.webkit.MimeTypeMap.getSingleton()
-                    .getExtensionFromMimeType(mime.toLowerCase(java.util.Locale.ROOT));
+                    .getExtensionFromMimeType(normalizedMime);
         }
-        if (extension == null || extension.trim().isEmpty()) {
+
+        // SAF and cloud document providers often report application/octet-stream
+        // (or no MIME type) even for ordinary JPEG/PNG photos. In that case the
+        // display name is the only reliable media-type hint. Always inspect it
+        // instead of accidentally routing an image through the MP4 player.
+        if (unknownMime || extension == null || extension.trim().isEmpty()) {
             android.database.Cursor cursor = null;
             try {
                 cursor = getContentResolver().query(uri,
@@ -2958,8 +2967,19 @@ private void showManualIpDialog() {
                 if (cursor != null) cursor.close();
             }
         }
-        if (extension != null) extension = extension.toLowerCase(java.util.Locale.ROOT)
-                .replaceAll("[^a-z0-9]", "");
+
+        if (extension != null) {
+            extension = extension.toLowerCase(java.util.Locale.ROOT)
+                    .replaceAll("[^a-z0-9]", "");
+        }
+
+        // The receiver intentionally uses one stable image route; the HTTP
+        // response still carries the original MIME type from ContentResolver.
+        String imageExtensions = "|jpg|jpeg|jpe|png|webp|gif|bmp|avif|heic|heif|tif|tiff|";
+        if (extension != null && imageExtensions.contains("|" + extension + "|")) {
+            return "/media.jpg";
+        }
+
         String supported = "|mp4|m4v|mkv|webm|mov|avi|flv|mpg|mpeg|3gp|ogv|wmv|vob|ts|m2ts|mp3|m4a|aac|ogg|oga|opus|wav|flac|mid|midi|";
         if (extension == null || extension.isEmpty() || !supported.contains("|" + extension + "|")) {
             extension = "mp4";
