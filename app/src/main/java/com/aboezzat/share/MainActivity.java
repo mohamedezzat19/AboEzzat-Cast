@@ -1763,35 +1763,6 @@ private void showManualIpDialog() {
                 return false;
             }
             OkHttpClient probe = getPinnedReceiverClient(host).newBuilder()
-                    .addInterceptor(chain -> {
-                        Request original = chain.request();
-                        try {
-                            long timestamp = System.currentTimeMillis();
-                            String nonce = UUID.randomUUID().toString();
-                            String pathAndQuery = original.url().encodedPath()
-                                    + (original.url().encodedQuery() == null ? ""
-                                    : "?" + original.url().encodedQuery());
-                            String bodyHash = Base64.encodeToString(
-                                    java.security.MessageDigest.getInstance("SHA-256").digest(new byte[0]),
-                                    Base64.URL_SAFE | Base64.NO_WRAP | Base64.NO_PADDING);
-                            String canonical = original.method() + "\\n" + pathAndQuery
-                                    + "\\n" + bodyHash + "\\n" + timestamp + "\\n" + nonce;
-                            Mac mac = Mac.getInstance("HmacSHA256");
-                            mac.init(new SecretKeySpec(secret.getBytes(
-                                    java.nio.charset.StandardCharsets.UTF_8), "HmacSHA256"));
-                            String signature = Base64.encodeToString(
-                                    mac.doFinal(canonical.getBytes(java.nio.charset.StandardCharsets.UTF_8)),
-                                    Base64.URL_SAFE | Base64.NO_WRAP | Base64.NO_PADDING);
-                            Request signed = original.newBuilder()
-                                    .header("X-AboEzzat-Time", String.valueOf(timestamp))
-                                    .header("X-AboEzzat-Nonce", nonce)
-                                    .header("X-AboEzzat-Signature", signature)
-                                    .build();
-                            return chain.proceed(signed);
-                        } catch (Exception signingError) {
-                            throw new IOException("Unable to sign receiver status probe", signingError);
-                        }
-                    })
                     .connectTimeout(1200, java.util.concurrent.TimeUnit.MILLISECONDS)
                     .readTimeout(1500, java.util.concurrent.TimeUnit.MILLISECONDS)
                     .callTimeout(2200, java.util.concurrent.TimeUnit.MILLISECONDS)
