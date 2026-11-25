@@ -482,15 +482,11 @@ public class ShareActivity extends Activity {
     // The old Receiver-compatible TikTok path is a plain GET query.
     private void sendTikTokLegacyToTv(String tvIp, String mediaUrl) {
         try {
-            if (!tvIp.startsWith("http://") && !tvIp.startsWith("https://")) {
-                tvIp = "http://" + tvIp;
-            }
-            if (!tvIp.contains(":" + TARGET_PORT)) {
-                tvIp = tvIp + ":" + TARGET_PORT;
-            }
-            String fullUrl = tvIp + "/?url=" + URLEncoder.encode(mediaUrl, "UTF-8");
+            String endpoint = ReceiverApiClient.buildEndpoint(tvIp);
+            OkHttpClient receiverClient = ReceiverApiClient.create(this, Uri.parse(endpoint).getHost());
+            String fullUrl = endpoint + "/?url=" + URLEncoder.encode(mediaUrl, "UTF-8");
             Request request = new Request.Builder().url(fullUrl).get().build();
-            client.newCall(request).enqueue(new Callback() {
+            receiverClient.newCall(request).enqueue(new Callback() {
                 @Override
                 public void onFailure(Call call, IOException error) {
                     mainHandler.post(() -> {
