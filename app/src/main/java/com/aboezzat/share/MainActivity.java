@@ -1214,6 +1214,10 @@ public class MainActivity extends Activity {
         } catch (Exception ignored) { return new JSONObject(); }
     }
 
+    private void putNamedPlaylistItems(JSONObject playlists, String name, JSONArray items) {
+        try { playlists.put(name, items); } catch (Exception ignored) {}
+    }
+
     private void saveNamedPlaylists(JSONObject playlists) {
         getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE | MODE_MULTI_PROCESS)
                 .edit().putString("named_media_playlists_v1", playlists.toString()).apply();
@@ -1250,7 +1254,7 @@ public class MainActivity extends Activity {
                                         Toast.makeText(this, "اسم القائمة موجود بالفعل", Toast.LENGTH_SHORT).show();
                                         return;
                                     }
-                                    saved.put(name, new JSONArray());
+                                    putNamedPlaylistItems(saved, name, new JSONArray());
                                     saveNamedPlaylists(saved);
                                     activeNamedPlaylist = name;
                                     showNamedPlaylistDialog(name);
@@ -1348,7 +1352,7 @@ public class MainActivity extends Activity {
                 .setNeutralButton("مسح القائمة", (d,w) -> new AlertDialog.Builder(this, R.style.ModernDialogTheme)
                         .setTitle("مسح القائمة؟").setMessage("سيتم حذف عناصر القائمة فقط دون حذف الملفات الأصلية.")
                         .setPositiveButton("مسح", (x,y) -> {
-                            JSONObject saved = loadNamedPlaylists(); saved.put(name, new JSONArray()); saveNamedPlaylists(saved);
+                            JSONObject saved = loadNamedPlaylists(); putNamedPlaylistItems(saved, name, new JSONArray()); saveNamedPlaylists(saved);
                             showNamedPlaylistDialog(name);
                         }).setNegativeButton("إلغاء", null).show())
                 .setNegativeButton("القوائم", (d,w) -> showPlaylistDialog()).show();
@@ -1388,7 +1392,7 @@ public class MainActivity extends Activity {
                 addRecentMedia(uri);
             } catch (Exception ignored) {}
         }
-        all.put(name, items);
+        putNamedPlaylistItems(all, name, items);
         saveNamedPlaylists(all);
         Toast.makeText(this, "تمت إضافة " + picked.size() + " عنصر إلى " + name, Toast.LENGTH_SHORT).show();
         showNamedPlaylistDialog(name);
@@ -1406,7 +1410,7 @@ public class MainActivity extends Activity {
             else if (i == target) updated.put(old.opt(index));
             else updated.put(old.opt(i));
         }
-        all.put(name, updated); saveNamedPlaylists(all); showNamedPlaylistDialog(name);
+        putNamedPlaylistItems(all, name, updated); saveNamedPlaylists(all); showNamedPlaylistDialog(name);
     }
 
     private void removeNamedPlaylistItem(String name, int index) {
