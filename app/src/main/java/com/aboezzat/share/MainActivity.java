@@ -816,22 +816,36 @@ public class MainActivity extends Activity {
             if (title == null || title.trim().isEmpty() || title.trim().equals(url)
                     || title.trim().startsWith("http://") || title.trim().startsWith("https://"))
                 title = getCompactSavedUrlLabel(url);
-            labels[i] = (mostVisited ? (browserPrefs.getInt("visit_count_" + url, 0) + " زيارة · ") : "")
-                    + title;
+            labels[i] = (mostVisited ? (browserPrefs.getInt("visit_count_" + url, 0) + " زيارة · ") : "") + title;
         }
 
+        LinearLayout historyPanel = new LinearLayout(this);
+        historyPanel.setOrientation(LinearLayout.VERTICAL);
+        historyPanel.setPadding(dp(10), dp(8), dp(10), dp(8));
+        TextView expand = new TextView(this);
+        expand.setText("▸ عرض " + urls.size() + " عنصر");
+        expand.setTextColor(0xFFFFD54F);
+        expand.setTextSize(15);
+        expand.setPadding(dp(12), dp(14), dp(12), dp(14));
+        expand.setBackground(libraryCardBackground(0xFF252630));
+        historyPanel.addView(expand);
         android.widget.ListView listView = new android.widget.ListView(this);
-        listView.setAdapter(new android.widget.ArrayAdapter<String>(this,
-                android.R.layout.simple_list_item_1, labels));
+        listView.setAdapter(new android.widget.ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, labels));
+        listView.setVisibility(View.GONE);
+        historyPanel.addView(listView, new LinearLayout.LayoutParams(-1, dp(Math.min(urls.size(), 8) * 54)));
+        expand.setOnClickListener(v -> {
+            boolean opening = listView.getVisibility() != View.VISIBLE;
+            listView.setVisibility(opening ? View.VISIBLE : View.GONE);
+            expand.setText((opening ? "▾ إخفاء العناصر" : "▸ عرض " + urls.size() + " عنصر"));
+        });
         AlertDialog dialog = new AlertDialog.Builder(this, R.style.ModernDialogTheme)
                 .setTitle(mostVisited ? "الأكثر زيارة" : "سجل التصفح")
-                .setView(listView)
+                .setView(historyPanel)
                 .setNeutralButton("مسح السجل كله", (d, w) -> {
                     clearBrowserHistory(browserPrefs);
                     Toast.makeText(this, "تم مسح سجل التصفح بالكامل", Toast.LENGTH_SHORT).show();
                 })
-                .setNegativeButton("إغلاق", null)
-                .create();
+                .setNegativeButton("إغلاق", null).create();
 
         listView.setOnItemClickListener((parent, view, position, id) -> {
             Intent intent = new Intent(MainActivity.this, BrowserActivity.class);
@@ -1136,16 +1150,26 @@ public class MainActivity extends Activity {
                     .setNegativeButton("إغلاق", null).show();
             return;
         }
-        String[] labels = new String[recent.size()];
-        for (int i = 0; i < recent.size(); i++) labels[i] = getMediaDisplayName(recent.get(i), i);
-        new AlertDialog.Builder(this, R.style.ModernDialogTheme).setTitle("الوسائط الأخيرة")
-                .setItems(labels, (dialog, which) -> {
-                    Uri chosen = recent.get(which);
-                    setSelectedMediaUri(chosen);
-                    if (videoQueue.contains(chosen)) currentVideoIndex = videoQueue.indexOf(chosen);
-                    if (slideshowQueue.contains(chosen)) currentSlideIndex = slideshowQueue.indexOf(chosen);
-                    castLocalMediaToTv(true);
-                }).setNegativeButton("إغلاق", null).show();
+        LinearLayout rows = new LinearLayout(this);
+        rows.setOrientation(LinearLayout.VERTICAL);
+        ScrollView scroll = new ScrollView(this);
+        scroll.addView(rows);
+        for (int i = 0; i < recent.size(); i++) {
+            final Uri item = recent.get(i);
+            final int index = i;
+            rows.addView(createMediaQueueRow(item, getMediaDisplayName(item, i), () -> {
+                setSelectedMediaUri(item);
+                if (videoQueue.contains(item)) currentVideoIndex = videoQueue.indexOf(item);
+                if (slideshowQueue.contains(item)) currentSlideIndex = slideshowQueue.indexOf(item);
+                castLocalMediaToTv(true);
+            }, () -> {
+                recent.remove(item);
+                writeUriList("recent_media_uris", recent);
+                showRecentMediaDialog();
+            }));
+        }
+        new AlertDialog.Builder(this, R.style.ModernDialogTheme).setTitle("الوسائط الأخيرة (" + recent.size() + ")")
+                .setView(scroll).setNegativeButton("إغلاق", null).show();
     }
 
     private void showPlaylistDialog() {
