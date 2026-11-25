@@ -3047,26 +3047,111 @@ private void showManualIpDialog() {
         java.util.concurrent.atomic.AtomicInteger accepted = new java.util.concurrent.atomic.AtomicInteger();
         java.util.concurrent.atomic.AtomicInteger finished = new java.util.concurrent.atomic.AtomicInteger();
         for (String tvIp : targets) {
-            try {
-                String endpoint = buildReceiverHttpsEndpoint(tvIp);
-                String host = Uri.parse(endpoint).getHost();
-                OkHttpClient pinnedClient = getPinnedReceiverClient(host);
-                Request request = new Request.Builder()
-                        .url(endpoint + "/?url=" + URLEncoder.encode(mediaUrl, "UTF-8") + "&open=browser")
-                        .get().build();
-                pinnedClient.newCall(request).enqueue(new Callback() {
-                    @Override public void onFailure(Call call, IOException error) {
-                        finishUrlTarget(targets.size(), accepted, finished, finishWhenDone);
+            probeReceiverBeforeUrlSend(tvIp, mediaUrl, finishWhenDone,
+                    targets.size(), accepted, finished);
+        }
+    }
+
+    // Only interrupt an existing session after the Receiver reports a recent,
+    // confirmed player state through the already authenticated/pinned status API.
+    private void probeReceiverBeforeUrlSend(String tvIp, String mediaUrl, boolean finishWhenDone,
+            int total, java.util.concurrent.atomic.AtomicInteger accepted,
+            java.util.concurrent.atomic.AtomicInteger finished) {
+        try {
+            String endpoint = buildReceiverHttpsEndpoint(tvIp);
+            String host = Uri.parse(endpoint).getHost();
+            if (host == null) throw new IOException("Invalid receiver host");
+            OkHttpClient probe = getPinnedReceiverClient(host).newBuilder()
+                    .connectTimeout(1800, java.util.concurrent.TimeUnit.MILLISECONDS)
+                    .readTimeout(2200, java.util.concurrent.TimeUnit.MILLISECONDS)
+                    .callTimeout(3000, java.util.concurrent.TimeUnit.MILLISECONDS)
+                    .build();
+            Request statusRequest = new Request.Builder()
+                    .url(endpoint + "/?command=status").get().build();
+            probe.newCall(statusRequest).enqueue(new Callback() {
+                @Override public void onFailure(Call call, IOException error) {
+                    // An unavailable status endpoint is not proof of active playback.
+                    sendUrlToSingleReceiver(tvIp, mediaUrl, finishWhenDone,
+                            total, accepted, finished);
+                }
+                @Override public void onResponse(Call call, Response response) {
+                    boolean active = false;
+                    try {
+                        if (response.isSuccessful() && response.body() != null) {
+                            JSONObject state = new JSONObject(response.body().string());
+                            long updatedAt = state.optLong("mediaStateUpdatedAt", 0L);
+                            long age = System.currentTimeMillis() - updatedAt;
+                            String type = state.optString("mediaType", "none");
+                            active = state.optBoolean("mediaActive", false)
+                                    && updatedAt > 0L && age >= -5000L && age <= 60000L
+                                    && ("video".equals(type) || "audio".equals(type)
+                                            || "image".equals(type));
+                        }
+                    } catch (Exception ignored) {
+                        active = false;
+                    } finally {
+                        response.close();
                     }
-                    @Override public void onResponse(Call call, Response response) {
-                        try { if (response.isSuccessful()) accepted.incrementAndGet(); }
-                        finally { response.close(); }
-                        finishUrlTarget(targets.size(), accepted, finished, finishWhenDone);
+                    if (!active) {
+                        sendUrlToSingleReceiver(tvIp, mediaUrl, finishWhenDone,
+                                total, accepted, finished);
+                        return;
                     }
-                });
-            } catch (Exception error) {
-                finishUrlTarget(targets.size(), accepted, finished, finishWhenDone);
-            }
+                    final String confirmedType = stateTypeForPrompt(type);\n                    runOnUiThread(() -> {
+                        if (isFinishing() || isDestroyed()) {
+                            finishUrlTarget(total, accepted, finished, finishWhenDone);
+                            return;
+                        }
+                        new AlertDialog.Builder(MainActivity.this, R.style.ModernDialogTheme)
+                                .setTitle("فيه محتوى شغال على الريسيفر")
+                                .setMessage("الريسيفر أكد إن فيه تشغيل فعلي حاليًا (" 
+                                        + confirmedType 
+                                        + "). هل تريد إيقافه وتشغيل المحتوى الجديد؟")
+                                .setPositiveButton("تشغيل بدل الحالي", (dialog, which) ->
+                                        sendUrlToSingleReceiver(tvIp, mediaUrl, finishWhenDone,
+                                                total, accepted, finished))
+                                .setNegativeButton("إلغاء", (dialog, which) ->
+                                        finishUrlTarget(total, accepted, finished, finishWhenDone))
+                                .setOnCancelListener(dialog ->
+                                        finishUrlTarget(total, accepted, finished, finishWhenDone))
+                                .show();
+                    });
+                }
+            });
+        } catch (Exception error) {
+            sendUrlToSingleReceiver(tvIp, mediaUrl, finishWhenDone, total, accepted, finished);
+        }
+    }
+
+    private String stateTypeForPrompt(String type) {
+        if ("audio".equals(type)) return "صوت";
+        if ("image".equals(type)) return "صورة";
+        return "فيديو";
+    }
+
+    private void sendUrlToSingleReceiver(String tvIp, String mediaUrl, boolean finishWhenDone,
+            int total, java.util.concurrent.atomic.AtomicInteger accepted,
+            java.util.concurrent.atomic.AtomicInteger finished) {
+        try {
+            String endpoint = buildReceiverHttpsEndpoint(tvIp);
+            String host = Uri.parse(endpoint).getHost();
+            if (host == null) throw new IOException("Invalid receiver host");
+            OkHttpClient pinnedClient = getPinnedReceiverClient(host);
+            Request request = new Request.Builder()
+                    .url(endpoint + "/?url=" + URLEncoder.encode(mediaUrl, "UTF-8") + "&open=browser")
+                    .get().build();
+            pinnedClient.newCall(request).enqueue(new Callback() {
+                @Override public void onFailure(Call call, IOException error) {
+                    finishUrlTarget(total, accepted, finished, finishWhenDone);
+                }
+                @Override public void onResponse(Call call, Response response) {
+                    try { if (response.isSuccessful()) accepted.incrementAndGet(); }
+                    finally { response.close(); }
+                    finishUrlTarget(total, accepted, finished, finishWhenDone);
+                }
+            });
+        } catch (Exception error) {
+            finishUrlTarget(total, accepted, finished, finishWhenDone);
         }
     }
 
