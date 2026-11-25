@@ -461,7 +461,7 @@ public class MainActivity extends Activity {
             closeDrawer();
             new AlertDialog.Builder(MainActivity.this, R.style.ModernDialogTheme)
                     .setTitle("إعدادات أبو عزت كاست")
-                    .setItems(new String[]{"التحقق من التحديثات", "إعداد عنوان IP الشاشة", "تفعيل الاختصار العائم عند نسخ رابط", "تشخيص مشكلة الفقاعة", "إعدادات أندرويد وأذونات التطبيق", "إعداد VPN داخل التطبيق"}, (dialog, which) -> {
+                    .setItems(new String[]{"التحقق من التحديثات", "إعداد عنوان IP الشاشة", "تفعيل الاختصار العائم عند نسخ رابط", "تشخيص مشكلة الفقاعة", "إعدادات أندرويد وأذونات التطبيق", "إعداد VPN داخل التطبيق", "استهلاك البيانات"}, (dialog, which) -> {
                         if (which == 0) {
                             new AppUpdater(MainActivity.this).checkForUpdate(true);
                         } else if (which == 1) {
@@ -474,6 +474,8 @@ public class MainActivity extends Activity {
                             openAppPermissionSettings();
                         } else if (which == 5) {
                             startActivity(new Intent(MainActivity.this, VpnActivity.class));
+                        } else if (which == 6) {
+                            showDataUsageDialog();
                         }
                     })
                     .setNegativeButton("إغلاق", null)
@@ -487,6 +489,33 @@ public class MainActivity extends Activity {
         });
     }
 
+
+
+    private void showDataUsageDialog() {
+        SharedPreferences usage = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE | MODE_MULTI_PROCESS);
+        long localBytes = usage.getLong("usage_local_transfer_total", 0L);
+        long todayBytes = usage.getLong("usage_local_transfer_today", 0L);
+        long monthBytes = usage.getLong("usage_local_transfer_month", 0L);
+        String message = "نقل الملفات من الهاتف إلى الريسيفر عبر الواي فاي المحلي\n"
+                + "الإجمالي: " + android.text.format.Formatter.formatFileSize(this, localBytes) + "\n"
+                + "اليوم: " + android.text.format.Formatter.formatFileSize(this, todayBytes) + "\n"
+                + "هذا الشهر: " + android.text.format.Formatter.formatFileSize(this, monthBytes) + "\n\n"
+                + "هذه الأرقام تقيس بايتات ملفات الهاتف التي أرسلها خادم كاست محليًا إلى الريسيفر، ولا تخصم من باقة الإنترنت عند استخدام شبكة محلية فعلًا.\n\n"
+                + "فيديوهات الإنترنت مثل YouTube وTikTok يشغّلها الريسيفر من مصدرها؛ لا يستطيع كاست وحده قياس استهلاكها بدقة حاليًا. استهلاكها الفعلي يعتمد على جودة الفيديو ومدة المشاهدة، وقد يختلف حسب التطبيق والمصدر.";
+        new AlertDialog.Builder(this, R.style.ModernDialogTheme)
+                .setTitle("استهلاك البيانات")
+                .setMessage(message)
+                .setNeutralButton("تصفير إحصائيات النقل المحلي", (d, w) -> {
+                    usage.edit().putLong("usage_local_transfer_total", 0L)
+                            .putLong("usage_local_transfer_today", 0L)
+                            .putLong("usage_local_transfer_month", 0L)
+                            .putString("usage_local_transfer_day", "")
+                            .putString("usage_local_transfer_month_key", "").apply();
+                    Toast.makeText(this, "تم تصفير إحصائيات النقل المحلي", Toast.LENGTH_SHORT).show();
+                })
+                .setPositiveButton("إغلاق", null)
+                .show();
+    }
 
     private void openClipboardShortcutSetup() {
         new AlertDialog.Builder(this, R.style.ModernDialogTheme)
