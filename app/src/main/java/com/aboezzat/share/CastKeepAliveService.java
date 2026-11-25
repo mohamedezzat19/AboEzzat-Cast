@@ -45,7 +45,10 @@ public class CastKeepAliveService extends Service {
     private static volatile String mediaAccessToken = "";
     private static final SecureRandom MEDIA_TOKEN_RANDOM = new SecureRandom();
     private LocalMediaServer localServer;
-    private boolean localServerReady;
+    private volatile boolean localServerReady;
+    private static volatile boolean sharedServerReady;
+
+    public static boolean isLocalServerReady() { return sharedServerReady; }
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Runnable refreshNotification = new Runnable() {
@@ -134,8 +137,10 @@ public class CastKeepAliveService extends Service {
                     new String[]{"TLSv1.2"});
             localServer.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false);
             localServerReady = true;
+            sharedServerReady = true;
         } catch (Exception e) {
             localServerReady = false;
+            sharedServerReady = false;
             android.util.Log.e("AboEzzatCast", "Could not start background media server", e);
             if (localServer != null) {
                 try { localServer.stop(); } catch (Exception ignored) {}
@@ -266,11 +271,6 @@ public class CastKeepAliveService extends Service {
 
                 long fileLength = afd.getLength();
                 if (fileLength < 0) fileLength = queryMediaLength(mediaUri);
-                if (fileLength <= 0) {
-                    afd.close();
-                    return newFixedLengthResponse(Response.Status.INTERNAL_ERROR,
-                            "text/plain", "Unable to determine media length");
-                }
 
                 String mime = getContentResolver().getType(mediaUri);
                 if (mime == null || mime.trim().isEmpty()
@@ -286,6 +286,31 @@ public class CastKeepAliveService extends Service {
                     }
                 }
                 if (mime == null || mime.trim().isEmpty()) mime = "application/octet-stream";
+
+                // Some SAF/cloud document providers expose a readable stream but report
+                // UNKNOWN_LENGTH. Do not reject those files: stream them chunked. When
+                // Media3 requests a byte range, a 200 response from byte zero is valid;
+                // Media3 performs the requested skip itself.
+                if (fileLength < 0L) {
+                    final AssetFileDescriptor responseAfd = afd;
+                    FileInputStream rawStream = afd.createInputStream();
+                    java.io.InputStream stream = new java.io.FilterInputStream(rawStream) {
+                        @Override public void close() throws IOException {
+                            try { super.close(); }
+                            finally { try { responseAfd.close(); } catch (IOException ignored) {} }
+                        }
+                    };
+                    Response response = newChunkedResponse(Response.Status.OK, mime, stream);
+                    response.addHeader("Cache-Control", "no-store, max-age=0");
+                    response.addHeader("Pragma", "no-cache");
+                    response.addHeader("X-Content-Type-Options", "nosniff");
+                    return response;
+                }
+                if (fileLength == 0L) {
+                    afd.close();
+                    return newFixedLengthResponse(Response.Status.INTERNAL_ERROR,
+                            "text/plain", "Selected media is empty");
+                }
 
                 long start = 0L, end = fileLength - 1L;
                 boolean partial = false;
@@ -375,6 +400,8 @@ public class CastKeepAliveService extends Service {
             try { localServer.stop(); } catch (Exception ignored) {}
             localServer = null;
         }
+        localServerReady = false;
+        sharedServerReady = false;
         super.onDestroy();
     }
 
