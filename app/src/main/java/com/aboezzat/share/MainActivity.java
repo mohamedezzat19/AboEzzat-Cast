@@ -2300,6 +2300,7 @@ private void showManualIpDialog() {
     private boolean handleWebVideoCasterCaptureShortcut(Intent intent) {
         if (intent == null || !intent.getBooleanExtra("web_video_caster_capture_shortcut", false)) return false;
         intent.removeExtra("web_video_caster_capture_shortcut");
+        webVideoCasterCaptureLaunch = true;
         new Handler(Looper.getMainLooper()).post(() -> {
             SharedPreferences capturePrefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE | MODE_MULTI_PROCESS);
             java.util.ArrayList<String> urls = new java.util.ArrayList<>();
