@@ -3663,14 +3663,8 @@ public class BrowserActivity extends Activity {
         
 
         try {
-            String endpoint = tvIp;
-            if (!endpoint.startsWith("http://") && !endpoint.startsWith("https://")) {
-                endpoint = "http://" + endpoint;
-            }
-            if (!endpoint.contains(":8081")) {
-                endpoint = endpoint + ":8081";
-            }
-
+            final String endpoint = ReceiverApiClient.buildEndpoint(tvIp);
+            OkHttpClient receiverClient = ReceiverApiClient.create(this, Uri.parse(endpoint).getHost());
             Request req = buildReceiverPlayRequest(endpoint, videoTrackUrl, audioTrackUrl,
                     bestVideo == null ? null : bestVideo.requestHeaders);
             final String receiverEndpoint = endpoint;
