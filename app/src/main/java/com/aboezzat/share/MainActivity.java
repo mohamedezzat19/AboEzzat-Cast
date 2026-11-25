@@ -1992,11 +1992,9 @@ private void showManualIpDialog() {
         String selectedIp = rawSelectedIp.isEmpty() ? "" : normalizeReceiverAddress(rawSelectedIp);
         if (!selectedIp.isEmpty()) {
             if (!rawSelectedIp.equals(selectedIp)) prefs.edit().putString("tv_ip", selectedIp).apply();
-            if (!containsReceiverIp(devices, selectedIp)) {
-                devices.add(0, new SavedReceiverDevice("الشاشة الحالية", selectedIp));
-                saveSavedReceiverDevices(devices);
-            }
+            if (!containsReceiverIp(devices, selectedIp)) devices.add(0, new SavedReceiverDevice("الشاشة الحالية", selectedIp));
         }
+        saveSavedReceiverDevices(devices);
         return devices;
     }
 
@@ -2014,7 +2012,7 @@ private void showManualIpDialog() {
     private String getSavedReceiverName(String ip) {
         if (ip == null || ip.trim().isEmpty()) return "";
         for (SavedReceiverDevice device : loadSavedReceiverDevices()) {
-            if (device.ip.equalsIgnoreCase(ip.trim())) return device.name == null ? "" : device.name.trim();
+            if (receiverAddressKey(device.ip).equals(receiverAddressKey(ip))) return device.name == null ? "" : device.name.trim();
         }
         return "";
     }
@@ -2100,8 +2098,8 @@ private void showManualIpDialog() {
         // Keep the currently selected receiver at the top; all other saved
         // receivers remain below it in their existing saved order.
         devices.sort((a, b) -> {
-            boolean aActive = a.ip.equalsIgnoreCase(activeIp);
-            boolean bActive = b.ip.equalsIgnoreCase(activeIp);
+            boolean aActive = receiverAddressKey(a.ip).equals(receiverAddressKey(activeIp));
+            boolean bActive = receiverAddressKey(b.ip).equals(receiverAddressKey(activeIp));
             return Boolean.compare(bActive, aActive);
         });
         LinearLayout root = new LinearLayout(this);
@@ -2146,7 +2144,7 @@ private void showManualIpDialog() {
             title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
             top.addView(title, new LinearLayout.LayoutParams(0, -2, 1f));
             TextView status = new TextView(this);
-            boolean isActiveDevice = device.ip.equalsIgnoreCase(activeIp);
+            boolean isActiveDevice = receiverAddressKey(device.ip).equals(receiverAddressKey(activeIp));
             status.setText(isActiveDevice ? "◆ نشط" : "● محفوظ");
             status.setTextColor(isActiveDevice ? 0xFFFBBF24 : 0xFF94A3B8);
             status.setTextSize(11);
@@ -2224,7 +2222,7 @@ private void showManualIpDialog() {
                 boolean online = isReceiverOnline(device.ip);
                 runOnUiThread(() -> {
                     if (!isFinishing() && status.getParent() != null) {
-                        boolean active = device.ip.equalsIgnoreCase(prefs.getString("tv_ip", "").trim());
+                        boolean active = receiverAddressKey(device.ip).equals(receiverAddressKey(prefs.getString("tv_ip", "").trim()));
                         // "متصل" is reserved for the selected active receiver
                         // whose Receiver service actually answers on port 8081.
                         status.setText(active ? (online ? "● متصل" : "◆ نشط")
@@ -2392,7 +2390,8 @@ private void showManualIpDialog() {
         new AlertDialog.Builder(this, R.style.ModernDialogTheme)
                 .setTitle(existing == null ? "إضافة جهاز جديد" : "تعديل الجهاز")
                 .setView(form)
-                .setNegativeButton("إلغاء", null)
+                .setNegativeButton("رجوع", (dialog, which) ->
+                        new Handler(Looper.getMainLooper()).post(() -> showSavedReceiverDialog()))
                 .setPositiveButton("حفظ", (dialog, which) -> {
                     String deviceName = name.getText().toString().trim();
                     String rawDeviceIp = ip.getText().toString().trim();
