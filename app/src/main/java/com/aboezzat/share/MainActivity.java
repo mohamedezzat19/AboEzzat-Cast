@@ -1419,7 +1419,7 @@ public class MainActivity extends Activity {
         if (old == null) return;
         JSONArray updated = new JSONArray();
         for (int i = 0; i < old.length(); i++) if (i != index) updated.put(old.opt(i));
-        all.put(name, updated); saveNamedPlaylists(all); showNamedPlaylistDialog(name);
+        putNamedPlaylistItems(all, name, updated); saveNamedPlaylists(all); showNamedPlaylistDialog(name);
     }
 
     private LinearLayout createMediaQueueRow(Uri uri, String title, Runnable onClick, Runnable onRemove) {
