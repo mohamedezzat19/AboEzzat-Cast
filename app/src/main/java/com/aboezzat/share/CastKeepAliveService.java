@@ -49,6 +49,11 @@ public class CastKeepAliveService extends Service {
     private static final String PREF_MEDIA_URI = "local_server_media_uri";
     private static volatile Uri selectedMediaUri;
     private static volatile String mediaAccessToken = "";
+    // Each issued media URL owns an immutable URI/token pair. A later selection
+    // must never make an earlier playlist URL point at a different document.
+    private static final java.util.LinkedHashMap<String, Uri> MEDIA_ITEMS =
+            new java.util.LinkedHashMap<String, Uri>(128, 0.75f, true);
+    private static final int MAX_MEDIA_ITEMS = 128;
     private static final SecureRandom MEDIA_TOKEN_RANDOM = new SecureRandom();
     private LocalMediaServer localServer;
     private volatile boolean localServerReady;
@@ -78,9 +83,33 @@ public class CastKeepAliveService extends Service {
         mediaAccessToken = uri == null ? "" : createMediaAccessToken();
         SharedPreferences.Editor edit = context.getSharedPreferences(
                 PREFS_NAME, Context.MODE_PRIVATE | Context.MODE_MULTI_PROCESS).edit();
-        if (uri == null) edit.remove(PREF_MEDIA_URI);
-        else edit.putString(PREF_MEDIA_URI, uri.toString());
+        if (uri == null) {
+            edit.remove(PREF_MEDIA_URI);
+        } else {
+            // Keep the legacy "currently selected" key for backward compatibility.
+            edit.putString(PREF_MEDIA_URI, uri.toString());
+            MEDIA_ITEMS.put(mediaAccessToken, uri);
+            while (MEDIA_ITEMS.size() > MAX_MEDIA_ITEMS) {
+                String eldest = MEDIA_ITEMS.keySet().iterator().next();
+                MEDIA_ITEMS.remove(eldest);
+            }
+            org.json.JSONArray savedItems = new org.json.JSONArray();
+            for (java.util.Map.Entry<String, Uri> item : MEDIA_ITEMS.entrySet()) {
+                org.json.JSONObject row = new org.json.JSONObject();
+                try {
+                    row.put("token", item.getKey());
+                    row.put("uri", item.getValue().toString());
+                    savedItems.put(row);
+                } catch (org.json.JSONException ignored) { }
+            }
+            edit.putString("local_media_items_v1", savedItems.toString());
+        }
         edit.apply();
+    }
+
+    private static synchronized Uri findMediaUri(String token) {
+        if (token == null || token.length() != 43) return null;
+        return MEDIA_ITEMS.get(token);
     }
 
     public static String getMediaAccessToken() {
@@ -96,12 +125,9 @@ public class CastKeepAliveService extends Service {
     }
 
     private static boolean isValidMediaToken(String supplied) {
-        String expected = mediaAccessToken;
-        if (expected == null || expected.length() != 43
-                || supplied == null || supplied.length() != 43) return false;
-        return MessageDigest.isEqual(
-                expected.getBytes(java.nio.charset.StandardCharsets.US_ASCII),
-                supplied.getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+        if (supplied == null || supplied.length() != 43
+                || !supplied.matches("[A-Za-z0-9_-]{43}")) return false;
+        return findMediaUri(supplied) != null;
     }
 
     @Override public void onCreate() {
@@ -109,10 +135,25 @@ public class CastKeepAliveService extends Service {
         createNotificationChannel();
         String saved = getSharedPreferences(PREFS_NAME, MODE_PRIVATE | MODE_MULTI_PROCESS)
                 .getString(PREF_MEDIA_URI, null);
+        SharedPreferences mediaPrefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE | MODE_MULTI_PROCESS);
+        try {
+            org.json.JSONArray savedItems = new org.json.JSONArray(
+                    mediaPrefs.getString("local_media_items_v1", "[]"));
+            for (int i = 0; i < savedItems.length(); i++) {
+                org.json.JSONObject row = savedItems.optJSONObject(i);
+                if (row == null) continue;
+                String token = row.optString("token", "");
+                String uri = row.optString("uri", "");
+                if (token.matches("[A-Za-z0-9_-]{43}") && !uri.isEmpty()) {
+                    MEDIA_ITEMS.put(token, Uri.parse(uri));
+                }
+            }
+        } catch (Exception ignored) { }
         if (saved != null) {
             try {
                 selectedMediaUri = Uri.parse(saved);
                 mediaAccessToken = createMediaAccessToken();
+                MEDIA_ITEMS.put(mediaAccessToken, selectedMediaUri);
             } catch (Exception ignored) {
                 selectedMediaUri = null;
                 mediaAccessToken = "";
@@ -359,9 +400,9 @@ public class CastKeepAliveService extends Service {
                 denied.addHeader("X-Content-Type-Options", "nosniff");
                 return denied;
             }
-            final Uri mediaUri = selectedMediaUri;
+            final Uri mediaUri = findMediaUri(suppliedToken);
             if (mediaUri == null) return newFixedLengthResponse(Response.Status.NOT_FOUND,
-                    "text/plain", "No media selected");
+                    "text/plain", "Media token expired or unknown");
 
             AssetFileDescriptor afd = null;
             try {
