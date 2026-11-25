@@ -19,7 +19,7 @@ import javax.security.auth.x500.X500Principal;
 /** Per-install TLS identity for the local media server. */
 public final class CastTlsIdentity {
     private static final String KEY_ALIAS = "AboEzzatCast.MediaTlsIdentity.v3.EC";
-    // Keep v1 installed for rollback; v2 is generated with TLS-compatible digest authorization.
+    // Keep the previous RSA alias intact so rollback remains possible.
     private static final String KEYSTORE_PROVIDER = "AndroidKeyStore";
     private CastTlsIdentity() { }
 
@@ -41,6 +41,11 @@ public final class CastTlsIdentity {
             generator.initialize(spec);
             generator.generateKeyPair();
             keyStore.load(null);
+        }
+        Certificate generated = keyStore.getCertificate(KEY_ALIAS);
+        if (!(generated instanceof X509Certificate)
+                || !"EC".equalsIgnoreCase(((X509Certificate) generated).getPublicKey().getAlgorithm())) {
+            throw new IllegalStateException("Cast TLS v3 identity is not a valid EC certificate");
         }
         return keyStore;
     }
