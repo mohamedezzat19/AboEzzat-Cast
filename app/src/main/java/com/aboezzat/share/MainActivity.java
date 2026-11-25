@@ -3098,7 +3098,8 @@ private void showManualIpDialog() {
                                 total, accepted, finished);
                         return;
                     }
-                    final String confirmedType = stateTypeForPrompt(confirmedMediaType);\n                    runOnUiThread(() -> {
+                    final String confirmedType = stateTypeForPrompt(confirmedMediaType);
+                    runOnUiThread(() -> {
                         if (isFinishing() || isDestroyed()) {
                             finishUrlTarget(total, accepted, finished, finishWhenDone);
                             return;
