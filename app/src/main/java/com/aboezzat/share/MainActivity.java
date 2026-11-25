@@ -1981,20 +1981,36 @@ private void showManualIpDialog() {
                 org.json.JSONObject item = array.optJSONObject(i);
                 if (item == null) continue;
                 String name = item.optString("name", "").trim();
-                String ip = item.optString("ip", "").trim();
+                String rawIp = item.optString("ip", "").trim();
+                String ip = rawIp.isEmpty() ? "" : normalizeReceiverAddress(rawIp);
                 if (!ip.isEmpty() && !containsReceiverIp(devices, ip)) {
                     devices.add(new SavedReceiverDevice(name.isEmpty() ? "شاشة " + (devices.size() + 1) : name, ip));
                 }
             }
         } catch (Exception ignored) { }
-        String selectedIp = prefs.getString("tv_ip", "").trim();
-        if (!selectedIp.isEmpty() && !containsReceiverIp(devices, selectedIp)) {
-            devices.add(0, new SavedReceiverDevice("الشاشة الحالية", selectedIp));
-            saveSavedReceiverDevices(devices);
+        String rawSelectedIp = prefs.getString("tv_ip", "").trim();
+        String selectedIp = rawSelectedIp.isEmpty() ? "" : normalizeReceiverAddress(rawSelectedIp);
+        if (!selectedIp.isEmpty()) {
+            if (!rawSelectedIp.equals(selectedIp)) prefs.edit().putString("tv_ip", selectedIp).apply();
+            if (!containsReceiverIp(devices, selectedIp)) {
+                devices.add(0, new SavedReceiverDevice("الشاشة الحالية", selectedIp));
+                saveSavedReceiverDevices(devices);
+            }
         }
         return devices;
     }
 
+    private String normalizeReceiverAddress(String address) {
+        String endpoint = buildReceiverHttpsEndpoint(address);
+        Uri parsed = Uri.parse(endpoint);
+        String host = parsed.getHost();
+        int port = parsed.getPort() > 0 ? parsed.getPort() : TARGET_PORT;
+        return (host != null && host.indexOf(':') >= 0 ? "[" + host + "]" : host) + ":" + port;
+    }
+    private String receiverAddressKey(String address) {
+        try { return Uri.parse(buildReceiverHttpsEndpoint(address)).getHost().toLowerCase(java.util.Locale.ROOT); }
+        catch (Exception ignored) { return address == null ? "" : address.trim().toLowerCase(java.util.Locale.ROOT); }
+    }
     private String getSavedReceiverName(String ip) {
         if (ip == null || ip.trim().isEmpty()) return "";
         for (SavedReceiverDevice device : loadSavedReceiverDevices()) {
@@ -2004,28 +2020,38 @@ private void showManualIpDialog() {
     }
 
     private boolean containsReceiverIp(List<SavedReceiverDevice> devices, String ip) {
+        String key = receiverAddressKey(ip);
         for (SavedReceiverDevice device : devices) {
-            if (device.ip.equalsIgnoreCase(ip)) return true;
+            if (receiverAddressKey(device.ip).equals(key)) return true;
         }
         return false;
     }
 
     private void saveSavedReceiverDevices(List<SavedReceiverDevice> devices) {
         org.json.JSONArray array = new org.json.JSONArray();
+        List<SavedReceiverDevice> unique = new ArrayList<>();
         try {
             for (SavedReceiverDevice device : devices) {
+                if (device == null || device.ip == null || device.ip.trim().isEmpty()) continue;
+                String canonical;
+                try { canonical = normalizeReceiverAddress(device.ip); } catch (Exception invalid) { continue; }
+                String key = receiverAddressKey(canonical);
+                boolean duplicate = false;
+                for (SavedReceiverDevice saved : unique) if (receiverAddressKey(saved.ip).equals(key)) { duplicate = true; break; }
+                if (!duplicate) unique.add(new SavedReceiverDevice(device.name, canonical));
+            }
+            for (SavedReceiverDevice device : unique) {
                 org.json.JSONObject item = new org.json.JSONObject();
-                item.put("name", device.name);
-                item.put("ip", device.ip);
-                array.put(item);
+                item.put("name", device.name); item.put("ip", device.ip); array.put(item);
             }
         } catch (Exception ignored) { }
         prefs.edit().putString(PREF_SAVED_RECEIVERS, array.toString()).apply();
     }
 
     private void selectSavedReceiver(SavedReceiverDevice device, AlertDialog dialog) {
-        prefs.edit().putString("tv_ip", device.ip).apply();
-        if (etTvIp != null) etTvIp.setText(device.ip);
+        String canonicalIp = normalizeReceiverAddress(device.ip);
+        prefs.edit().putString("tv_ip", canonicalIp).apply();
+        if (etTvIp != null) etTvIp.setText(canonicalIp);
         updateReceiverStatus();
         if (dialog != null) dialog.dismiss();
         if (hasSecureReceiverPairing()) {
@@ -2066,7 +2092,9 @@ private void showManualIpDialog() {
         }
     }
 
+    private AlertDialog savedReceiverDialog;
     private void showSavedReceiverDialog() {
+        if (savedReceiverDialog != null && savedReceiverDialog.isShowing()) savedReceiverDialog.dismiss();
         List<SavedReceiverDevice> devices = loadSavedReceiverDevices();
         final String activeIp = prefs.getString("tv_ip", "").trim();
         // Keep the currently selected receiver at the top; all other saved
@@ -2158,17 +2186,22 @@ private void showManualIpDialog() {
             actions.addView(delete);
             card.addView(actions);
             card.setOnClickListener(v -> selectSavedReceiver(device, dialogRef[0]));
-            edit.setOnClickListener(v -> showEditReceiverDialog(device));
-            delete.setOnClickListener(v -> new AlertDialog.Builder(this, R.style.ModernDialogTheme)
+            edit.setOnClickListener(v -> {
+                if (dialogRef[0] != null && dialogRef[0].isShowing()) dialogRef[0].dismiss();
+                showEditReceiverDialog(device);
+            });
+            delete.setOnClickListener(v -> {
+                if (dialogRef[0] != null && dialogRef[0].isShowing()) dialogRef[0].dismiss();
+                new AlertDialog.Builder(this, R.style.ModernDialogTheme)
                     .setTitle("حذف الجهاز؟")
                     .setMessage("سيتم حذف " + device.name + " من القائمة المحفوظة ومسح مفتاح الربط وبصمة الشهادة الخاصة به.")
                     .setNegativeButton("إلغاء", null)
                     .setPositiveButton("حذف", (d, w) -> {
                         List<SavedReceiverDevice> latest = loadSavedReceiverDevices();
-                        latest.removeIf(item -> item.ip.equalsIgnoreCase(device.ip));
+                        latest.removeIf(item -> receiverAddressKey(item.ip).equals(receiverAddressKey(device.ip)));
                         saveSavedReceiverDevices(latest);
                         String selectedIp = prefs.getString("tv_ip", "").trim();
-                        if (selectedIp.equalsIgnoreCase(device.ip)) {
+                        if (!selectedIp.isEmpty() && receiverAddressKey(selectedIp).equals(receiverAddressKey(device.ip))) {
                             prefs.edit().remove("tv_ip").apply();
                             if (etTvIp != null) etTvIp.setText("");
                             updateReceiverStatus();
@@ -2181,8 +2214,9 @@ private void showManualIpDialog() {
                                         .remove(PREF_RECEIVER_TLS_PIN + host).commit();
                             }
                         } catch (Exception ignored) { }
-                        showSavedReceiverDialog();
-                    }).show());
+                        new Handler(Looper.getMainLooper()).post(() -> showSavedReceiverDialog());
+                    }).show();
+            });
             list.addView(card, new LinearLayout.LayoutParams(-1, -2));
             View gap = new View(this);
             list.addView(gap, new LinearLayout.LayoutParams(1, 8));
@@ -2246,6 +2280,7 @@ private void showManualIpDialog() {
 
         AlertDialog dialog = new AlertDialog.Builder(this, R.style.ModernDialogTheme).setView(root)
                 .setNegativeButton("إغلاق", null).create();
+        savedReceiverDialog = dialog;
         dialogRef[0] = dialog;
         add.setOnClickListener(v -> {
             if (dialog.isShowing()) dialog.dismiss();
@@ -2269,7 +2304,7 @@ private void showManualIpDialog() {
             org.json.JSONArray array = new org.json.JSONArray(prefs.getString("multi_receiver_targets_json", "[]"));
             for (int i = 0; i < array.length(); i++) {
                 String ip = array.optString(i, "").trim();
-                if (!ip.isEmpty()) result.add(ip);
+                if (!ip.isEmpty()) result.add(receiverAddressKey(ip));
             }
         } catch (Exception ignored) { }
         return result;
@@ -2289,7 +2324,7 @@ private void showManualIpDialog() {
         String[] labels = new String[devices.size()];
         for (int i = 0; i < devices.size(); i++) {
             SavedReceiverDevice device = devices.get(i);
-            checked[i] = selected.contains(device.ip);
+            checked[i] = selected.contains(receiverAddressKey(device.ip));
             labels[i] = device.name + " — " + device.ip;
         }
         new AlertDialog.Builder(this, R.style.ModernDialogTheme)
@@ -2300,7 +2335,7 @@ private void showManualIpDialog() {
                     int pairedCount = 0;
                     for (int i = 0; i < devices.size(); i++) {
                         if (!checked[i]) continue;
-                        String ip = devices.get(i).ip;
+                        String ip = normalizeReceiverAddress(devices.get(i).ip);
                         array.put(ip);
                         if (isReceiverSecurelyPaired(ip)) pairedCount++;
                     }
@@ -2332,7 +2367,10 @@ private void showManualIpDialog() {
             return targets;
         }
         for (SavedReceiverDevice device : loadSavedReceiverDevices()) {
-            if (configured.contains(device.ip) && isReceiverSecurelyPaired(device.ip)) targets.add(device.ip);
+            if (configured.contains(receiverAddressKey(device.ip)) && isReceiverSecurelyPaired(device.ip)) {
+                String canonical = normalizeReceiverAddress(device.ip);
+                if (!targets.contains(canonical)) targets.add(canonical);
+            }
         }
         return targets;
     }
@@ -2357,7 +2395,10 @@ private void showManualIpDialog() {
                 .setNegativeButton("إلغاء", null)
                 .setPositiveButton("حفظ", (dialog, which) -> {
                     String deviceName = name.getText().toString().trim();
-                    String deviceIp = ip.getText().toString().trim();
+                    String rawDeviceIp = ip.getText().toString().trim();
+                    String deviceIp;
+                    try { deviceIp = normalizeReceiverAddress(rawDeviceIp); }
+                    catch (Exception invalid) { Toast.makeText(this, "عنوان IP أو المنفذ غير صحيح", Toast.LENGTH_LONG).show(); return; }
                     if (deviceIp.isEmpty()) {
                         Toast.makeText(this, "اكتب عنوان IP أولاً", Toast.LENGTH_SHORT).show();
                         return;
@@ -2366,29 +2407,29 @@ private void showManualIpDialog() {
                     List<SavedReceiverDevice> latest = loadSavedReceiverDevices();
                     if (existing != null) {
                         for (SavedReceiverDevice item : latest) {
-                            if (item.ip.equalsIgnoreCase(existing.ip)) {
+                            if (receiverAddressKey(item.ip).equals(receiverAddressKey(existing.ip))) {
                                 item.name = deviceName;
                                 item.ip = deviceIp;
                             }
                         }
-                        if (prefs.getString("tv_ip", "").trim().equalsIgnoreCase(existing.ip)) {
+                        if (receiverAddressKey(prefs.getString("tv_ip", "")).equals(receiverAddressKey(existing.ip))) {
                             prefs.edit().putString("tv_ip", deviceIp).apply();
                             if (etTvIp != null) etTvIp.setText(deviceIp);
                             updateReceiverStatus();
                         }
                     } else {
                         for (SavedReceiverDevice item : latest) {
-                            if (item.ip.equalsIgnoreCase(deviceIp)) {
+                            if (receiverAddressKey(item.ip).equals(receiverAddressKey(deviceIp))) {
                                 item.name = deviceName;
                                 saveSavedReceiverDevices(latest);
-                                showSavedReceiverDialog();
+                                new Handler(Looper.getMainLooper()).post(() -> showSavedReceiverDialog());
                                 return;
                             }
                         }
                         latest.add(new SavedReceiverDevice(deviceName, deviceIp));
                     }
                     saveSavedReceiverDevices(latest);
-                    showSavedReceiverDialog();
+                    new Handler(Looper.getMainLooper()).post(() -> showSavedReceiverDialog());
                 }).show();
     }
 
@@ -2829,8 +2870,8 @@ private void showManualIpDialog() {
     private void finishUrlTarget(int total, java.util.concurrent.atomic.AtomicInteger accepted,
                                  java.util.concurrent.atomic.AtomicInteger finished, boolean finishWhenDone) {
         if (finished.incrementAndGet() == total) runOnUiThread(() -> {
-            Toast.makeText(this, "تم إرسال الرابط إلى " + accepted.get() + " من " + total + " أجهزة",
-                    Toast.LENGTH_LONG).show();
+            if (total > 1) Toast.makeText(this, "تم إرسال الرابط إلى " + accepted.get() + " من " + total + " أجهزة", Toast.LENGTH_LONG).show();
+            else if (!finishWhenDone) Toast.makeText(this, accepted.get() == 1 ? "تم إرسال الرابط إلى الريسيفر" : "تعذر إرسال الرابط إلى الريسيفر", Toast.LENGTH_SHORT).show();
             if (finishWhenDone) finish();
         });
     }
@@ -3366,23 +3407,26 @@ private void showManualIpDialog() {
                 pinnedClient.newCall(req).enqueue(new Callback() {
                     @Override public void onFailure(Call call, IOException error) {
                         if (finished.incrementAndGet() == targets.size() && showToast) runOnUiThread(() ->
-                                Toast.makeText(MainActivity.this, "وصل المحتوى إلى " + accepted.get()
-                                        + " من " + targets.size() + " أجهزة؛ الأجهزة الأخرى لم تستجب.",
+                                Toast.makeText(MainActivity.this, targets.size() > 1
+                                        ? "وصل المحتوى إلى " + accepted.get() + " من " + targets.size() + " أجهزة؛ الأجهزة الأخرى لم تستجب."
+                                        : (accepted.get() == 0 ? "تعذر إرسال المحتوى إلى الريسيفر" : "تم إرسال المحتوى إلى الريسيفر"),
                                         Toast.LENGTH_LONG).show());
                     }
                     @Override public void onResponse(Call call, Response response) {
                         try { if (response.isSuccessful() && response.code() == 200) accepted.incrementAndGet(); }
                         finally { response.close(); }
                         if (finished.incrementAndGet() == targets.size() && showToast) runOnUiThread(() ->
-                                Toast.makeText(MainActivity.this, "وصل المحتوى إلى " + accepted.get()
-                                        + " من " + targets.size() + " أجهزة.",
+                                Toast.makeText(MainActivity.this, targets.size() > 1
+                                        ? "وصل المحتوى إلى " + accepted.get() + " من " + targets.size() + " أجهزة."
+                                        : (accepted.get() == 0 ? "تعذر إرسال المحتوى إلى الريسيفر" : "تم إرسال المحتوى إلى الريسيفر"),
                                         Toast.LENGTH_LONG).show());
                     }
                 });
             } catch (Exception error) {
                 if (finished.incrementAndGet() == targets.size() && showToast) runOnUiThread(() ->
-                        Toast.makeText(MainActivity.this, "وصل المحتوى إلى " + accepted.get()
-                                + " من " + targets.size() + " أجهزة؛ راجع الأجهزة غير المستجيبة.",
+                        Toast.makeText(MainActivity.this, targets.size() > 1
+                                ? "وصل المحتوى إلى " + accepted.get() + " من " + targets.size() + " أجهزة؛ راجع الأجهزة غير المستجيبة."
+                                : (accepted.get() == 0 ? "تعذر إرسال المحتوى إلى الريسيفر" : "تم إرسال المحتوى إلى الريسيفر"),
                                 Toast.LENGTH_LONG).show());
             }
         }
