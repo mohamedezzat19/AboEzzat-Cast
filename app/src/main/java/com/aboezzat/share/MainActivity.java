@@ -2193,6 +2193,16 @@ private void showManualIpDialog() {
         addBg.setCornerRadius(14);
         addBg.setStroke(1, 0xFF60A5FA);
         add.setBackground(addBg);
+        TextView multi = new TextView(this);
+        multi.setText("بث جماعي");
+        multi.setTextColor(0xFFFFE082);
+        multi.setGravity(Gravity.CENTER);
+        multi.setPadding(14, 12, 14, 12);
+        GradientDrawable multiBg = new GradientDrawable();
+        multiBg.setColor(0xFF3B2F16);
+        multiBg.setCornerRadius(14);
+        multiBg.setStroke(1, 0xFFFFC857);
+        multi.setBackground(multiBg);
         TextView scan = new TextView(this);
         scan.setText("⌕  بحث");
         scan.setTextColor(0xFFBFDBFE);
@@ -2206,6 +2216,7 @@ private void showManualIpDialog() {
         LinearLayout.LayoutParams addParams = new LinearLayout.LayoutParams(0, -2, 1f);
         addParams.setMargins(0, 0, dp(12), 0);
         footer.addView(add, addParams);
+        footer.addView(multi, new LinearLayout.LayoutParams(-2, -2));
         footer.addView(scan, new LinearLayout.LayoutParams(-2, -2));
         root.addView(footer);
 
@@ -2220,8 +2231,86 @@ private void showManualIpDialog() {
             if (dialog.isShowing()) dialog.dismiss();
             scanForTvDevices();
         });
+        multi.setOnClickListener(v -> {
+            if (dialog.isShowing()) dialog.dismiss();
+            showMultiReceiverSelection();
+        });
         dialog.show();
         dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
+    }
+
+    private Set<String> loadMultiReceiverTargets() {
+        Set<String> result = new HashSet<>();
+        try {
+            org.json.JSONArray array = new org.json.JSONArray(prefs.getString("multi_receiver_targets_json", "[]"));
+            for (int i = 0; i < array.length(); i++) {
+                String ip = array.optString(i, "").trim();
+                if (!ip.isEmpty()) result.add(ip);
+            }
+        } catch (Exception ignored) { }
+        return result;
+    }
+
+    private void showMultiReceiverSelection() {
+        List<SavedReceiverDevice> devices = loadSavedReceiverDevices();
+        if (devices.isEmpty()) {
+            Toast.makeText(this, "احفظ واربط جهاز ريسيفر واحد على الأقل أولاً", Toast.LENGTH_LONG).show();
+            showSavedReceiverDialog();
+            return;
+        }
+        Set<String> selected = loadMultiReceiverTargets();
+        String active = prefs.getString("tv_ip", "").trim();
+        if (selected.isEmpty() && !active.isEmpty()) selected.add(active);
+        boolean[] checked = new boolean[devices.size()];
+        String[] labels = new String[devices.size()];
+        for (int i = 0; i < devices.size(); i++) {
+            SavedReceiverDevice device = devices.get(i);
+            checked[i] = selected.contains(device.ip);
+            labels[i] = device.name + " — " + device.ip;
+        }
+        new AlertDialog.Builder(this, R.style.ModernDialogTheme)
+                .setTitle("اختيار أجهزة البث الجماعي")
+                .setMultiChoiceItems(labels, checked, (dialog, which, isChecked) -> checked[which] = isChecked)
+                .setPositiveButton("حفظ الاختيار", (dialog, which) -> {
+                    org.json.JSONArray array = new org.json.JSONArray();
+                    int pairedCount = 0;
+                    for (int i = 0; i < devices.size(); i++) {
+                        if (!checked[i]) continue;
+                        String ip = devices.get(i).ip;
+                        array.put(ip);
+                        if (isReceiverSecurelyPaired(ip)) pairedCount++;
+                    }
+                    prefs.edit().putString("multi_receiver_targets_json", array.toString()).apply();
+                    Toast.makeText(this, "تم اختيار " + array.length() + " جهاز؛ المربوط منها بأمان: " + pairedCount,
+                            Toast.LENGTH_LONG).show();
+                })
+                .setNeutralButton("إلغاء البث الجماعي", (dialog, which) ->
+                        prefs.edit().remove("multi_receiver_targets_json").apply())
+                .setNegativeButton("إلغاء", null).show();
+    }
+
+    private boolean isReceiverSecurelyPaired(String address) {
+        try {
+            String endpoint = buildReceiverHttpsEndpoint(address);
+            String host = Uri.parse(endpoint).getHost();
+            String pin = prefs.getString(PREF_RECEIVER_TLS_PIN + host, "");
+            String secret = decryptReceiverSecret(prefs.getString(PREF_RECEIVER_SECRET + host, ""));
+            return host != null && isValidReceiverFingerprint(pin) && secret != null && secret.length() >= 40;
+        } catch (Exception ignored) { return false; }
+    }
+
+    private List<String> getPlaybackReceiverTargets() {
+        Set<String> configured = loadMultiReceiverTargets();
+        List<String> targets = new ArrayList<>();
+        if (configured.isEmpty()) {
+            String active = prefs.getString("tv_ip", "").trim();
+            if (!active.isEmpty()) targets.add(active);
+            return targets;
+        }
+        for (SavedReceiverDevice device : loadSavedReceiverDevices()) {
+            if (configured.contains(device.ip) && isReceiverSecurelyPaired(device.ip)) targets.add(device.ip);
+        }
+        return targets;
     }
 
     private void showEditReceiverDialog(SavedReceiverDevice existing) {
@@ -3220,100 +3309,88 @@ private void showManualIpDialog() {
     }
 
     private void castLocalMediaToTv(boolean showToast) {
-        String tvIp = prefs.getString("tv_ip", "").trim();
-        if (tvIp.isEmpty()) return;
-        if (!hasSecureReceiverPairing()) {
-            if (showToast) showPairingRequiredMessage();
+        List<String> targets = getPlaybackReceiverTargets();
+        if (targets.isEmpty()) {
+            if (showToast) Toast.makeText(this, "مفيش أجهزة محددة ومربوطة بأمان للبث. راجع اختيار البث الجماعي.", Toast.LENGTH_LONG).show();
             return;
         }
         String phoneIp = getDeviceIpAddress();
         if (phoneIp.isEmpty() || phoneIp.equals("0.0.0.0")) return;
         if (!CastKeepAliveService.isLocalServerReady()) {
-            if (showToast) Toast.makeText(this,
-                    "خادم بث الملفات لم يصبح جاهزًا بعد؛ انتظر لحظة ثم أعد الإرسال.",
-                    Toast.LENGTH_LONG).show();
+            if (showToast) Toast.makeText(this, "خادم بث الملفات لم يصبح جاهزًا بعد؛ انتظر لحظة ثم أعد الإرسال.", Toast.LENGTH_LONG).show();
             return;
         }
-
         String mime = selectedMediaUri == null ? null : getContentResolver().getType(selectedMediaUri);
         String mediaToken = CastKeepAliveService.getMediaAccessToken();
         if (mediaToken == null || !mediaToken.matches("[A-Za-z0-9_-]{43}")) {
-            if (showToast) Toast.makeText(this,
-                    "تعذر تجهيز رابط الوسائط المحمي؛ أعد اختيار الملف.",
-                    Toast.LENGTH_LONG).show();
+            if (showToast) Toast.makeText(this, "تعذر تجهيز رابط الوسائط المحمي؛ أعد اختيار الملف.", Toast.LENGTH_LONG).show();
             return;
         }
         String mediaPath = getLocalMediaRoutePath(selectedMediaUri, mime);
         final String mediaTlsPin;
-        try {
-            mediaTlsPin = CastTlsIdentity.getCertificateFingerprint();
-        } catch (Exception tlsIdentityError) {
-            Toast.makeText(this, "تعذر تجهيز شهادة تشفير الوسائط؛ أعد تشغيل التطبيق.",
-                    Toast.LENGTH_LONG).show();
+        try { mediaTlsPin = CastTlsIdentity.getCertificateFingerprint(); }
+        catch (Exception error) {
+            Toast.makeText(this, "تعذر تجهيز شهادة تشفير الوسائط؛ أعد تشغيل التطبيق.", Toast.LENGTH_LONG).show();
             return;
         }
         if (mediaTlsPin == null || !mediaTlsPin.matches("[A-Za-z0-9_-]{43}")) {
             Toast.makeText(this, "بصمة شهادة الوسائط غير صالحة.", Toast.LENGTH_LONG).show();
             return;
         }
-        String targetUrl = "https://" + phoneIp + ":8088" + mediaPath
-                + "?token=" + mediaToken;
-        try {
-            String endpoint = buildReceiverHttpsEndpoint(tvIp);
-            String receiverHost = Uri.parse(endpoint).getHost();
-            OkHttpClient pinnedClient = getPinnedReceiverClient(receiverHost);
-            String fullUrl = endpoint + "/?url=" + URLEncoder.encode(targetUrl, "UTF-8")
-                    + "&mediaPin=" + mediaTlsPin;
-            Request req = new Request.Builder().url(fullUrl).get().build();
-            pinnedClient.newCall(req).enqueue(new Callback() {
-                @Override public void onFailure(Call call, IOException error) {
-                    if (showToast) runOnUiThread(() -> Toast.makeText(
-                            MainActivity.this, "فشل الاتصال بالريسيفر: " + error.getClass().getSimpleName(),
-                            Toast.LENGTH_LONG).show());
-                }
-                @Override public void onResponse(Call call, Response response) {
-                    int code = response.code();
-                    String body = "";
-                    try { if (response.body() != null) body = response.body().string(); }
-                    catch (IOException ignored) { }
-                    finally { response.close(); }
-                    if (!showToast) return;
-                    final boolean accepted = response.isSuccessful() && code == 200;
-                    final String detail = body;
-                    runOnUiThread(() -> Toast.makeText(MainActivity.this,
-                            accepted ? "✅ استلم الريسيفر طلب تشغيل الملف"
-                                    : "الريسيفر رفض طلب التشغيل (HTTP " + code + ") "
-                                            + (detail.isEmpty() ? "" : detail),
-                            Toast.LENGTH_LONG).show());
-                }
-            });
-        } catch (Exception error) {
-            if (showToast) Toast.makeText(this, "تعذر تجهيز اتصال الريسيفر",
-                    Toast.LENGTH_LONG).show();
+        String targetUrl = "https://" + phoneIp + ":8088" + mediaPath + "?token=" + mediaToken;
+        java.util.concurrent.atomic.AtomicInteger accepted = new java.util.concurrent.atomic.AtomicInteger();
+        java.util.concurrent.atomic.AtomicInteger finished = new java.util.concurrent.atomic.AtomicInteger();
+        for (String tvIp : targets) {
+            try {
+                String endpoint = buildReceiverHttpsEndpoint(tvIp);
+                String receiverHost = Uri.parse(endpoint).getHost();
+                OkHttpClient pinnedClient = getPinnedReceiverClient(receiverHost);
+                String fullUrl = endpoint + "/?url=" + URLEncoder.encode(targetUrl, "UTF-8")
+                        + "&mediaPin=" + mediaTlsPin;
+                Request req = new Request.Builder().url(fullUrl).get().build();
+                pinnedClient.newCall(req).enqueue(new Callback() {
+                    @Override public void onFailure(Call call, IOException error) {
+                        if (finished.incrementAndGet() == targets.size() && showToast) runOnUiThread(() ->
+                                Toast.makeText(MainActivity.this, "وصل المحتوى إلى " + accepted.get()
+                                        + " من " + targets.size() + " أجهزة؛ الأجهزة الأخرى لم تستجب.",
+                                        Toast.LENGTH_LONG).show());
+                    }
+                    @Override public void onResponse(Call call, Response response) {
+                        try { if (response.isSuccessful() && response.code() == 200) accepted.incrementAndGet(); }
+                        finally { response.close(); }
+                        if (finished.incrementAndGet() == targets.size() && showToast) runOnUiThread(() ->
+                                Toast.makeText(MainActivity.this, "وصل المحتوى إلى " + accepted.get()
+                                        + " من " + targets.size() + " أجهزة.",
+                                        Toast.LENGTH_LONG).show());
+                    }
+                });
+            } catch (Exception error) {
+                if (finished.incrementAndGet() == targets.size() && showToast) runOnUiThread(() ->
+                        Toast.makeText(MainActivity.this, "وصل المحتوى إلى " + accepted.get()
+                                + " من " + targets.size() + " أجهزة؛ راجع الأجهزة غير المستجيبة.",
+                                Toast.LENGTH_LONG).show());
+            }
         }
     }
 
     private void sendRemoteCommand(String cmd) {
-        String tvIp = prefs.getString("tv_ip", "").trim();
-        if (tvIp.isEmpty()) return;
-        if (!hasSecureReceiverPairing()) {
+        List<String> targets = getPlaybackReceiverTargets();
+        if (targets.isEmpty()) {
             showPairingRequiredMessage();
             return;
         }
-
-        try {
-            String endpoint = buildReceiverHttpsEndpoint(tvIp);
-            String receiverHost = Uri.parse(endpoint).getHost();
-            OkHttpClient pinnedClient = getPinnedReceiverClient(receiverHost);
-            String fullUrl = endpoint + "/?command=" + cmd;
-            Request req = new Request.Builder().url(fullUrl).build();
-            pinnedClient.newCall(req).enqueue(new Callback() {
-                @Override
-                public void onFailure(Call call, IOException e) {}
-                @Override
-                public void onResponse(Call call, Response response) {}
-            });
-        } catch (Exception ignored) {}
+        for (String tvIp : targets) {
+            try {
+                String endpoint = buildReceiverHttpsEndpoint(tvIp);
+                String receiverHost = Uri.parse(endpoint).getHost();
+                OkHttpClient pinnedClient = getPinnedReceiverClient(receiverHost);
+                Request req = new Request.Builder().url(endpoint + "/?command=" + Uri.encode(cmd)).build();
+                pinnedClient.newCall(req).enqueue(new Callback() {
+                    @Override public void onFailure(Call call, IOException error) { }
+                    @Override public void onResponse(Call call, Response response) { response.close(); }
+                });
+            } catch (Exception ignored) { }
+        }
     }
 
     private void setSelectedMediaUri(Uri uri) {
