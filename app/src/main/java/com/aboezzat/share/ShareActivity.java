@@ -1207,14 +1207,9 @@ public class ShareActivity extends Activity {
         targetTvIp = selectedReceiverIp;
         tvIp = selectedReceiverIp;
         try {
-            if (!tvIp.startsWith("http://") && !tvIp.startsWith("https://")) {
-                tvIp = "http://" + tvIp;
-            }
-            if (!tvIp.contains(":" + TARGET_PORT)) {
-                tvIp = tvIp + ":" + TARGET_PORT;
-            }
-
-            final String receiverEndpoint = tvIp;
+            final String receiverEndpoint = ReceiverApiClient.buildEndpoint(tvIp);
+            String receiverHost = Uri.parse(receiverEndpoint).getHost();
+            OkHttpClient receiverClient = ReceiverApiClient.create(this, receiverHost);
             Request request;
             if (!isQueue) {
                 JSONObject payload = new JSONObject();
