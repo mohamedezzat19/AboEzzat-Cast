@@ -2193,7 +2193,8 @@ private void showManualIpDialog() {
                 new AlertDialog.Builder(this, R.style.ModernDialogTheme)
                     .setTitle("حذف الجهاز؟")
                     .setMessage("سيتم حذف " + device.name + " من القائمة المحفوظة ومسح مفتاح الربط وبصمة الشهادة الخاصة به.")
-                    .setNegativeButton("إلغاء", null)
+                    .setNegativeButton("رجوع للقائمة", (d, w) ->
+                            new Handler(Looper.getMainLooper()).post(() -> showSavedReceiverDialog()))
                     .setPositiveButton("حذف", (d, w) -> {
                         List<SavedReceiverDevice> latest = loadSavedReceiverDevices();
                         latest.removeIf(item -> receiverAddressKey(item.ip).equals(receiverAddressKey(device.ip)));
