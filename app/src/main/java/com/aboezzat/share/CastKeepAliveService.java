@@ -247,7 +247,7 @@ public class CastKeepAliveService extends Service {
 
         @Override public Response serve(IHTTPSession session) {
             String requestPath = session.getUri();
-            if (!"/media.mp4".equals(requestPath) && !"/media.jpg".equals(requestPath)) {
+            if (!requestPath.matches("/media\\.(jpg|mp4|m4v|mkv|webm|mov|avi|flv|mpg|mpeg|3gp|ogv|wmv|vob|ts|m2ts|mp3|m4a|aac|ogg|oga|opus|wav|flac|mid|midi)")) {
                 return newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "Not found");
             }
             String suppliedToken = session.getParms().get("token");
