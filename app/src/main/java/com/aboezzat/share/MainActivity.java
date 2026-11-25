@@ -15,6 +15,7 @@ import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.view.Gravity;
 import android.widget.LinearLayout;
+import android.widget.ImageView;
 import android.widget.ScrollView;
 import android.net.Uri;
 import android.net.wifi.WifiManager;
@@ -1832,7 +1833,8 @@ private void showManualIpDialog() {
                         Toast.makeText(this, "أدخل كودًا صحيحًا من 8 أرقام", Toast.LENGTH_LONG).show();
                         return;
                     }
-                    performReceiverPairing(endpoint, pairedHost, existingPin, code);
+                    performReceiverPairing(endpoint, pairedHost, existingPin, code,
+                            getSavedReceiverName(pairedHost).isEmpty() ? "الريسيفر" : getSavedReceiverName(pairedHost));
                 })
                 .setNegativeButton("إلغاء", null)
                 .show();
