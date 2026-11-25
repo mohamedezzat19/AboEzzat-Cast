@@ -70,6 +70,8 @@ import okhttp3.EventListener;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 public class MainActivity extends Activity {
 
@@ -80,6 +82,8 @@ public class MainActivity extends Activity {
     private static final int PICK_SLIDESHOW_REQUEST = 102;
     private static final int VOICE_SEARCH_REQUEST = 103;
     private static final int PICK_RECEIVER_QR_IMAGE_REQUEST = 104;
+    private static final int PICK_NAMED_PLAYLIST_ITEMS_REQUEST = 105;
+    private String activeNamedPlaylist = null;
 
     private static final String PREF_SAVED_RECEIVERS = "saved_receivers_json";
     private static class SavedReceiverDevice {
@@ -1201,10 +1205,70 @@ public class MainActivity extends Activity {
                 .setView(scroll).setNegativeButton("إغلاق", null).show();
     }
 
+
+    private JSONObject loadNamedPlaylists() {
+        try {
+            String raw = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE | MODE_MULTI_PROCESS)
+                    .getString("named_media_playlists_v1", "{}");
+            return new JSONObject(raw == null ? "{}" : raw);
+        } catch (Exception ignored) { return new JSONObject(); }
+    }
+
+    private void saveNamedPlaylists(JSONObject playlists) {
+        getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE | MODE_MULTI_PROCESS)
+                .edit().putString("named_media_playlists_v1", playlists.toString()).apply();
+    }
+
     private void showPlaylistDialog() {
+        JSONObject playlists = loadNamedPlaylists();
+        List<String> names = new ArrayList<>();
+        java.util.Iterator<String> keys = playlists.keys();
+        while (keys.hasNext()) names.add(keys.next());
+        java.util.Collections.sort(names, String.CASE_INSENSITIVE_ORDER);
+        List<String> choices = new ArrayList<>(names);
+        choices.add("＋ إنشاء قائمة جديدة");
+        choices.add("إدارة قائمة التشغيل الحالية القديمة");
+        String[] labels = choices.toArray(new String[0]);
+        new AlertDialog.Builder(this, R.style.ModernDialogTheme)
+                .setTitle("قوائم التشغيل المحفوظة")
+                .setItems(labels, (d, which) -> {
+                    if (which == names.size()) {
+                        EditText input = new EditText(this);
+                        input.setSingleLine(true);
+                        input.setHint("اسم القائمة");
+                        new AlertDialog.Builder(this, R.style.ModernDialogTheme)
+                                .setTitle("إنشاء قائمة تشغيل")
+                                .setView(input)
+                                .setPositiveButton("إنشاء", (x, w) -> {
+                                    String name = input.getText().toString().trim();
+                                    if (name.isEmpty()) {
+                                        Toast.makeText(this, "اكتب اسم القائمة أولًا", Toast.LENGTH_SHORT).show();
+                                        return;
+                                    }
+                                    JSONObject saved = loadNamedPlaylists();
+                                    if (saved.has(name)) {
+                                        Toast.makeText(this, "اسم القائمة موجود بالفعل", Toast.LENGTH_SHORT).show();
+                                        return;
+                                    }
+                                    saved.put(name, new JSONArray());
+                                    saveNamedPlaylists(saved);
+                                    activeNamedPlaylist = name;
+                                    showNamedPlaylistDialog(name);
+                                })
+                                .setNegativeButton("إلغاء", null).show();
+                    } else if (which == names.size() + 1) {
+                        showLegacyPlaylistDialog();
+                    } else if (which >= 0 && which < names.size()) {
+                        activeNamedPlaylist = names.get(which);
+                        showNamedPlaylistDialog(activeNamedPlaylist);
+                    }
+                })
+                .setNegativeButton("إغلاق", null).show();
+    }
+
+    private void showLegacyPlaylistDialog() {
         LinearLayout panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
-        panel.setPadding(dp(12), dp(8), dp(12), dp(8));
         android.widget.ScrollView scroll = new android.widget.ScrollView(this);
         LinearLayout rows = new LinearLayout(this);
         rows.setOrientation(LinearLayout.VERTICAL);
@@ -1218,34 +1282,140 @@ public class MainActivity extends Activity {
                 castLocalMediaToTv(true);
             }, () -> {
                 videoQueue.remove(index);
-                if (videoQueue.isEmpty()) currentVideoIndex = 0;
-                else currentVideoIndex = Math.min(currentVideoIndex, videoQueue.size() - 1);
+                currentVideoIndex = Math.min(currentVideoIndex, Math.max(0, videoQueue.size() - 1));
                 persistMediaQueues();
-                showPlaylistDialog();
+                showLegacyPlaylistDialog();
             }));
         }
-        if (videoQueue.isEmpty()) {
-            TextView empty = new TextView(this);
-            empty.setText("قائمة التشغيل فارغة.");
-            empty.setTextColor(Color.WHITE);
+        panel.addView(scroll, new LinearLayout.LayoutParams(-1, dp(300)));
+        new AlertDialog.Builder(this, R.style.ModernDialogTheme).setTitle("القائمة القديمة")
+                .setView(panel).setPositiveButton("إضافة فيديوهات", (d,w) -> openMediaPicker(false))
+                .setNeutralButton("مسح", (d,w) -> {
+                    videoQueue.clear(); currentVideoIndex = 0; persistMediaQueues();
+                    Toast.makeText(this, "تم مسح القائمة القديمة", Toast.LENGTH_SHORT).show();
+                }).setNegativeButton("رجوع", (d,w) -> showPlaylistDialog()).show();
+    }
+
+    private void showNamedPlaylistDialog(String name) {
+        JSONObject all = loadNamedPlaylists();
+        JSONArray items = all.optJSONArray(name);
+        if (items == null) items = new JSONArray();
+        final JSONArray playlistItems = items;
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(dp(10), dp(8), dp(10), dp(8));
+        android.widget.ScrollView scroll = new android.widget.ScrollView(this);
+        LinearLayout rows = new LinearLayout(this);
+        rows.setOrientation(LinearLayout.VERTICAL);
+        scroll.addView(rows);
+        for (int i = 0; i < playlistItems.length(); i++) {
+            JSONObject item = playlistItems.optJSONObject(i);
+            if (item == null) continue;
+            final int index = i;
+            Uri uri = Uri.parse(item.optString("uri", ""));
+            String title = item.optString("name", getMediaDisplayName(uri, i));
+            LinearLayout row = new LinearLayout(this);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setPadding(dp(6), dp(6), dp(6), dp(6));
+            TextView label = new TextView(this);
+            label.setText((i + 1) + ". " + title + "\n" + item.optString("mime", "وسائط"));
+            label.setTextColor(Color.WHITE);
+            label.setTextSize(13);
+            row.addView(label, new LinearLayout.LayoutParams(0, -2, 1f));
+            TextView up = new TextView(this); up.setText("↑"); up.setTextColor(Color.WHITE); up.setPadding(dp(8),dp(8),dp(8),dp(8));
+            TextView down = new TextView(this); down.setText("↓"); down.setTextColor(Color.WHITE); down.setPadding(dp(8),dp(8),dp(8),dp(8));
+            TextView remove = new TextView(this); remove.setText("حذف"); remove.setTextColor(0xFFFFB4AB); remove.setPadding(dp(8),dp(8),dp(8),dp(8));
+            row.addView(up); row.addView(down); row.addView(remove);
+            row.setOnClickListener(v -> {
+                setSelectedMediaUri(uri);
+                castLocalMediaToTv(true);
+            });
+            up.setOnClickListener(v -> moveNamedPlaylistItem(name, index, -1));
+            down.setOnClickListener(v -> moveNamedPlaylistItem(name, index, 1));
+            remove.setOnClickListener(v -> removeNamedPlaylistItem(name, index));
+            rows.addView(row);
+            View divider = new View(this); divider.setBackgroundColor(0xFF374151);
+            rows.addView(divider, new LinearLayout.LayoutParams(-1, dp(1)));
+        }
+        if (playlistItems.length() == 0) {
+            TextView empty = new TextView(this); empty.setText("القائمة فارغة. أضف صورًا أو فيديوهات أو ملفات صوتية."); empty.setTextColor(Color.LTGRAY);
             rows.addView(empty);
         }
         panel.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1f));
-        AlertDialog dialog = new AlertDialog.Builder(this, R.style.ModernDialogTheme)
-                .setTitle("قائمة التشغيل (" + videoQueue.size() + ")")
+        new AlertDialog.Builder(this, R.style.ModernDialogTheme).setTitle(name + " (" + playlistItems.length() + ")")
                 .setView(panel)
-                .setPositiveButton("إضافة فيديوهات", (d, w) -> openMediaPicker(false))
-                .setNeutralButton("مسح القائمة", (d, w) -> new AlertDialog.Builder(this, R.style.ModernDialogTheme)
-                        .setTitle("مسح قائمة التشغيل؟")
-                        .setMessage("هيتم حذف عناصر القائمة فقط، من غير حذف الملفات الأصلية من الهاتف.")
-                        .setPositiveButton("مسح", (confirm, which) -> {
-                            videoQueue.clear();
-                            currentVideoIndex = 0;
-                            persistMediaQueues();
-                            Toast.makeText(this, "تم مسح قائمة التشغيل", Toast.LENGTH_SHORT).show();
+                .setPositiveButton("إضافة وسائط", (d,w) -> openNamedPlaylistPicker(name))
+                .setNeutralButton("مسح القائمة", (d,w) -> new AlertDialog.Builder(this, R.style.ModernDialogTheme)
+                        .setTitle("مسح القائمة؟").setMessage("سيتم حذف عناصر القائمة فقط دون حذف الملفات الأصلية.")
+                        .setPositiveButton("مسح", (x,y) -> {
+                            JSONObject saved = loadNamedPlaylists(); saved.put(name, new JSONArray()); saveNamedPlaylists(saved);
+                            showNamedPlaylistDialog(name);
                         }).setNegativeButton("إلغاء", null).show())
-                .setNegativeButton("إغلاق", null).create();
-        dialog.show();
+                .setNegativeButton("القوائم", (d,w) -> showPlaylistDialog()).show();
+    }
+
+    private void openNamedPlaylistPicker(String name) {
+        activeNamedPlaylist = name;
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("*/*");
+        intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"image/*", "video/*", "audio/*"});
+        intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+        startActivityForResult(intent, PICK_NAMED_PLAYLIST_ITEMS_REQUEST);
+    }
+
+    private void appendNamedPlaylistItems(String name, Intent data) {
+        JSONObject all = loadNamedPlaylists();
+        JSONArray items = all.optJSONArray(name);
+        if (items == null) items = new JSONArray();
+        List<Uri> picked = new ArrayList<>();
+        ClipData clips = data.getClipData();
+        if (clips != null) {
+            for (int i = 0; i < clips.getItemCount(); i++) picked.add(clips.getItemAt(i).getUri());
+        } else if (data.getData() != null) picked.add(data.getData());
+        for (Uri uri : picked) {
+            if (uri == null) continue;
+            takePermissions(uri);
+            String mime = getContentResolver().getType(uri);
+            if (mime == null) mime = "application/octet-stream";
+            JSONObject entry = new JSONObject();
+            try {
+                entry.put("uri", uri.toString());
+                entry.put("mime", mime);
+                entry.put("name", getMediaDisplayName(uri, items.length()));
+                items.put(entry);
+                addRecentMedia(uri);
+            } catch (Exception ignored) {}
+        }
+        all.put(name, items);
+        saveNamedPlaylists(all);
+        Toast.makeText(this, "تمت إضافة " + picked.size() + " عنصر إلى " + name, Toast.LENGTH_SHORT).show();
+        showNamedPlaylistDialog(name);
+    }
+
+    private void moveNamedPlaylistItem(String name, int index, int delta) {
+        JSONObject all = loadNamedPlaylists();
+        JSONArray old = all.optJSONArray(name);
+        if (old == null) return;
+        int target = index + delta;
+        if (target < 0 || target >= old.length()) return;
+        JSONArray updated = new JSONArray();
+        for (int i = 0; i < old.length(); i++) {
+            if (i == index) updated.put(old.opt(target));
+            else if (i == target) updated.put(old.opt(index));
+            else updated.put(old.opt(i));
+        }
+        all.put(name, updated); saveNamedPlaylists(all); showNamedPlaylistDialog(name);
+    }
+
+    private void removeNamedPlaylistItem(String name, int index) {
+        JSONObject all = loadNamedPlaylists();
+        JSONArray old = all.optJSONArray(name);
+        if (old == null) return;
+        JSONArray updated = new JSONArray();
+        for (int i = 0; i < old.length(); i++) if (i != index) updated.put(old.opt(i));
+        all.put(name, updated); saveNamedPlaylists(all); showNamedPlaylistDialog(name);
     }
 
     private LinearLayout createMediaQueueRow(Uri uri, String title, Runnable onClick, Runnable onRemove) {
@@ -3202,6 +3372,12 @@ private void showManualIpDialog() {
                     etHomeSearch.setText(voiceResults.get(0));
                     etHomeSearch.setSelection(etHomeSearch.getText().length());
                 }
+            }
+            return;
+        }
+        if (requestCode == PICK_NAMED_PLAYLIST_ITEMS_REQUEST) {
+            if (resultCode == RESULT_OK && data != null && activeNamedPlaylist != null) {
+                appendNamedPlaylistItems(activeNamedPlaylist, data);
             }
             return;
         }
