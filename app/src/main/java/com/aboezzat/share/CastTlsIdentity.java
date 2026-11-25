@@ -17,7 +17,8 @@ import javax.security.auth.x500.X500Principal;
 
 /** Per-install TLS identity for the local media server. */
 public final class CastTlsIdentity {
-    private static final String KEY_ALIAS = "AboEzzatCast.MediaTlsIdentity.v1";
+    private static final String KEY_ALIAS = "AboEzzatCast.MediaTlsIdentity.v2";
+    // Keep v1 installed for rollback; v2 is generated with TLS-compatible digest authorization.
     private static final String KEYSTORE_PROVIDER = "AndroidKeyStore";
     private CastTlsIdentity() { }
 
@@ -29,7 +30,7 @@ public final class CastTlsIdentity {
             KeyPairGenerator generator = KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_RSA, KEYSTORE_PROVIDER);
             KeyGenParameterSpec spec = new KeyGenParameterSpec.Builder(KEY_ALIAS, KeyProperties.PURPOSE_SIGN)
                     .setKeySize(2048)
-                    .setDigests(KeyProperties.DIGEST_SHA256)
+                    .setDigests(KeyProperties.DIGEST_NONE, KeyProperties.DIGEST_SHA256)
                     .setSignaturePaddings(KeyProperties.SIGNATURE_PADDING_RSA_PKCS1, KeyProperties.SIGNATURE_PADDING_RSA_PSS)
                     .setCertificateSubject(new X500Principal("CN=AboEzzat Cast Media"))
                     .setCertificateSerialNumber(BigInteger.valueOf(now))
