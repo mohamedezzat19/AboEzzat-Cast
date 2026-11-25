@@ -2919,8 +2919,14 @@ private void showManualIpDialog() {
         }
         String phoneIp = getDeviceIpAddress();
         if (phoneIp.isEmpty() || phoneIp.equals("0.0.0.0")) return;
+        if (!CastKeepAliveService.isLocalServerReady()) {
+            if (showToast) Toast.makeText(this,
+                    "خادم بث الملفات لم يصبح جاهزًا بعد؛ انتظر لحظة ثم أعد الإرسال.",
+                    Toast.LENGTH_LONG).show();
+            return;
+        }
 
-        String mime = getContentResolver().getType(selectedMediaUri);
+        String mime = selectedMediaUri == null ? null : getContentResolver().getType(selectedMediaUri);
         String mediaToken = CastKeepAliveService.getMediaAccessToken();
         if (mediaToken == null || !mediaToken.matches("[A-Za-z0-9_-]{43}")) {
             if (showToast) Toast.makeText(this,
@@ -2951,27 +2957,32 @@ private void showManualIpDialog() {
             String fullUrl = endpoint + "/?url=" + URLEncoder.encode(targetUrl, "UTF-8")
                     + "&mediaPin=" + mediaTlsPin;
             Request req = new Request.Builder().url(fullUrl).get().build();
-            AtomicBoolean requestHeadersSent = new AtomicBoolean(false);
-            OkHttpClient trackedClient = pinnedClient.newBuilder()
-                    .eventListener(new EventListener() {
-                        @Override
-                        public void requestHeadersEnd(Call call, Request request) {
-                            requestHeadersSent.set(true);
-                        }
-                    }).build();
-            trackedClient.newCall(req).enqueue(new Callback() {
-                private void finishSend() {
-                    if (!showToast || !requestHeadersSent.get()) return;
-                    runOnUiThread(() -> Toast.makeText(
-                            MainActivity.this, "✅ تم الإرسال", Toast.LENGTH_SHORT).show());
+            pinnedClient.newCall(req).enqueue(new Callback() {
+                @Override public void onFailure(Call call, IOException error) {
+                    if (showToast) runOnUiThread(() -> Toast.makeText(
+                            MainActivity.this, "فشل الاتصال بالريسيفر: " + error.getClass().getSimpleName(),
+                            Toast.LENGTH_LONG).show());
                 }
-                @Override public void onFailure(Call call, IOException error) { finishSend(); }
                 @Override public void onResponse(Call call, Response response) {
-                    response.close();
-                    finishSend();
+                    int code = response.code();
+                    String body = "";
+                    try { if (response.body() != null) body = response.body().string(); }
+                    catch (IOException ignored) { }
+                    finally { response.close(); }
+                    if (!showToast) return;
+                    final boolean accepted = response.isSuccessful() && code == 200;
+                    final String detail = body;
+                    runOnUiThread(() -> Toast.makeText(MainActivity.this,
+                            accepted ? "✅ استلم الريسيفر طلب تشغيل الملف"
+                                    : "الريسيفر رفض طلب التشغيل (HTTP " + code + ") "
+                                            + (detail.isEmpty() ? "" : detail),
+                            Toast.LENGTH_LONG).show());
                 }
             });
-        } catch (Exception ignored) { }
+        } catch (Exception error) {
+            if (showToast) Toast.makeText(this, "تعذر تجهيز اتصال الريسيفر",
+                    Toast.LENGTH_LONG).show();
+        }
     }
 
     private void sendRemoteCommand(String cmd) {
