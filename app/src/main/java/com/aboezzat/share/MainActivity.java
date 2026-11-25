@@ -2216,6 +2216,7 @@ private void showManualIpDialog() {
         }
 
         if (handleClipboardCastShortcut(intent)) return;
+        if (handleWebVideoCasterCaptureShortcut(intent)) return;
         if (handleIncomingShareIntent(intent)) return;
 
         if (intent != null && intent.getBooleanExtra("open_media_picker", false)) {
@@ -2461,32 +2462,46 @@ private void showManualIpDialog() {
             OkHttpClient pinnedClient = getPinnedReceiverClient(receiverHost);
             String fullUrl = endpoint + "/?url=" + URLEncoder.encode(mediaUrl, "UTF-8") + "&open=browser";
             Request req = new Request.Builder().url(fullUrl).build();
-            AtomicBoolean requestHeadersSent = new AtomicBoolean(false);
-            OkHttpClient trackedClient = pinnedClient.newBuilder()
-                    .eventListener(new EventListener() {
-                        @Override
-                        public void requestHeadersEnd(Call call, Request request) {
-                            requestHeadersSent.set(true);
-                        }
-                    }).build();
-            trackedClient.newCall(req).enqueue(new Callback() {
-                private void finishSend() {
-                    runOnUiThread(() -> {
-                        if (requestHeadersSent.get()) {
-                            Toast.makeText(MainActivity.this, "✅ تم الإرسال", Toast.LENGTH_SHORT).show();
-                        }
-                        finish();
-                    });
-                }
-                @Override public void onFailure(Call call, IOException error) { finishSend(); }
-                @Override public void onResponse(Call call, Response response) {
-                    response.close();
-                    finishSend();
-                }
-            });
-        } catch (Exception ignored) {
-            if (clipboardShortcutLaunch) finish();
+            trackedClientForUrlSend(pinnedClient, req, mediaUrl);
+        } catch (Exception error) {
+            Toast.makeText(this, "تعذر تجهيز إرسال الرابط إلى الريسيفر",
+                    Toast.LENGTH_LONG).show();
+            if (clipboardShortcutLaunch || webVideoCasterCaptureLaunch) finish();
         }
+    }
+
+    private void trackedClientForUrlSend(OkHttpClient pinnedClient, Request request, String mediaUrl) {
+        pinnedClient.newCall(request).enqueue(new Callback() {
+            @Override public void onFailure(Call call, IOException error) {
+                runOnUiThread(() -> {
+                    Toast.makeText(MainActivity.this,
+                            "فشل إرسال الرابط إلى الريسيفر: " + error.getClass().getSimpleName(),
+                            Toast.LENGTH_LONG).show();
+                    if (clipboardShortcutLaunch || webVideoCasterCaptureLaunch) finish();
+                });
+            }
+            @Override public void onResponse(Call call, Response response) {
+                int code = response.code();
+                String body = "";
+                try { if (response.body() != null) body = response.body().string(); }
+                catch (IOException ignored) { }
+                finally { response.close(); }
+                final String detail = body;
+                runOnUiThread(() -> {
+                    if (code == 200) {
+                        Toast.makeText(MainActivity.this,
+                                "✅ استلم الريسيفر الرابط وبدأ معالجة طلب التشغيل",
+                                Toast.LENGTH_LONG).show();
+                    } else {
+                        Toast.makeText(MainActivity.this,
+                                "الريسيفر رفض الرابط (HTTP " + code + ") "
+                                        + (detail.isEmpty() ? "" : detail),
+                                Toast.LENGTH_LONG).show();
+                    }
+                    if (clipboardShortcutLaunch || webVideoCasterCaptureLaunch) finish();
+                });
+            }
+        });
     }
 
     private String encryptReceiverSecret(String plainText) {
