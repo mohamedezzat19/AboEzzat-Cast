@@ -1046,6 +1046,10 @@ public class MainActivity extends Activity {
                     showLibraryDialog();
                 }).setNegativeButton("إلغاء", null).show());
 
+        addLibrarySectionTitle(content, "الأكثر زيارة");
+        TextView mostVisited = addLibraryCard(content, "عرض المواقع الأكثر زيارة");
+        mostVisited.setOnClickListener(v -> showMostVisitedSitesDialog());
+
         addLibrarySectionTitle(content, "الوسائط");
         TextView recent = addLibraryCard(content, "الوسائط الأخيرة");
         recent.setOnClickListener(v -> showRecentMediaDialog());
@@ -1061,6 +1065,85 @@ public class MainActivity extends Activity {
             dialog.getWindow().setLayout(-1, getResources().getDisplayMetrics().heightPixels - dp(76));
             dialog.getWindow().setGravity(android.view.Gravity.TOP);
         }
+    }
+
+    private void showMostVisitedSitesDialog() {
+        SharedPreferences prefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE | MODE_MULTI_PROCESS);
+        Set<String> saved = prefs.getStringSet("browser_history", new HashSet<String>());
+        List<String> urls = new ArrayList<>(saved == null ? new HashSet<String>() : saved);
+        urls.removeIf(url -> url == null || url.trim().isEmpty());
+        urls.sort((a, b) -> {
+            int visits = Integer.compare(prefs.getInt("visit_count_" + b, 0),
+                    prefs.getInt("visit_count_" + a, 0));
+            return visits != 0 ? visits : Long.compare(prefs.getLong("history_time_" + b, 0L),
+                    prefs.getLong("history_time_" + a, 0L));
+        });
+        if (urls.size() > 30) urls = new ArrayList<>(urls.subList(0, 30));
+        if (urls.isEmpty()) {
+            new AlertDialog.Builder(this, R.style.ModernDialogTheme).setTitle("الأكثر زيارة")
+                    .setMessage("لا توجد بيانات زيارات كافية حتى الآن.")
+                    .setPositiveButton("إغلاق", null).show();
+            return;
+        }
+        List<String> rankedUrls = urls;
+        android.widget.ListView list = new android.widget.ListView(this);
+        list.setBackgroundColor(0xFF101014);
+        list.setAdapter(new android.widget.ArrayAdapter<String>(this,
+                android.R.layout.simple_list_item_2, android.R.id.text1, rankedUrls) {
+            @Override public View getView(int position, View convertView, ViewGroup parent) {
+                View row = super.getView(position, convertView, parent);
+                String url = rankedUrls.get(position);
+                String title = prefs.getString("history_title_" + url, "");
+                String host = getCompactSavedUrlLabel(url);
+                if (title == null || title.trim().isEmpty() || title.equals(url)
+                        || title.startsWith("http://") || title.startsWith("https://")) title = host;
+                TextView first = row.findViewById(android.R.id.text1);
+                TextView second = row.findViewById(android.R.id.text2);
+                first.setText((position + 1) + ". " + title);
+                first.setTextColor(Color.WHITE);
+                first.setSingleLine(true);
+                first.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                second.setText(host + " • " + prefs.getInt("visit_count_" + url, 0) + " زيارة");
+                second.setTextColor(Color.LTGRAY);
+                second.setSingleLine(true);
+                return row;
+            }
+        });
+        AlertDialog dialog = new AlertDialog.Builder(this, R.style.ModernDialogTheme)
+                .setTitle("الأكثر زيارة")
+                .setView(list)
+                .setNegativeButton("إغلاق", null).create();
+        list.setOnItemClickListener((parent, view, position, id) -> {
+            if (position >= 0 && position < rankedUrls.size()) {
+                openLibraryUrl(rankedUrls.get(position));
+                dialog.dismiss();
+            }
+        });
+        list.setOnItemLongClickListener((parent, view, position, id) -> {
+            if (position < 0 || position >= rankedUrls.size()) return true;
+            String url = rankedUrls.get(position);
+            String title = prefs.getString("history_title_" + url, "الموقع");
+            new AlertDialog.Builder(this, R.style.ModernDialogTheme)
+                    .setTitle(title == null || title.isEmpty() ? "الموقع" : title)
+                    .setItems(new String[]{"فتح الموقع", "حذف من سجل التصفح"}, (d, which) -> {
+                        if (which == 0) {
+                            openLibraryUrl(url);
+                            dialog.dismiss();
+                        } else {
+                            Set<String> updated = new HashSet<>(prefs.getStringSet(
+                                    "browser_history", new HashSet<String>()));
+                            updated.remove(url);
+                            prefs.edit().putStringSet("browser_history", updated)
+                                    .remove("history_title_" + url)
+                                    .remove("history_time_" + url)
+                                    .remove("visit_count_" + url).apply();
+                            dialog.dismiss();
+                            showMostVisitedSitesDialog();
+                        }
+                    }).show();
+            return true;
+        });
+        dialog.show();
     }
 
     private int dp(float value) {
