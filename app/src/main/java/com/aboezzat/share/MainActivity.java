@@ -222,6 +222,7 @@ public class MainActivity extends Activity {
         setupNavigationDrawer();
         setupBottomNavigation();
         applyDarkMode(findViewById(R.id.drawer_layout), prefs.getBoolean("dark_mode", true));
+        updateDarkModeMenuLabel(prefs.getBoolean("dark_mode", true));
         String pendingSendUrl = getIntent().getStringExtra("send_saved_url_to_tv");
         if (pendingSendUrl != null && !pendingSendUrl.trim().isEmpty()) {
             final String urlToSend = pendingSendUrl.trim();
@@ -625,28 +626,41 @@ public class MainActivity extends Activity {
         boolean enabled = !prefs.getBoolean("dark_mode", true);
         prefs.edit().putBoolean("dark_mode", enabled).apply();
         applyDarkMode(findViewById(R.id.drawer_layout), enabled);
-        Toast.makeText(this, enabled ? "تم تفعيل الوضع المظلم" : "تم إيقاف الوضع المظلم", Toast.LENGTH_SHORT).show();
+        updateDarkModeMenuLabel(enabled);
+        Toast.makeText(this, enabled ? "تم تفعيل الوضع المظلم" : "تم تفعيل الوضع الفاتح", Toast.LENGTH_SHORT).show();
+    }
+
+    private void updateDarkModeMenuLabel(boolean dark) {
+        View item = findViewById(R.id.menu_dark_mode);
+        if (!(item instanceof android.view.ViewGroup)) return;
+        android.view.ViewGroup row = (android.view.ViewGroup) item;
+        if (row.getChildCount() > 1 && row.getChildAt(0) instanceof TextView) ((TextView) row.getChildAt(0)).setText(dark ? "☀️" : "🌙");
+        if (row.getChildCount() > 1 && row.getChildAt(1) instanceof TextView) ((TextView) row.getChildAt(1)).setText(dark ? "الوضع الفاتح" : "الوضع المظلم");
     }
 
     private void applyDarkMode(View view, boolean dark) {
         if (view == null) return;
+        final int page = dark ? 0xFF061329 : 0xFFF2F6FC;
+        final int primaryText = dark ? 0xFFF4F8FF : 0xFF17263D;
+        final int secondaryText = dark ? 0xFFB8C8DC : 0xFF53647A;
+        if (view.getId() == R.id.drawer_layout || view.getId() == R.id.main_content_scroll) view.setBackgroundColor(page);
+        else if (view.getId() == R.id.nav_view) view.setBackgroundColor(dark ? 0xFF080F1D : 0xFFE5EDF8);
+        else if (view.getId() == R.id.bottom_navigation) view.setBackgroundColor(dark ? 0xFF0D192B : 0xFFDCE7F5);
         if (view instanceof android.view.ViewGroup) {
             android.view.ViewGroup group = (android.view.ViewGroup) view;
-            for (int i = 0; i < group.getChildCount(); i++) {
-                applyDarkMode(group.getChildAt(i), dark);
-            }
+            for (int i = 0; i < group.getChildCount(); i++) applyDarkMode(group.getChildAt(i), dark);
         }
-        // Keep the individually designed section/card/button colors from XML.
-        // Only update text contrast; do not overwrite backgrounds or button tints.
-        if (view instanceof TextView) {
+        if (view instanceof EditText) {
+            EditText edit = (EditText) view;
+            edit.setTextColor(primaryText);
+            edit.setHintTextColor(secondaryText);
+        } else if (view instanceof TextView && !(view instanceof Button)) {
             TextView text = (TextView) view;
-            if (view instanceof EditText) {
-                text.setTextColor(dark ? 0xFFFFFFFF : 0xFF202124);
-                ((EditText) view).setHintTextColor(dark ? 0xFFAAAAAA : 0xFF666666);
-            }
+            float[] hsv = new float[3];
+            Color.colorToHSV(text.getCurrentTextColor(), hsv);
+            if (hsv[1] < 0.14f) text.setTextColor(hsv[2] < 0.82f ? secondaryText : primaryText);
         }
     }
-
     private void showBackupRestoreDialog() {
         new AlertDialog.Builder(this, R.style.ModernDialogTheme).setTitle("النسخ الاحتياطي والاستعادة")
                 .setItems(new String[]{"تصدير الإعدادات إلى ملف", "استعادة الإعدادات من ملف"}, (dialog, which) -> {
