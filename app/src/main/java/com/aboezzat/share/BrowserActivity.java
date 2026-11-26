@@ -2285,16 +2285,16 @@ public class BrowserActivity extends Activity {
         Runnable renderRows = () -> {
             rows.removeAllViews();
             int visibleCount = 0;
-            int completeCount = 0;
-            int downloadingCount = 0;
-            int failedCount = 0;
+            int visibleCompleteCount = 0;
+            int visibleDownloadingCount = 0;
+            int visibleFailedCount = 0;
             for (int i = 0; i < records.size(); i++) {
                 final org.json.JSONObject item = records.get(i);
                 String type = browserDownloadCategory(item);
                 String status = item.optString("status", "failed");
-                if ("complete".equals(status)) completeCount++;
-                else if ("downloading".equals(status)) downloadingCount++;
-                else failedCount++;
+                if ("complete".equals(status)) visibleCompleteCount++;
+                else if ("downloading".equals(status)) visibleDownloadingCount++;
+                else visibleFailedCount++;
                 if (!"all".equals(selected[0]) && !selected[0].equals(type)) continue;
                 visibleCount++;
                 String state;
@@ -2453,8 +2453,8 @@ public class BrowserActivity extends Activity {
                 empty.setPadding(dp(12), dp(30), dp(12), dp(30));
                 rows.addView(empty);
             }
-            summary.setText(visibleCount + " في القسم • مكتمل: " + completeCount
-                    + " • جارٍ: " + downloadingCount + " • فشل: " + failedCount
+            summary.setText(visibleCount + " في القسم • مكتمل: " + visibleCompleteCount
+                    + " • جارٍ: " + visibleDownloadingCount + " • فشل: " + visibleFailedCount
                     + " • الإجمالي: " + records.size());
         };
 
