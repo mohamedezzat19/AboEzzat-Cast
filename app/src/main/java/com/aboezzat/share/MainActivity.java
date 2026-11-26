@@ -2836,7 +2836,7 @@ private void showManualIpDialog() {
         dialogRef[0] = dialog;
         add.setOnClickListener(v -> {
             if (dialog.isShowing()) dialog.dismiss();
-            showEditReceiverDialog(null);
+            showAddReceiverMethodDialog();
         });
         scan.setOnClickListener(v -> {
             if (dialog.isShowing()) dialog.dismiss();
@@ -2925,6 +2925,20 @@ private void showManualIpDialog() {
             }
         }
         return targets;
+    }
+
+    private void showAddReceiverMethodDialog() {
+        new AlertDialog.Builder(this, R.style.ModernDialogTheme)
+                .setTitle("إضافة جهاز جديد")
+                .setItems(new String[]{"يدوي", "بالباركود (QR)"}, (dialog, which) -> {
+                    if (which == 0) {
+                        showEditReceiverDialog(null);
+                    } else {
+                        showReceiverPairingDialog();
+                    }
+                })
+                .setNegativeButton("إلغاء", null)
+                .show();
     }
 
     private void showEditReceiverDialog(SavedReceiverDevice existing) {
