@@ -3950,19 +3950,133 @@ public class BrowserActivity extends Activity {
                         sendBrowserCastRequest(receiverClient, endpoint, mediaUrl, audioUrl, capturedHeaders, null);
                         return;
                     }
-                    new AlertDialog.Builder(BrowserActivity.this, R.style.ModernDialogTheme)
-                            .setTitle("فيه محتوى شغال على الريسيفر")
-                            .setMessage("اختار تعمل إيه بالمحتوى الحالي قبل إرسال الرابط الجديد.")
-                            .setPositiveButton("تشغيل بدل الحالي", (dialog, which) ->
-                                    sendBrowserCastRequest(receiverClient, endpoint, mediaUrl, audioUrl, capturedHeaders, null))
-                            .setNeutralButton("إضافة بعد الحالي", (dialog, which) ->
-                                    sendBrowserCastRequest(receiverClient, endpoint, mediaUrl, audioUrl, capturedHeaders, "append"))
-                            .setNegativeButton("إلغاء", null)
-                            .setOnCancelListener(dialog -> { })
-                            .show();
+                    showBrowserCastChoiceDialog(
+                            () -> sendBrowserCastRequest(receiverClient, endpoint, mediaUrl, audioUrl, capturedHeaders, null),
+                            () -> sendBrowserCastRequest(receiverClient, endpoint, mediaUrl, audioUrl, capturedHeaders, "append"));
                 });
             }
         });
+    }
+
+    private void showBrowserCastChoiceDialog(Runnable playNow, Runnable appendToQueue) {
+        final Dialog dialog = new Dialog(this);
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(browserChoiceDp(20), browserChoiceDp(18),
+                browserChoiceDp(20), browserChoiceDp(14));
+        panel.setBackground(new android.graphics.drawable.GradientDrawable() {{
+            setColor(Color.rgb(17, 29, 49));
+            setCornerRadius(browserChoiceDp(22));
+            setStroke(browserChoiceDp(1), Color.rgb(48, 76, 105));
+        }});
+
+        TextView title = new TextView(this);
+        title.setText("فيه محتوى شغال على الريسيفر");
+        title.setTextColor(Color.WHITE);
+        title.setTextSize(19);
+        title.setTypeface(null, android.graphics.Typeface.BOLD);
+        title.setGravity(Gravity.CENTER);
+        panel.addView(title, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        TextView message = new TextView(this);
+        message.setText("اختار هتعمل إيه بالرابط الجديد");
+        message.setTextColor(Color.rgb(183, 201, 220));
+        message.setTextSize(13);
+        message.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams messageParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        messageParams.topMargin = browserChoiceDp(7);
+        messageParams.bottomMargin = browserChoiceDp(16);
+        panel.addView(message, messageParams);
+
+        addBrowserCastChoiceRow(panel, dialog, android.R.drawable.ic_media_play,
+                "تشغيل الآن", "إيقاف المحتوى الحالي وتشغيل الرابط الجديد",
+                Color.rgb(66, 190, 255), playNow);
+        addBrowserCastChoiceRow(panel, dialog, android.R.drawable.ic_menu_add,
+                "إضافة إلى قائمة التشغيل", "تشغيل الرابط بعد انتهاء المحتوى الحالي",
+                Color.rgb(54, 220, 190), appendToQueue);
+        addBrowserCastChoiceRow(panel, dialog, android.R.drawable.ic_menu_close_clear_cancel,
+                "إلغاء", "إغلاق النافذة دون إرسال الرابط",
+                Color.rgb(190, 202, 218), () -> { });
+
+        dialog.setContentView(panel);
+        Window window = dialog.getWindow();
+        if (window != null) {
+            window.setBackgroundDrawableResource(android.R.color.transparent);
+            window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+            WindowManager.LayoutParams params = window.getAttributes();
+            params.width = Math.min(getResources().getDisplayMetrics().widthPixels
+                    - browserChoiceDp(36), browserChoiceDp(420));
+            params.height = WindowManager.LayoutParams.WRAP_CONTENT;
+            params.gravity = Gravity.CENTER;
+            params.dimAmount = 0.62f;
+            window.setAttributes(params);
+        }
+        dialog.show();
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
+            dialog.getWindow().setLayout(Math.min(getResources().getDisplayMetrics().widthPixels
+                    - browserChoiceDp(36), browserChoiceDp(420)),
+                    WindowManager.LayoutParams.WRAP_CONTENT);
+        }
+    }
+
+    private void addBrowserCastChoiceRow(LinearLayout parent, Dialog dialog, int iconResource,
+            String label, String description, int accentColor, Runnable action) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(browserChoiceDp(13), browserChoiceDp(12),
+                browserChoiceDp(13), browserChoiceDp(12));
+        android.graphics.drawable.GradientDrawable background =
+                new android.graphics.drawable.GradientDrawable();
+        background.setColor(Color.rgb(27, 45, 68));
+        background.setCornerRadius(browserChoiceDp(15));
+        background.setStroke(browserChoiceDp(1), Color.rgb(55, 82, 110));
+        row.setBackground(background);
+        row.setClickable(true);
+        row.setFocusable(true);
+
+        ImageView icon = new ImageView(this);
+        icon.setImageResource(iconResource);
+        icon.setColorFilter(accentColor);
+        LinearLayout.LayoutParams iconParams = new LinearLayout.LayoutParams(
+                browserChoiceDp(30), browserChoiceDp(30));
+        iconParams.setMarginEnd(browserChoiceDp(13));
+        row.addView(icon, iconParams);
+
+        LinearLayout labels = new LinearLayout(this);
+        labels.setOrientation(LinearLayout.VERTICAL);
+        TextView heading = new TextView(this);
+        heading.setText(label);
+        heading.setTextColor(Color.WHITE);
+        heading.setTextSize(15);
+        heading.setTypeface(null, android.graphics.Typeface.BOLD);
+        labels.addView(heading);
+        TextView detail = new TextView(this);
+        detail.setText(description);
+        detail.setTextColor(Color.rgb(183, 201, 220));
+        detail.setTextSize(11);
+        LinearLayout.LayoutParams detailParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        detailParams.topMargin = browserChoiceDp(3);
+        labels.addView(detail, detailParams);
+        row.addView(labels, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        rowParams.bottomMargin = browserChoiceDp(9);
+        parent.addView(row, rowParams);
+        row.setOnClickListener(view -> {
+            dialog.dismiss();
+            if (action != null) action.run();
+        });
+    }
+
+    private int browserChoiceDp(float value) {
+        return (int) (value * getResources().getDisplayMetrics().density + 0.5f);
     }
 
     private void sendBrowserCastRequest(OkHttpClient receiverClient, String endpoint,
