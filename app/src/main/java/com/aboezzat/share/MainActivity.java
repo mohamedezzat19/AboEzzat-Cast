@@ -3778,11 +3778,80 @@ private void showManualIpDialog() {
             return;
         }
         String targetUrl = "https://" + phoneIp + ":8088" + mediaPath + "?token=" + mediaToken;
-        java.util.concurrent.atomic.AtomicInteger accepted = new java.util.concurrent.atomic.AtomicInteger();
-        java.util.concurrent.atomic.AtomicInteger finished = new java.util.concurrent.atomic.AtomicInteger();
+        probeAllLocalMediaReceivers(targets, targetUrl, mediaTlsPin, showToast);
+    }
+
+    // Collect every selected Receiver's authenticated status before showing one
+    // group-level decision. A timeout is not evidence of active playback.
+    private void probeAllLocalMediaReceivers(List<String> targets, String mediaUrl,
+            String mediaPin, boolean showToast) {
+        java.util.List<String> activeTargets = java.util.Collections.synchronizedList(new ArrayList<>());
+        java.util.concurrent.atomic.AtomicInteger completed = new java.util.concurrent.atomic.AtomicInteger();
+        Runnable[] onProbeFinished = new Runnable[1];
+        onProbeFinished[0] = () -> {
+            if (completed.incrementAndGet() != targets.size()) return;
+            runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed()) return;
+                Runnable sendAll = () -> {
+                    java.util.concurrent.atomic.AtomicInteger accepted = new java.util.concurrent.atomic.AtomicInteger();
+                    java.util.concurrent.atomic.AtomicInteger finished = new java.util.concurrent.atomic.AtomicInteger();
+                    for (String target : targets) {
+                        sendLocalMediaToReceiver(target, mediaUrl, mediaPin, showToast,
+                                targets.size(), accepted, finished);
+                    }
+                };
+                if (activeTargets.isEmpty()) {
+                    sendAll.run();
+                    return;
+                }
+                new AlertDialog.Builder(MainActivity.this, R.style.ModernDialogTheme)
+                        .setTitle("فيه محتوى شغال على أجهزة الاستقبال")
+                        .setMessage("تم تأكيد وجود تشغيل فعلي على " + activeTargets.size()
+                                + " من " + targets.size()
+                                + " أجهزة. هل تريد إيقاف التشغيل الحالي على الأجهزة المحددة وتشغيل الملف الجديد؟")
+                        .setPositiveButton("تشغيل بدل الحالي", (dialog, which) -> sendAll.run())
+                        .setNegativeButton("إلغاء", null)
+                        .show();
+            });
+        };
+
         for (String tvIp : targets) {
-            probeReceiverBeforeLocalMediaSend(tvIp, targetUrl, mediaTlsPin, showToast,
-                    targets.size(), accepted, finished);
+            try {
+                String endpoint = buildReceiverHttpsEndpoint(tvIp);
+                String host = Uri.parse(endpoint).getHost();
+                if (host == null) throw new IOException("Invalid receiver host");
+                OkHttpClient client = getPinnedReceiverClient(host).newBuilder()
+                        .connectTimeout(1800, java.util.concurrent.TimeUnit.MILLISECONDS)
+                        .readTimeout(2200, java.util.concurrent.TimeUnit.MILLISECONDS)
+                        .callTimeout(3000, java.util.concurrent.TimeUnit.MILLISECONDS).build();
+                Request status = new Request.Builder().url(endpoint + "/?command=status").get().build();
+                client.newCall(status).enqueue(new Callback() {
+                    @Override public void onFailure(Call call, IOException error) {
+                        onProbeFinished[0].run();
+                    }
+                    @Override public void onResponse(Call call, Response response) {
+                        try {
+                            if (response.isSuccessful() && response.body() != null) {
+                                JSONObject state = new JSONObject(response.body().string());
+                                long updated = state.optLong("mediaStateUpdatedAt", 0L);
+                                long age = System.currentTimeMillis() - updated;
+                                String type = state.optString("mediaType", "none");
+                                boolean active = state.optBoolean("mediaActive", false)
+                                        && updated > 0L && age >= -5000L && age <= 60000L
+                                        && ("video".equals(type) || "audio".equals(type) || "image".equals(type));
+                                if (active) activeTargets.add(tvIp);
+                            }
+                        } catch (Exception ignored) {
+                            // Malformed or stale status is not proof of active playback.
+                        } finally {
+                            response.close();
+                            onProbeFinished[0].run();
+                        }
+                    }
+                });
+            } catch (Exception error) {
+                onProbeFinished[0].run();
+            }
         }
     }
 
