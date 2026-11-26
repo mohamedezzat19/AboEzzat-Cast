@@ -1068,13 +1068,6 @@ public class MainActivity extends Activity {
         TextView mostVisited = addLibraryCard(content, "عرض المواقع الأكثر زيارة");
         mostVisited.setOnClickListener(v -> showMostVisitedSitesDialog());
 
-        addLibrarySectionTitle(content, "الوسائط");
-        TextView recent = addLibraryCard(content, "الوسائط الأخيرة");
-        recent.setOnClickListener(v -> showRecentMediaDialog());
-        TextView playlist = addLibraryCard(content, "قائمة التشغيل");
-        playlist.setOnClickListener(v -> showPlaylistDialog());
-        TextView slideshowControls = addLibraryCard(content, "التحكم في عرض الصور");
-        slideshowControls.setOnClickListener(v -> showSlideshowControls());
         AlertDialog dialog = new AlertDialog.Builder(this, R.style.ModernDialogTheme).create();
         dialog.setView(scroll);
         dialog.show();
