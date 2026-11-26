@@ -804,6 +804,7 @@ public class BrowserActivity extends Activity {
                     for (String selectedUrl : selectedUrls) {
                         updated.remove(selectedUrl);
                         editor.remove("history_title_" + selectedUrl)
+                                .remove("history_thumbnail_" + selectedUrl)
                                 .remove("history_time_" + selectedUrl)
                                 .remove("visit_count_" + selectedUrl);
                     }
@@ -814,8 +815,16 @@ public class BrowserActivity extends Activity {
                 })
                 .setNegativeButton("إغلاق", null)
                 .setNeutralButton("مسح السجل", (d, w) -> {
-                    prefs.edit().putStringSet("browser_history", new HashSet<String>())
-                            .putLong("history_cleared_at", System.currentTimeMillis()).apply();
+                    SharedPreferences.Editor clearEditor = prefs.edit()
+                            .putStringSet("browser_history", new HashSet<String>())
+                            .putLong("history_cleared_at", System.currentTimeMillis());
+                    for (String key : prefs.getAll().keySet()) {
+                        if (key.startsWith("history_title_") || key.startsWith("history_thumbnail_")
+                                || key.startsWith("history_time_") || key.startsWith("visit_count_")) {
+                            clearEditor.remove(key);
+                        }
+                    }
+                    clearEditor.apply();
                     Toast.makeText(this, "تم مسح سجل التصفح", Toast.LENGTH_SHORT).show();
                 }).create();
 
