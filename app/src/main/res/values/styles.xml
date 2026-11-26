@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="AppTheme" parent="Theme.AppCompat.Light.NoActionBar">
-        <item name="colorPrimary">#00B8D9</item>
-        <item name="colorPrimaryDark">#080C27</item>
-        <item name="colorAccent">#00B8D9</item>
-        <item name="colorControlHighlight">#6600B8D9</item>
+        <item name="colorPrimary">#26D7E8</item>
+        <item name="colorPrimaryDark">#080F1D</item>
+        <item name="colorAccent">#26D7E8</item>
+        <item name="colorControlHighlight">#5526D7E8</item>
     </style>
 
     <!-- Consistent dark, rounded dialog surface for every app popup. -->
     <style name="ModernDialogTheme" parent="@android:style/Theme.Material.Light.Dialog.Alert">
-        <item name="android:colorAccent">#27B9F5</item>
+        <item name="android:colorAccent">#26D7E8</item>
         <item name="android:textColorPrimary">#F4F7FF</item>
         <item name="android:textColorSecondary">#B8C6DF</item>
         <item name="android:textColorAlertDialogListItem">#F4F7FF</item>

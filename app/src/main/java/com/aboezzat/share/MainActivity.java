@@ -29,6 +29,7 @@ import android.security.keystore.KeyProperties;
 import android.text.format.Formatter;
 import android.util.Base64;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
 import android.widget.EditText;
@@ -70,6 +71,8 @@ import okhttp3.EventListener;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 public class MainActivity extends Activity {
 
@@ -80,6 +83,8 @@ public class MainActivity extends Activity {
     private static final int PICK_SLIDESHOW_REQUEST = 102;
     private static final int VOICE_SEARCH_REQUEST = 103;
     private static final int PICK_RECEIVER_QR_IMAGE_REQUEST = 104;
+    private static final int PICK_NAMED_PLAYLIST_ITEMS_REQUEST = 105;
+    private String activeNamedPlaylist = null;
 
     private static final String PREF_SAVED_RECEIVERS = "saved_receivers_json";
     private static class SavedReceiverDevice {
@@ -461,7 +466,7 @@ public class MainActivity extends Activity {
             closeDrawer();
             new AlertDialog.Builder(MainActivity.this, R.style.ModernDialogTheme)
                     .setTitle("إعدادات أبو عزت كاست")
-                    .setItems(new String[]{"التحقق من التحديثات", "إعداد عنوان IP الشاشة", "تفعيل الاختصار العائم عند نسخ رابط", "تشخيص مشكلة الفقاعة", "إعدادات أندرويد وأذونات التطبيق", "إعداد VPN داخل التطبيق"}, (dialog, which) -> {
+                    .setItems(new String[]{"التحقق من التحديثات", "إعداد عنوان IP الشاشة", "تفعيل الاختصار العائم عند نسخ رابط", "تشخيص مشكلة الفقاعة", "إعدادات أندرويد وأذونات التطبيق", "إعداد VPN داخل التطبيق", "استهلاك البيانات"}, (dialog, which) -> {
                         if (which == 0) {
                             new AppUpdater(MainActivity.this).checkForUpdate(true);
                         } else if (which == 1) {
@@ -474,6 +479,8 @@ public class MainActivity extends Activity {
                             openAppPermissionSettings();
                         } else if (which == 5) {
                             startActivity(new Intent(MainActivity.this, VpnActivity.class));
+                        } else if (which == 6) {
+                            showDataUsageDialog();
                         }
                     })
                     .setNegativeButton("إغلاق", null)
@@ -487,6 +494,33 @@ public class MainActivity extends Activity {
         });
     }
 
+
+
+    private void showDataUsageDialog() {
+        SharedPreferences usage = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE | MODE_MULTI_PROCESS);
+        long localBytes = usage.getLong("usage_local_transfer_total", 0L);
+        long todayBytes = usage.getLong("usage_local_transfer_today", 0L);
+        long monthBytes = usage.getLong("usage_local_transfer_month", 0L);
+        String message = "نقل الملفات من الهاتف إلى الريسيفر عبر الواي فاي المحلي\n"
+                + "الإجمالي: " + android.text.format.Formatter.formatFileSize(this, localBytes) + "\n"
+                + "اليوم: " + android.text.format.Formatter.formatFileSize(this, todayBytes) + "\n"
+                + "هذا الشهر: " + android.text.format.Formatter.formatFileSize(this, monthBytes) + "\n\n"
+                + "هذه الأرقام تقيس بايتات ملفات الهاتف التي أرسلها خادم كاست محليًا إلى الريسيفر، ولا تخصم من باقة الإنترنت عند استخدام شبكة محلية فعلًا.\n\n"
+                + "فيديوهات الإنترنت مثل YouTube وTikTok يشغّلها الريسيفر من مصدرها؛ لا يستطيع كاست وحده قياس استهلاكها بدقة حاليًا. استهلاكها الفعلي يعتمد على جودة الفيديو ومدة المشاهدة، وقد يختلف حسب التطبيق والمصدر.";
+        new AlertDialog.Builder(this, R.style.ModernDialogTheme)
+                .setTitle("استهلاك البيانات")
+                .setMessage(message)
+                .setNeutralButton("تصفير إحصائيات النقل المحلي", (d, w) -> {
+                    usage.edit().putLong("usage_local_transfer_total", 0L)
+                            .putLong("usage_local_transfer_today", 0L)
+                            .putLong("usage_local_transfer_month", 0L)
+                            .putString("usage_local_transfer_day", "")
+                            .putString("usage_local_transfer_month_key", "").apply();
+                    Toast.makeText(this, "تم تصفير إحصائيات النقل المحلي", Toast.LENGTH_SHORT).show();
+                })
+                .setPositiveButton("إغلاق", null)
+                .show();
+    }
 
     private void openClipboardShortcutSetup() {
         new AlertDialog.Builder(this, R.style.ModernDialogTheme)
@@ -1013,6 +1047,10 @@ public class MainActivity extends Activity {
                     showLibraryDialog();
                 }).setNegativeButton("إلغاء", null).show());
 
+        addLibrarySectionTitle(content, "الأكثر زيارة");
+        TextView mostVisited = addLibraryCard(content, "عرض المواقع الأكثر زيارة");
+        mostVisited.setOnClickListener(v -> showMostVisitedSitesDialog());
+
         addLibrarySectionTitle(content, "الوسائط");
         TextView recent = addLibraryCard(content, "الوسائط الأخيرة");
         recent.setOnClickListener(v -> showRecentMediaDialog());
@@ -1028,6 +1066,85 @@ public class MainActivity extends Activity {
             dialog.getWindow().setLayout(-1, getResources().getDisplayMetrics().heightPixels - dp(76));
             dialog.getWindow().setGravity(android.view.Gravity.TOP);
         }
+    }
+
+    private void showMostVisitedSitesDialog() {
+        SharedPreferences prefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE | MODE_MULTI_PROCESS);
+        Set<String> saved = prefs.getStringSet("browser_history", new HashSet<String>());
+        List<String> urls = new ArrayList<>(saved == null ? new HashSet<String>() : saved);
+        urls.removeIf(url -> url == null || url.trim().isEmpty());
+        urls.sort((a, b) -> {
+            int visits = Integer.compare(prefs.getInt("visit_count_" + b, 0),
+                    prefs.getInt("visit_count_" + a, 0));
+            return visits != 0 ? visits : Long.compare(prefs.getLong("history_time_" + b, 0L),
+                    prefs.getLong("history_time_" + a, 0L));
+        });
+        if (urls.size() > 30) urls = new ArrayList<>(urls.subList(0, 30));
+        if (urls.isEmpty()) {
+            new AlertDialog.Builder(this, R.style.ModernDialogTheme).setTitle("الأكثر زيارة")
+                    .setMessage("لا توجد بيانات زيارات كافية حتى الآن.")
+                    .setPositiveButton("إغلاق", null).show();
+            return;
+        }
+        List<String> rankedUrls = urls;
+        android.widget.ListView list = new android.widget.ListView(this);
+        list.setBackgroundColor(0xFF101014);
+        list.setAdapter(new android.widget.ArrayAdapter<String>(this,
+                android.R.layout.simple_list_item_2, android.R.id.text1, rankedUrls) {
+            @Override public View getView(int position, View convertView, ViewGroup parent) {
+                View row = super.getView(position, convertView, parent);
+                String url = rankedUrls.get(position);
+                String title = prefs.getString("history_title_" + url, "");
+                String host = getCompactSavedUrlLabel(url);
+                if (title == null || title.trim().isEmpty() || title.equals(url)
+                        || title.startsWith("http://") || title.startsWith("https://")) title = host;
+                TextView first = row.findViewById(android.R.id.text1);
+                TextView second = row.findViewById(android.R.id.text2);
+                first.setText((position + 1) + ". " + title);
+                first.setTextColor(Color.WHITE);
+                first.setSingleLine(true);
+                first.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                second.setText(host + " • " + prefs.getInt("visit_count_" + url, 0) + " زيارة");
+                second.setTextColor(Color.LTGRAY);
+                second.setSingleLine(true);
+                return row;
+            }
+        });
+        AlertDialog dialog = new AlertDialog.Builder(this, R.style.ModernDialogTheme)
+                .setTitle("الأكثر زيارة")
+                .setView(list)
+                .setNegativeButton("إغلاق", null).create();
+        list.setOnItemClickListener((parent, view, position, id) -> {
+            if (position >= 0 && position < rankedUrls.size()) {
+                openLibraryUrl(rankedUrls.get(position));
+                dialog.dismiss();
+            }
+        });
+        list.setOnItemLongClickListener((parent, view, position, id) -> {
+            if (position < 0 || position >= rankedUrls.size()) return true;
+            String url = rankedUrls.get(position);
+            String title = prefs.getString("history_title_" + url, "الموقع");
+            new AlertDialog.Builder(this, R.style.ModernDialogTheme)
+                    .setTitle(title == null || title.isEmpty() ? "الموقع" : title)
+                    .setItems(new String[]{"فتح الموقع", "حذف من سجل التصفح"}, (d, which) -> {
+                        if (which == 0) {
+                            openLibraryUrl(url);
+                            dialog.dismiss();
+                        } else {
+                            Set<String> updated = new HashSet<>(prefs.getStringSet(
+                                    "browser_history", new HashSet<String>()));
+                            updated.remove(url);
+                            prefs.edit().putStringSet("browser_history", updated)
+                                    .remove("history_title_" + url)
+                                    .remove("history_time_" + url)
+                                    .remove("visit_count_" + url).apply();
+                            dialog.dismiss();
+                            showMostVisitedSitesDialog();
+                        }
+                    }).show();
+            return true;
+        });
+        dialog.show();
     }
 
     private int dp(float value) {
@@ -1172,10 +1289,74 @@ public class MainActivity extends Activity {
                 .setView(scroll).setNegativeButton("إغلاق", null).show();
     }
 
+
+    private JSONObject loadNamedPlaylists() {
+        try {
+            String raw = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE | MODE_MULTI_PROCESS)
+                    .getString("named_media_playlists_v1", "{}");
+            return new JSONObject(raw == null ? "{}" : raw);
+        } catch (Exception ignored) { return new JSONObject(); }
+    }
+
+    private void putNamedPlaylistItems(JSONObject playlists, String name, JSONArray items) {
+        try { playlists.put(name, items); } catch (Exception ignored) {}
+    }
+
+    private void saveNamedPlaylists(JSONObject playlists) {
+        getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE | MODE_MULTI_PROCESS)
+                .edit().putString("named_media_playlists_v1", playlists.toString()).apply();
+    }
+
     private void showPlaylistDialog() {
+        JSONObject playlists = loadNamedPlaylists();
+        List<String> names = new ArrayList<>();
+        java.util.Iterator<String> keys = playlists.keys();
+        while (keys.hasNext()) names.add(keys.next());
+        java.util.Collections.sort(names, String.CASE_INSENSITIVE_ORDER);
+        List<String> choices = new ArrayList<>(names);
+        choices.add("＋ إنشاء قائمة جديدة");
+        choices.add("إدارة قائمة التشغيل الحالية القديمة");
+        String[] labels = choices.toArray(new String[0]);
+        new AlertDialog.Builder(this, R.style.ModernDialogTheme)
+                .setTitle("قوائم التشغيل المحفوظة")
+                .setItems(labels, (d, which) -> {
+                    if (which == names.size()) {
+                        EditText input = new EditText(this);
+                        input.setSingleLine(true);
+                        input.setHint("اسم القائمة");
+                        new AlertDialog.Builder(this, R.style.ModernDialogTheme)
+                                .setTitle("إنشاء قائمة تشغيل")
+                                .setView(input)
+                                .setPositiveButton("إنشاء", (x, w) -> {
+                                    String name = input.getText().toString().trim();
+                                    if (name.isEmpty()) {
+                                        Toast.makeText(this, "اكتب اسم القائمة أولًا", Toast.LENGTH_SHORT).show();
+                                        return;
+                                    }
+                                    JSONObject saved = loadNamedPlaylists();
+                                    if (saved.has(name)) {
+                                        Toast.makeText(this, "اسم القائمة موجود بالفعل", Toast.LENGTH_SHORT).show();
+                                        return;
+                                    }
+                                    putNamedPlaylistItems(saved, name, new JSONArray());
+                                    saveNamedPlaylists(saved);
+                                    activeNamedPlaylist = name;
+                                    showNamedPlaylistDialog(name);
+                                })
+                                .setNegativeButton("إلغاء", null).show();
+                    } else if (which == names.size() + 1) {
+                        showLegacyPlaylistDialog();
+                    } else if (which >= 0 && which < names.size()) {
+                        activeNamedPlaylist = names.get(which);
+                        showNamedPlaylistDialog(activeNamedPlaylist);
+                    }
+                })
+                .setNegativeButton("إغلاق", null).show();
+    }
+
+    private void showLegacyPlaylistDialog() {
         LinearLayout panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
-        panel.setPadding(dp(12), dp(8), dp(12), dp(8));
         android.widget.ScrollView scroll = new android.widget.ScrollView(this);
         LinearLayout rows = new LinearLayout(this);
         rows.setOrientation(LinearLayout.VERTICAL);
@@ -1189,34 +1370,406 @@ public class MainActivity extends Activity {
                 castLocalMediaToTv(true);
             }, () -> {
                 videoQueue.remove(index);
-                if (videoQueue.isEmpty()) currentVideoIndex = 0;
-                else currentVideoIndex = Math.min(currentVideoIndex, videoQueue.size() - 1);
+                currentVideoIndex = Math.min(currentVideoIndex, Math.max(0, videoQueue.size() - 1));
                 persistMediaQueues();
-                showPlaylistDialog();
+                showLegacyPlaylistDialog();
             }));
         }
-        if (videoQueue.isEmpty()) {
-            TextView empty = new TextView(this);
-            empty.setText("قائمة التشغيل فارغة.");
-            empty.setTextColor(Color.WHITE);
+        panel.addView(scroll, new LinearLayout.LayoutParams(-1, dp(300)));
+        new AlertDialog.Builder(this, R.style.ModernDialogTheme).setTitle("القائمة القديمة")
+                .setView(panel).setPositiveButton("إضافة فيديوهات", (d,w) -> openMediaPicker(false))
+                .setNeutralButton("مسح", (d,w) -> {
+                    videoQueue.clear(); currentVideoIndex = 0; persistMediaQueues();
+                    Toast.makeText(this, "تم مسح القائمة القديمة", Toast.LENGTH_SHORT).show();
+                }).setNegativeButton("رجوع", (d,w) -> showPlaylistDialog()).show();
+    }
+
+    private void showAddPlaylistLinkDialog(String name) {
+        EditText input = new EditText(this);
+        input.setSingleLine(true);
+        input.setHint("https://...");
+        new AlertDialog.Builder(this, R.style.ModernDialogTheme)
+                .setTitle("إضافة رابط إنترنت")
+                .setMessage("سيحاول الريسيفر تجهيز الرابط وتشغيل الوسائط المدعومة منه.")
+                .setView(input)
+                .setPositiveButton("إضافة", (dialog, which) -> {
+                    String value = input.getText().toString().trim();
+                    Uri parsed = Uri.parse(value);
+                    String scheme = parsed.getScheme();
+                    if (value.length() > 8192 || parsed.getHost() == null || parsed.getUserInfo() != null
+                            || !("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme))) {
+                        Toast.makeText(this, "اكتب رابط HTTP أو HTTPS صحيحًا.", Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                    JSONObject all = loadNamedPlaylists();
+                    JSONArray items = all.optJSONArray(name);
+                    if (items == null) items = new JSONArray();
+                    if (items.length() >= 50) {
+                        Toast.makeText(this, "الحد الأقصى 50 عنصرًا في القائمة.", Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                    JSONObject entry = new JSONObject();
+                    try {
+                        entry.put("url", value);
+                        entry.put("sourceUrl", value);
+                        entry.put("name", getCompactSavedUrlLabel(value));
+                        entry.put("mime", "text/uri-list");
+                        entry.put("headers", new JSONObject());
+                        items.put(entry);
+                        putNamedPlaylistItems(all, name, items);
+                        saveNamedPlaylists(all);
+                        showNamedPlaylistDialog(name);
+                    } catch (Exception error) {
+                        Toast.makeText(this, "تعذر حفظ الرابط.", Toast.LENGTH_LONG).show();
+                    }
+                })
+                .setNegativeButton("إلغاء", null).show();
+    }
+
+    private void castNamedPlaylistToTv(String name) {
+        List<String> targets = getPlaybackReceiverTargets();
+        if (targets.isEmpty()) {
+            Toast.makeText(this, "مفيش أجهزة محددة ومربوطة بأمان للبث.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (!CastKeepAliveService.isLocalServerReady()) {
+            Toast.makeText(this, "خادم بث الملفات لم يصبح جاهزًا بعد؛ انتظر لحظة.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        JSONObject all = loadNamedPlaylists();
+        JSONArray savedItems = all.optJSONArray(name);
+        if (savedItems == null || savedItems.length() == 0) {
+            Toast.makeText(this, "القائمة فارغة.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (savedItems.length() > 50) {
+            Toast.makeText(this, "الحد الأقصى للإرسال في المرة الواحدة 50 عنصرًا.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        String phoneIp = getDeviceIpAddress();
+        if (phoneIp == null || phoneIp.isEmpty() || "0.0.0.0".equals(phoneIp)) {
+            Toast.makeText(this, "تعذر تحديد عنوان الهاتف على شبكة Wi-Fi.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        final String mediaPin;
+        try {
+            mediaPin = CastTlsIdentity.getCertificateFingerprint();
+        } catch (Exception error) {
+            Toast.makeText(this, "تعذر تجهيز شهادة تشفير الوسائط.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (mediaPin == null || !mediaPin.matches("[A-Za-z0-9_-]{43}")) {
+            Toast.makeText(this, "بصمة شهادة الوسائط غير صالحة.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        JSONArray queueItems = new JSONArray();
+        try {
+            for (int i = 0; i < savedItems.length(); i++) {
+                JSONObject saved = savedItems.optJSONObject(i);
+                if (saved == null) continue;
+                String remoteUrl = saved.optString("url", "");
+                if (!remoteUrl.isEmpty()) {
+                    Uri parsed = Uri.parse(remoteUrl);
+                    String scheme = parsed.getScheme();
+                    if (parsed.getHost() == null
+                            || !("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme))) continue;
+                    JSONObject entry = new JSONObject();
+                    entry.put("url", remoteUrl);
+                    entry.put("sourceUrl", saved.optString("sourceUrl", remoteUrl));
+                    entry.put("headers", saved.optJSONObject("headers") == null
+                            ? new JSONObject() : saved.optJSONObject("headers"));
+                    queueItems.put(entry);
+                    continue;
+                }
+                Uri uri = Uri.parse(saved.optString("uri", ""));
+                if (uri == null || !"content".equalsIgnoreCase(uri.getScheme())) continue;
+                String mime = saved.optString("mime", getContentResolver().getType(uri));
+                if (mime == null || !(mime.startsWith("image/") || mime.startsWith("video/")
+                        || mime.startsWith("audio/"))) continue;
+                CastKeepAliveService.setSelectedMediaUri(this, uri);
+                String token = CastKeepAliveService.getMediaAccessToken();
+                if (token == null || !token.matches("[A-Za-z0-9_-]{43}")) {
+                    throw new IOException("Unable to register local media item");
+                }
+                String mediaUrl = "https://" + phoneIp + ":8088"
+                        + getLocalMediaRoutePath(uri, mime) + "?token=" + token;
+                JSONObject entry = new JSONObject();
+                entry.put("url", mediaUrl);
+                entry.put("mediaPin", mediaPin);
+                entry.put("headers", new JSONObject());
+                queueItems.put(entry);
+            }
+        } catch (Exception error) {
+            Toast.makeText(this, "تعذر تجهيز أحد ملفات القائمة: " + error.getClass().getSimpleName(),
+                    Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (queueItems.length() == 0) {
+            Toast.makeText(this, "القائمة لا تحتوي على ملفات صور أو فيديو أو صوت صالحة.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        probeReceiversBeforeQueueSend(targets, queueItems);
+    }
+
+    private void probeReceiversBeforeQueueSend(List<String> targets, JSONArray queueItems) {
+        java.util.concurrent.atomic.AtomicInteger completed = new java.util.concurrent.atomic.AtomicInteger();
+        java.util.concurrent.atomic.AtomicInteger active = new java.util.concurrent.atomic.AtomicInteger();
+        Runnable[] finishProbe = new Runnable[1];
+        finishProbe[0] = () -> {
+            if (completed.incrementAndGet() != targets.size()) return;
+            runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed()) return;
+                if (active.get() == 0) {
+                    sendNamedQueueBatch(targets, queueItems, "replace");
+                    return;
+                }
+                new AlertDialog.Builder(MainActivity.this, R.style.ModernDialogTheme)
+                        .setTitle("فيه محتوى شغال على أجهزة الاستقبال")
+                        .setMessage("تم تأكيد وجود تشغيل فعلي على " + active.get() + " من "
+                                + targets.size() + " أجهزة. اختار تشغيل القائمة بدل الحالي أو إضافتها بعده.")
+                        .setPositiveButton("تشغيل بدل الحالي",
+                                (dialog, which) -> sendNamedQueueBatch(targets, queueItems, "replace"))
+                        .setNeutralButton("إضافة بعد الحالي",
+                                (dialog, which) -> sendNamedQueueBatch(targets, queueItems, "append"))
+                        .setNegativeButton("إلغاء", null)
+                        .show();
+            });
+        };
+        for (String target : targets) {
+            try {
+                String endpoint = buildReceiverHttpsEndpoint(target);
+                String host = Uri.parse(endpoint).getHost();
+                if (host == null) throw new IOException("Invalid receiver host");
+                OkHttpClient client = getPinnedReceiverClient(host).newBuilder()
+                        .connectTimeout(1800, java.util.concurrent.TimeUnit.MILLISECONDS)
+                        .readTimeout(2200, java.util.concurrent.TimeUnit.MILLISECONDS)
+                        .callTimeout(3000, java.util.concurrent.TimeUnit.MILLISECONDS).build();
+                Request request = new Request.Builder().url(endpoint + "/?command=status").get().build();
+                client.newCall(request).enqueue(new Callback() {
+                    @Override public void onFailure(Call call, IOException error) {
+                        finishProbe[0].run();
+                    }
+                    @Override public void onResponse(Call call, Response response) {
+                        try {
+                            if (response.isSuccessful() && response.body() != null) {
+                                JSONObject state = new JSONObject(response.body().string());
+                                long updated = state.optLong("mediaStateUpdatedAt", 0L);
+                                long age = System.currentTimeMillis() - updated;
+                                String type = state.optString("mediaType", "none");
+                                if (state.optBoolean("mediaActive", false) && updated > 0L
+                                        && age >= -5000L && age <= 60000L
+                                        && ("video".equals(type) || "audio".equals(type) || "image".equals(type))) {
+                                    active.incrementAndGet();
+                                }
+                            }
+                        } catch (Exception ignored) {
+                            // Stale or malformed status is not proof of active playback.
+                        } finally {
+                            response.close();
+                            finishProbe[0].run();
+                        }
+                    }
+                });
+            } catch (Exception error) {
+                finishProbe[0].run();
+            }
+        }
+    }
+
+    private void sendNamedQueueBatch(List<String> targets, JSONArray queueItems, String mode) {
+        JSONObject payload = new JSONObject();
+        try {
+            payload.put("mode", mode);
+            payload.put("items", queueItems);
+        } catch (Exception error) {
+            Toast.makeText(this, "تعذر تجهيز بيانات قائمة التشغيل.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        java.util.concurrent.atomic.AtomicInteger accepted = new java.util.concurrent.atomic.AtomicInteger();
+        java.util.concurrent.atomic.AtomicInteger finished = new java.util.concurrent.atomic.AtomicInteger();
+        for (String target : targets) {
+            try {
+                String endpoint = buildReceiverHttpsEndpoint(target);
+                String host = Uri.parse(endpoint).getHost();
+                if (host == null) throw new IOException("Invalid receiver host");
+                OkHttpClient client = getPinnedReceiverClient(host);
+                okhttp3.RequestBody body = okhttp3.RequestBody.create(
+                        okhttp3.MediaType.parse("application/json; charset=utf-8"), payload.toString());
+                Request request = new Request.Builder().url(endpoint + "/queue").post(body).build();
+                client.newCall(request).enqueue(new Callback() {
+                    @Override public void onFailure(Call call, IOException error) {
+                        finishQueueTarget(targets.size(), accepted, finished);
+                    }
+                    @Override public void onResponse(Call call, Response response) {
+                        try {
+                            if (response.isSuccessful()) accepted.incrementAndGet();
+                        } finally {
+                            response.close();
+                            finishQueueTarget(targets.size(), accepted, finished);
+                        }
+                    }
+                });
+            } catch (Exception error) {
+                finishQueueTarget(targets.size(), accepted, finished);
+            }
+        }
+    }
+
+    private void finishQueueTarget(int total, java.util.concurrent.atomic.AtomicInteger accepted,
+                                   java.util.concurrent.atomic.AtomicInteger finished) {
+        if (finished.incrementAndGet() == total) runOnUiThread(() -> {
+            Toast.makeText(this, "تم إرسال قائمة التشغيل إلى " + accepted.get()
+                    + " من " + total + " أجهزة", Toast.LENGTH_LONG).show();
+        });
+    }
+
+    private void showNamedPlaylistDialog(String name) {
+        JSONObject all = loadNamedPlaylists();
+        JSONArray items = all.optJSONArray(name);
+        if (items == null) items = new JSONArray();
+        final JSONArray playlistItems = items;
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(dp(10), dp(8), dp(10), dp(8));
+        TextView playAll = new TextView(this);
+        playAll.setText("▶  تشغيل القائمة كاملة على الريسيفر");
+        playAll.setTextColor(Color.WHITE);
+        playAll.setTextSize(14);
+        playAll.setGravity(Gravity.CENTER);
+        playAll.setPadding(dp(12), dp(13), dp(12), dp(13));
+        android.graphics.drawable.GradientDrawable playBg = new android.graphics.drawable.GradientDrawable();
+        playBg.setColor(0xFF087F9C);
+        playBg.setCornerRadius(dp(14));
+        playAll.setBackground(playBg);
+        playAll.setOnClickListener(v -> castNamedPlaylistToTv(name));
+        panel.addView(playAll, new LinearLayout.LayoutParams(-1, -2));
+        TextView addLink = new TextView(this);
+        addLink.setText("＋  إضافة رابط إنترنت للقائمة");
+        addLink.setTextColor(0xFF80DEEA);
+        addLink.setTextSize(13);
+        addLink.setGravity(Gravity.CENTER);
+        addLink.setPadding(dp(10), dp(11), dp(10), dp(11));
+        addLink.setOnClickListener(v -> showAddPlaylistLinkDialog(name));
+        panel.addView(addLink, new LinearLayout.LayoutParams(-1, -2));
+        android.widget.ScrollView scroll = new android.widget.ScrollView(this);
+        LinearLayout rows = new LinearLayout(this);
+        rows.setOrientation(LinearLayout.VERTICAL);
+        scroll.addView(rows);
+        for (int i = 0; i < playlistItems.length(); i++) {
+            JSONObject item = playlistItems.optJSONObject(i);
+            if (item == null) continue;
+            final int index = i;
+            Uri uri = Uri.parse(item.optString("uri", ""));
+            String title = item.optString("name", getMediaDisplayName(uri, i));
+            LinearLayout row = new LinearLayout(this);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setPadding(dp(6), dp(6), dp(6), dp(6));
+            TextView label = new TextView(this);
+            label.setText((i + 1) + ". " + title + "\n" + (item.has("url") ? "رابط إنترنت" : item.optString("mime", "وسائط")));
+            label.setTextColor(Color.WHITE);
+            label.setTextSize(13);
+            row.addView(label, new LinearLayout.LayoutParams(0, -2, 1f));
+            TextView up = new TextView(this); up.setText("↑"); up.setTextColor(Color.WHITE); up.setPadding(dp(8),dp(8),dp(8),dp(8));
+            TextView down = new TextView(this); down.setText("↓"); down.setTextColor(Color.WHITE); down.setPadding(dp(8),dp(8),dp(8),dp(8));
+            TextView remove = new TextView(this); remove.setText("حذف"); remove.setTextColor(0xFFFFB4AB); remove.setPadding(dp(8),dp(8),dp(8),dp(8));
+            row.addView(up); row.addView(down); row.addView(remove);
+            row.setOnClickListener(v -> {
+                String savedUrl = item.optString("url", "");
+                if (!savedUrl.isEmpty()) {
+                    castUrlDirectlyToTv(savedUrl);
+                } else {
+                    setSelectedMediaUri(uri);
+                    castLocalMediaToTv(true);
+                }
+            });
+            up.setOnClickListener(v -> moveNamedPlaylistItem(name, index, -1));
+            down.setOnClickListener(v -> moveNamedPlaylistItem(name, index, 1));
+            remove.setOnClickListener(v -> removeNamedPlaylistItem(name, index));
+            rows.addView(row);
+            View divider = new View(this); divider.setBackgroundColor(0xFF374151);
+            rows.addView(divider, new LinearLayout.LayoutParams(-1, dp(1)));
+        }
+        if (playlistItems.length() == 0) {
+            TextView empty = new TextView(this); empty.setText("القائمة فارغة. أضف صورًا أو فيديوهات أو ملفات صوتية."); empty.setTextColor(Color.LTGRAY);
             rows.addView(empty);
         }
-        panel.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1f));
-        AlertDialog dialog = new AlertDialog.Builder(this, R.style.ModernDialogTheme)
-                .setTitle("قائمة التشغيل (" + videoQueue.size() + ")")
+        // Give the dialog content a real measured height; a zero-height weighted
+        // ScrollView inside a wrap-content dialog can collapse the playlist rows.
+        panel.addView(scroll, new LinearLayout.LayoutParams(-1, dp(360)));
+        new AlertDialog.Builder(this, R.style.ModernDialogTheme).setTitle(name + " (" + playlistItems.length() + ")")
                 .setView(panel)
-                .setPositiveButton("إضافة فيديوهات", (d, w) -> openMediaPicker(false))
-                .setNeutralButton("مسح القائمة", (d, w) -> new AlertDialog.Builder(this, R.style.ModernDialogTheme)
-                        .setTitle("مسح قائمة التشغيل؟")
-                        .setMessage("هيتم حذف عناصر القائمة فقط، من غير حذف الملفات الأصلية من الهاتف.")
-                        .setPositiveButton("مسح", (confirm, which) -> {
-                            videoQueue.clear();
-                            currentVideoIndex = 0;
-                            persistMediaQueues();
-                            Toast.makeText(this, "تم مسح قائمة التشغيل", Toast.LENGTH_SHORT).show();
+                .setPositiveButton("إضافة وسائط", (d,w) -> openNamedPlaylistPicker(name))
+                .setNeutralButton("مسح القائمة", (d,w) -> new AlertDialog.Builder(this, R.style.ModernDialogTheme)
+                        .setTitle("مسح القائمة؟").setMessage("سيتم حذف عناصر القائمة فقط دون حذف الملفات الأصلية.")
+                        .setPositiveButton("مسح", (x,y) -> {
+                            JSONObject saved = loadNamedPlaylists(); putNamedPlaylistItems(saved, name, new JSONArray()); saveNamedPlaylists(saved);
+                            showNamedPlaylistDialog(name);
                         }).setNegativeButton("إلغاء", null).show())
-                .setNegativeButton("إغلاق", null).create();
-        dialog.show();
+                .setNegativeButton("القوائم", (d,w) -> showPlaylistDialog()).show();
+    }
+
+    private void openNamedPlaylistPicker(String name) {
+        activeNamedPlaylist = name;
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("*/*");
+        intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"image/*", "video/*", "audio/*"});
+        intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+        startActivityForResult(intent, PICK_NAMED_PLAYLIST_ITEMS_REQUEST);
+    }
+
+    private void appendNamedPlaylistItems(String name, Intent data) {
+        JSONObject all = loadNamedPlaylists();
+        JSONArray items = all.optJSONArray(name);
+        if (items == null) items = new JSONArray();
+        List<Uri> picked = new ArrayList<>();
+        ClipData clips = data.getClipData();
+        if (clips != null) {
+            for (int i = 0; i < clips.getItemCount(); i++) picked.add(clips.getItemAt(i).getUri());
+        } else if (data.getData() != null) picked.add(data.getData());
+        for (Uri uri : picked) {
+            if (uri == null) continue;
+            takePermissions(uri);
+            String mime = getContentResolver().getType(uri);
+            if (mime == null) mime = "application/octet-stream";
+            JSONObject entry = new JSONObject();
+            try {
+                entry.put("uri", uri.toString());
+                entry.put("mime", mime);
+                entry.put("name", getMediaDisplayName(uri, items.length()));
+                items.put(entry);
+                addRecentMedia(uri);
+            } catch (Exception ignored) {}
+        }
+        putNamedPlaylistItems(all, name, items);
+        saveNamedPlaylists(all);
+        Toast.makeText(this, "تمت إضافة " + picked.size() + " عنصر إلى " + name, Toast.LENGTH_SHORT).show();
+        showNamedPlaylistDialog(name);
+    }
+
+    private void moveNamedPlaylistItem(String name, int index, int delta) {
+        JSONObject all = loadNamedPlaylists();
+        JSONArray old = all.optJSONArray(name);
+        if (old == null) return;
+        int target = index + delta;
+        if (target < 0 || target >= old.length()) return;
+        JSONArray updated = new JSONArray();
+        for (int i = 0; i < old.length(); i++) {
+            if (i == index) updated.put(old.opt(target));
+            else if (i == target) updated.put(old.opt(index));
+            else updated.put(old.opt(i));
+        }
+        putNamedPlaylistItems(all, name, updated); saveNamedPlaylists(all); showNamedPlaylistDialog(name);
+    }
+
+    private void removeNamedPlaylistItem(String name, int index) {
+        JSONObject all = loadNamedPlaylists();
+        JSONArray old = all.optJSONArray(name);
+        if (old == null) return;
+        JSONArray updated = new JSONArray();
+        for (int i = 0; i < old.length(); i++) if (i != index) updated.put(old.opt(i));
+        putNamedPlaylistItems(all, name, updated); saveNamedPlaylists(all); showNamedPlaylistDialog(name);
     }
 
     private LinearLayout createMediaQueueRow(Uri uri, String title, Runnable onClick, Runnable onRemove) {
@@ -2707,7 +3260,7 @@ private void showManualIpDialog() {
             if (host == null) return false;
             host = host.toLowerCase(java.util.Locale.ROOT);
             if (host.startsWith("www.")) host = host.substring(4);
-            if (path.matches(".*\\.(mp4|m3u8|webm|mov|mkv|avi)$")) return true;
+            if (path.matches(".*\\.(mp4|m3u8|webm|mov|mkv|avi|flv|m4v|mpg|mpeg|3gp|ts|mpd|mp3|m4a|aac|ogg|oga|opus|wav|flac|jpg|jpeg|png|webp|gif|avif|heic)$")) return true;
             if (host.equals("youtu.be") || host.endsWith("youtube.com")
                     || host.endsWith("youtube-nocookie.com") || host.equals("fb.watch")) return true;
             if (host.endsWith("facebook.com") || host.equals("fb.com"))
@@ -2841,29 +3394,206 @@ private void showManualIpDialog() {
             if (finishWhenDone) finish();
             return;
         }
-        java.util.concurrent.atomic.AtomicInteger accepted = new java.util.concurrent.atomic.AtomicInteger();
-        java.util.concurrent.atomic.AtomicInteger finished = new java.util.concurrent.atomic.AtomicInteger();
+
+        // Probe every selected receiver first, then ask once for the whole group.
+        // A timeout is not proof of active playback, so that receiver remains eligible.
+        Runnable playBatch = () -> {
+            if (isLikelyVideoClipboardUrl(mediaUrl)) {
+                sendSingleUrlQueueBatch(targets, mediaUrl, "replace", finishWhenDone);
+            } else {
+                dispatchUrlBatch(targets, mediaUrl, finishWhenDone);
+            }
+        };
+        java.util.List<String> activeTargets = java.util.Collections.synchronizedList(new ArrayList<>());
+        java.util.concurrent.atomic.AtomicInteger completedProbes = new java.util.concurrent.atomic.AtomicInteger();
+        Runnable[] finishProbeBatch = new Runnable[1];
+        finishProbeBatch[0] = () -> {
+            if (completedProbes.incrementAndGet() != targets.size()) return;
+            runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed()) {
+                    if (finishWhenDone) finish();
+                    return;
+                }
+                if (activeTargets.isEmpty()) {
+                    playBatch.run();
+                    return;
+                }
+                new AlertDialog.Builder(MainActivity.this, R.style.ModernDialogTheme)
+                        .setTitle("فيه محتوى شغال على أجهزة الاستقبال")
+                        .setMessage("تم تأكيد وجود تشغيل فعلي على " + activeTargets.size()
+                                + " من " + targets.size()
+                                + " أجهزة. هل تريد إيقاف التشغيل الحالي على الأجهزة المحددة وتشغيل المحتوى الجديد؟")
+                        .setPositiveButton("تشغيل بدل الحالي", (dialog, which) -> playBatch.run())
+                        .setNeutralButton("إضافة بعد الحالي", (dialog, which) ->
+                                sendSingleUrlQueueBatch(targets, mediaUrl, "append", finishWhenDone))
+                        .setNegativeButton("إلغاء", (dialog, which) -> {
+                            if (finishWhenDone) finish();
+                        })
+                        .setOnCancelListener(dialog -> {
+                            if (finishWhenDone) finish();
+                        })
+                        .show();
+            });
+        };
+
         for (String tvIp : targets) {
             try {
                 String endpoint = buildReceiverHttpsEndpoint(tvIp);
                 String host = Uri.parse(endpoint).getHost();
-                OkHttpClient pinnedClient = getPinnedReceiverClient(host);
-                Request request = new Request.Builder()
-                        .url(endpoint + "/?url=" + URLEncoder.encode(mediaUrl, "UTF-8") + "&open=browser")
-                        .get().build();
-                pinnedClient.newCall(request).enqueue(new Callback() {
+                if (host == null) throw new IOException("Invalid receiver host");
+                OkHttpClient probe = getPinnedReceiverClient(host).newBuilder()
+                        .connectTimeout(1800, java.util.concurrent.TimeUnit.MILLISECONDS)
+                        .readTimeout(2200, java.util.concurrent.TimeUnit.MILLISECONDS)
+                        .callTimeout(3000, java.util.concurrent.TimeUnit.MILLISECONDS)
+                        .build();
+                Request statusRequest = new Request.Builder()
+                        .url(endpoint + "/?command=status").get().build();
+                probe.newCall(statusRequest).enqueue(new Callback() {
                     @Override public void onFailure(Call call, IOException error) {
-                        finishUrlTarget(targets.size(), accepted, finished, finishWhenDone);
+                        finishProbeBatch[0].run();
                     }
                     @Override public void onResponse(Call call, Response response) {
-                        try { if (response.isSuccessful()) accepted.incrementAndGet(); }
-                        finally { response.close(); }
-                        finishUrlTarget(targets.size(), accepted, finished, finishWhenDone);
+                        try {
+                            if (response.isSuccessful() && response.body() != null) {
+                                JSONObject state = new JSONObject(response.body().string());
+                                long updatedAt = state.optLong("mediaStateUpdatedAt", 0L);
+                                long age = System.currentTimeMillis() - updatedAt;
+                                String type = state.optString("mediaType", "none");
+                                boolean active = state.optBoolean("mediaActive", false)
+                                        && updatedAt > 0L && age >= -5000L && age <= 60000L
+                                        && ("video".equals(type) || "audio".equals(type) || "image".equals(type));
+                                if (active) activeTargets.add(tvIp);
+                            }
+                        } catch (Exception ignored) {
+                            // Invalid or stale status is not evidence of active playback.
+                        } finally {
+                            response.close();
+                            finishProbeBatch[0].run();
+                        }
                     }
                 });
             } catch (Exception error) {
-                finishUrlTarget(targets.size(), accepted, finished, finishWhenDone);
+                finishProbeBatch[0].run();
             }
+        }
+    }
+
+    private void sendSingleUrlQueueBatch(List<String> targets, String mediaUrl,
+                                         String mode, boolean finishWhenDone) {
+        try {
+            JSONObject item = new JSONObject();
+            item.put("url", mediaUrl);
+            item.put("sourceUrl", mediaUrl);
+            item.put("headers", new JSONObject());
+            JSONArray items = new JSONArray();
+            items.put(item);
+            JSONObject payload = new JSONObject();
+            payload.put("mode", mode);
+            payload.put("items", items);
+            sendQueuePayloadToReceivers(targets, payload, finishWhenDone, "تمت إضافة الرابط إلى قائمة التشغيل");
+        } catch (Exception error) {
+            Toast.makeText(this, "تعذر تجهيز الرابط للإضافة إلى القائمة.", Toast.LENGTH_LONG).show();
+            if (finishWhenDone) finish();
+        }
+    }
+
+    private void sendSingleLocalQueueBatch(List<String> targets, String mediaUrl,
+                                           String mediaPin, String mode) {
+        try {
+            JSONObject item = new JSONObject();
+            item.put("url", mediaUrl);
+            item.put("mediaPin", mediaPin);
+            item.put("headers", new JSONObject());
+            JSONArray items = new JSONArray();
+            items.put(item);
+            JSONObject payload = new JSONObject();
+            payload.put("mode", mode);
+            payload.put("items", items);
+            sendQueuePayloadToReceivers(targets, payload, false, "تمت إضافة الوسيط إلى قائمة التشغيل");
+        } catch (Exception error) {
+            Toast.makeText(this, "تعذر تجهيز الوسيط للإضافة إلى القائمة.", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void sendQueuePayloadToReceivers(List<String> targets, JSONObject payload,
+                                             boolean finishWhenDone, String successMessage) {
+        java.util.concurrent.atomic.AtomicInteger accepted = new java.util.concurrent.atomic.AtomicInteger();
+        java.util.concurrent.atomic.AtomicInteger finished = new java.util.concurrent.atomic.AtomicInteger();
+        for (String target : targets) {
+            try {
+                String endpoint = buildReceiverHttpsEndpoint(target);
+                String host = Uri.parse(endpoint).getHost();
+                if (host == null) throw new IOException("Invalid receiver host");
+                OkHttpClient client = getPinnedReceiverClient(host);
+                okhttp3.RequestBody body = okhttp3.RequestBody.create(
+                        okhttp3.MediaType.parse("application/json; charset=utf-8"), payload.toString());
+                Request request = new Request.Builder().url(endpoint + "/queue").post(body).build();
+                client.newCall(request).enqueue(new Callback() {
+                    @Override public void onFailure(Call call, IOException error) {
+                        finishQueuePayloadTarget(targets.size(), accepted, finished, finishWhenDone, successMessage);
+                    }
+                    @Override public void onResponse(Call call, Response response) {
+                        try { if (response.isSuccessful()) accepted.incrementAndGet(); }
+                        finally {
+                            response.close();
+                            finishQueuePayloadTarget(targets.size(), accepted, finished, finishWhenDone, successMessage);
+                        }
+                    }
+                });
+            } catch (Exception error) {
+                finishQueuePayloadTarget(targets.size(), accepted, finished, finishWhenDone, successMessage);
+            }
+        }
+    }
+
+    private void finishQueuePayloadTarget(int total, java.util.concurrent.atomic.AtomicInteger accepted,
+                                          java.util.concurrent.atomic.AtomicInteger finished,
+                                          boolean finishWhenDone, String successMessage) {
+        if (finished.incrementAndGet() == total) runOnUiThread(() -> {
+            Toast.makeText(this, successMessage + " إلى " + accepted.get()
+                    + " من " + total + " أجهزة", Toast.LENGTH_LONG).show();
+            if (finishWhenDone) finish();
+        });
+    }
+
+    private void dispatchUrlBatch(List<String> targets, String mediaUrl, boolean finishWhenDone) {
+        java.util.concurrent.atomic.AtomicInteger accepted = new java.util.concurrent.atomic.AtomicInteger();
+        java.util.concurrent.atomic.AtomicInteger finished = new java.util.concurrent.atomic.AtomicInteger();
+        for (String tvIp : targets) {
+            sendUrlToSingleReceiver(tvIp, mediaUrl, finishWhenDone,
+                    targets.size(), accepted, finished);
+        }
+    }
+
+    private String stateTypeForPrompt(String type) {
+        if ("audio".equals(type)) return "صوت";
+        if ("image".equals(type)) return "صورة";
+        return "فيديو";
+    }
+
+    private void sendUrlToSingleReceiver(String tvIp, String mediaUrl, boolean finishWhenDone,
+            int total, java.util.concurrent.atomic.AtomicInteger accepted,
+            java.util.concurrent.atomic.AtomicInteger finished) {
+        try {
+            String endpoint = buildReceiverHttpsEndpoint(tvIp);
+            String host = Uri.parse(endpoint).getHost();
+            if (host == null) throw new IOException("Invalid receiver host");
+            OkHttpClient pinnedClient = getPinnedReceiverClient(host);
+            Request request = new Request.Builder()
+                    .url(endpoint + "/?url=" + URLEncoder.encode(mediaUrl, "UTF-8") + "&open=browser")
+                    .get().build();
+            pinnedClient.newCall(request).enqueue(new Callback() {
+                @Override public void onFailure(Call call, IOException error) {
+                    finishUrlTarget(total, accepted, finished, finishWhenDone);
+                }
+                @Override public void onResponse(Call call, Response response) {
+                    try { if (response.isSuccessful()) accepted.incrementAndGet(); }
+                    finally { response.close(); }
+                    finishUrlTarget(total, accepted, finished, finishWhenDone);
+                }
+            });
+        } catch (Exception error) {
+            finishUrlTarget(total, accepted, finished, finishWhenDone);
         }
     }
 
@@ -3176,6 +3906,12 @@ private void showManualIpDialog() {
             }
             return;
         }
+        if (requestCode == PICK_NAMED_PLAYLIST_ITEMS_REQUEST) {
+            if (resultCode == RESULT_OK && data != null && activeNamedPlaylist != null) {
+                appendNamedPlaylistItems(activeNamedPlaylist, data);
+            }
+            return;
+        }
         slideHandler.removeCallbacks(slideRunnable);
         isSlideshowRunning = false;
 
@@ -3394,42 +4130,184 @@ private void showManualIpDialog() {
             return;
         }
         String targetUrl = "https://" + phoneIp + ":8088" + mediaPath + "?token=" + mediaToken;
-        java.util.concurrent.atomic.AtomicInteger accepted = new java.util.concurrent.atomic.AtomicInteger();
-        java.util.concurrent.atomic.AtomicInteger finished = new java.util.concurrent.atomic.AtomicInteger();
+        probeAllLocalMediaReceivers(targets, targetUrl, mediaTlsPin, showToast);
+    }
+
+    // Collect every selected Receiver's authenticated status before showing one
+    // group-level decision. A timeout is not evidence of active playback.
+    private void probeAllLocalMediaReceivers(List<String> targets, String mediaUrl,
+            String mediaPin, boolean showToast) {
+        java.util.List<String> activeTargets = java.util.Collections.synchronizedList(new ArrayList<>());
+        java.util.concurrent.atomic.AtomicInteger completed = new java.util.concurrent.atomic.AtomicInteger();
+        Runnable[] onProbeFinished = new Runnable[1];
+        onProbeFinished[0] = () -> {
+            if (completed.incrementAndGet() != targets.size()) return;
+            runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed()) return;
+                Runnable sendAll = () -> {
+                    java.util.concurrent.atomic.AtomicInteger accepted = new java.util.concurrent.atomic.AtomicInteger();
+                    java.util.concurrent.atomic.AtomicInteger finished = new java.util.concurrent.atomic.AtomicInteger();
+                    for (String target : targets) {
+                        sendLocalMediaToReceiver(target, mediaUrl, mediaPin, showToast,
+                                targets.size(), accepted, finished);
+                    }
+                };
+                Runnable addAll = () -> sendSingleLocalQueueBatch(targets, mediaUrl, mediaPin, "append");
+
+                if (activeTargets.isEmpty()) {
+                    sendAll.run();
+                    return;
+                }
+                new AlertDialog.Builder(MainActivity.this, R.style.ModernDialogTheme)
+                        .setTitle("فيه محتوى شغال على أجهزة الاستقبال")
+                        .setMessage("تم تأكيد وجود تشغيل فعلي على " + activeTargets.size()
+                                + " من " + targets.size()
+                                + " أجهزة. هل تريد إيقاف التشغيل الحالي على الأجهزة المحددة وتشغيل الملف الجديد؟")
+                        .setPositiveButton("تشغيل بدل الحالي", (dialog, which) -> sendAll.run())
+                        .setNeutralButton("إضافة بعد الحالي", (dialog, which) -> addAll.run())
+                        .setNegativeButton("إلغاء", null)
+                        .show();
+            });
+        };
+
         for (String tvIp : targets) {
             try {
                 String endpoint = buildReceiverHttpsEndpoint(tvIp);
-                String receiverHost = Uri.parse(endpoint).getHost();
-                OkHttpClient pinnedClient = getPinnedReceiverClient(receiverHost);
-                String fullUrl = endpoint + "/?url=" + URLEncoder.encode(targetUrl, "UTF-8")
-                        + "&mediaPin=" + mediaTlsPin;
-                Request req = new Request.Builder().url(fullUrl).get().build();
-                pinnedClient.newCall(req).enqueue(new Callback() {
+                String host = Uri.parse(endpoint).getHost();
+                if (host == null) throw new IOException("Invalid receiver host");
+                OkHttpClient client = getPinnedReceiverClient(host).newBuilder()
+                        .connectTimeout(1800, java.util.concurrent.TimeUnit.MILLISECONDS)
+                        .readTimeout(2200, java.util.concurrent.TimeUnit.MILLISECONDS)
+                        .callTimeout(3000, java.util.concurrent.TimeUnit.MILLISECONDS).build();
+                Request status = new Request.Builder().url(endpoint + "/?command=status").get().build();
+                client.newCall(status).enqueue(new Callback() {
                     @Override public void onFailure(Call call, IOException error) {
-                        if (finished.incrementAndGet() == targets.size() && showToast) runOnUiThread(() ->
-                                Toast.makeText(MainActivity.this, targets.size() > 1
-                                        ? "وصل المحتوى إلى " + accepted.get() + " من " + targets.size() + " أجهزة؛ الأجهزة الأخرى لم تستجب."
-                                        : (accepted.get() == 0 ? "تعذر إرسال المحتوى إلى الريسيفر" : "تم إرسال المحتوى إلى الريسيفر"),
-                                        Toast.LENGTH_LONG).show());
+                        onProbeFinished[0].run();
                     }
                     @Override public void onResponse(Call call, Response response) {
-                        try { if (response.isSuccessful() && response.code() == 200) accepted.incrementAndGet(); }
-                        finally { response.close(); }
-                        if (finished.incrementAndGet() == targets.size() && showToast) runOnUiThread(() ->
-                                Toast.makeText(MainActivity.this, targets.size() > 1
-                                        ? "وصل المحتوى إلى " + accepted.get() + " من " + targets.size() + " أجهزة."
-                                        : (accepted.get() == 0 ? "تعذر إرسال المحتوى إلى الريسيفر" : "تم إرسال المحتوى إلى الريسيفر"),
-                                        Toast.LENGTH_LONG).show());
+                        try {
+                            if (response.isSuccessful() && response.body() != null) {
+                                JSONObject state = new JSONObject(response.body().string());
+                                long updated = state.optLong("mediaStateUpdatedAt", 0L);
+                                long age = System.currentTimeMillis() - updated;
+                                String type = state.optString("mediaType", "none");
+                                boolean active = state.optBoolean("mediaActive", false)
+                                        && updated > 0L && age >= -5000L && age <= 60000L
+                                        && ("video".equals(type) || "audio".equals(type) || "image".equals(type));
+                                if (active) activeTargets.add(tvIp);
+                            }
+                        } catch (Exception ignored) {
+                            // Malformed or stale status is not proof of active playback.
+                        } finally {
+                            response.close();
+                            onProbeFinished[0].run();
+                        }
                     }
                 });
             } catch (Exception error) {
-                if (finished.incrementAndGet() == targets.size() && showToast) runOnUiThread(() ->
-                        Toast.makeText(MainActivity.this, targets.size() > 1
-                                ? "وصل المحتوى إلى " + accepted.get() + " من " + targets.size() + " أجهزة؛ راجع الأجهزة غير المستجيبة."
-                                : (accepted.get() == 0 ? "تعذر إرسال المحتوى إلى الريسيفر" : "تم إرسال المحتوى إلى الريسيفر"),
-                                Toast.LENGTH_LONG).show());
+                onProbeFinished[0].run();
             }
         }
+    }
+
+    private void probeReceiverBeforeLocalMediaSend(String tvIp, String mediaUrl, String mediaPin,
+            boolean showToast, int total, java.util.concurrent.atomic.AtomicInteger accepted,
+            java.util.concurrent.atomic.AtomicInteger finished) {
+        try {
+            String endpoint = buildReceiverHttpsEndpoint(tvIp);
+            String host = Uri.parse(endpoint).getHost();
+            if (host == null) throw new IOException("Invalid receiver host");
+            OkHttpClient client = getPinnedReceiverClient(host).newBuilder()
+                    .connectTimeout(1800, java.util.concurrent.TimeUnit.MILLISECONDS)
+                    .readTimeout(2200, java.util.concurrent.TimeUnit.MILLISECONDS)
+                    .callTimeout(3000, java.util.concurrent.TimeUnit.MILLISECONDS).build();
+            Request status = new Request.Builder().url(endpoint + "/?command=status").get().build();
+            client.newCall(status).enqueue(new Callback() {
+                @Override public void onFailure(Call call, IOException error) {
+                    sendLocalMediaToReceiver(tvIp, mediaUrl, mediaPin, showToast, total, accepted, finished);
+                }
+                @Override public void onResponse(Call call, Response response) {
+                    boolean active = false;
+                    String type = "none";
+                    try {
+                        if (response.isSuccessful() && response.body() != null) {
+                            JSONObject state = new JSONObject(response.body().string());
+                            long updated = state.optLong("mediaStateUpdatedAt", 0L);
+                            long age = System.currentTimeMillis() - updated;
+                            type = state.optString("mediaType", "none");
+                            active = state.optBoolean("mediaActive", false)
+                                    && updated > 0L && age >= -5000L && age <= 60000L
+                                    && ("video".equals(type) || "audio".equals(type) || "image".equals(type));
+                        }
+                    } catch (Exception ignored) {
+                        active = false;
+                    } finally {
+                        response.close();
+                    }
+                    if (!active) {
+                        sendLocalMediaToReceiver(tvIp, mediaUrl, mediaPin, showToast, total, accepted, finished);
+                        return;
+                    }
+                    final String label = stateTypeForPrompt(type);
+                    runOnUiThread(() -> {
+                        if (isFinishing() || isDestroyed()) {
+                            finishLocalMediaTarget(total, accepted, finished, showToast);
+                            return;
+                        }
+                        new AlertDialog.Builder(MainActivity.this, R.style.ModernDialogTheme)
+                                .setTitle("فيه محتوى شغال على الريسيفر")
+                                .setMessage("الريسيفر أكد وجود تشغيل فعلي (" + label
+                                        + "). هل تريد إيقافه وتشغيل الملف الجديد؟")
+                                .setPositiveButton("تشغيل بدل الحالي", (dialog, which) ->
+                                        sendLocalMediaToReceiver(tvIp, mediaUrl, mediaPin, showToast,
+                                                total, accepted, finished))
+                                .setNegativeButton("إلغاء", (dialog, which) ->
+                                        finishLocalMediaTarget(total, accepted, finished, showToast))
+                                .setOnCancelListener(dialog ->
+                                        finishLocalMediaTarget(total, accepted, finished, showToast))
+                                .show();
+                    });
+                }
+            });
+        } catch (Exception error) {
+            sendLocalMediaToReceiver(tvIp, mediaUrl, mediaPin, showToast, total, accepted, finished);
+        }
+    }
+
+    private void sendLocalMediaToReceiver(String tvIp, String mediaUrl, String mediaPin,
+            boolean showToast, int total, java.util.concurrent.atomic.AtomicInteger accepted,
+            java.util.concurrent.atomic.AtomicInteger finished) {
+        try {
+            String endpoint = buildReceiverHttpsEndpoint(tvIp);
+            String host = Uri.parse(endpoint).getHost();
+            if (host == null) throw new IOException("Invalid receiver host");
+            OkHttpClient pinnedClient = getPinnedReceiverClient(host);
+            String fullUrl = endpoint + "/?url=" + URLEncoder.encode(mediaUrl, "UTF-8")
+                    + "&mediaPin=" + mediaPin;
+            Request req = new Request.Builder().url(fullUrl).get().build();
+            pinnedClient.newCall(req).enqueue(new Callback() {
+                @Override public void onFailure(Call call, IOException error) {
+                    finishLocalMediaTarget(total, accepted, finished, showToast);
+                }
+                @Override public void onResponse(Call call, Response response) {
+                    try { if (response.isSuccessful() && response.code() == 200) accepted.incrementAndGet(); }
+                    finally { response.close(); }
+                    finishLocalMediaTarget(total, accepted, finished, showToast);
+                }
+            });
+        } catch (Exception error) {
+            finishLocalMediaTarget(total, accepted, finished, showToast);
+        }
+    }
+
+    private void finishLocalMediaTarget(int total, java.util.concurrent.atomic.AtomicInteger accepted,
+            java.util.concurrent.atomic.AtomicInteger finished, boolean showToast) {
+        if (finished.incrementAndGet() == total && showToast) runOnUiThread(() ->
+                Toast.makeText(this, total > 1
+                        ? "وصل المحتوى إلى " + accepted.get() + " من " + total + " أجهزة."
+                        : (accepted.get() == 0 ? "تعذر إرسال المحتوى إلى الريسيفر" : "تم إرسال المحتوى إلى الريسيفر"),
+                        Toast.LENGTH_LONG).show());
+
     }
 
     private void sendRemoteCommand(String cmd) {
