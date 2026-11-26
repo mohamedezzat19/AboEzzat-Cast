@@ -58,6 +58,7 @@ final class DownloadManagerDialog {
     private final LinearLayout rows;
     private final TextView summary;
     private final TextView stats;
+    private final TextView listToggle;
     private final EditText search;
     private final ScrollView scroll;
     private final LinearLayout filters;
@@ -142,13 +143,26 @@ final class DownloadManagerDialog {
         summaryParams.bottomMargin = dp(3);
         root.addView(summary, summaryParams);
 
+        listToggle = text("⌄  عرض سجل التنزيلات", 14, Color.WHITE, true);
+        listToggle.setPadding(dp(12), dp(12), dp(12), dp(12));
+        listToggle.setBackground(rounded(CARD, dp(12), Color.rgb(48, 65, 88)));
+        LinearLayout.LayoutParams toggleParams = params(-1, -2);
+        toggleParams.topMargin = dp(5);
+        root.addView(listToggle, toggleParams);
+
         scroll = new ScrollView(activity);
         scroll.setFillViewport(true);
         rows = new LinearLayout(activity);
         rows.setOrientation(LinearLayout.VERTICAL);
         rows.setPadding(0, dp(5), 0, dp(12));
         scroll.addView(rows);
+        scroll.setVisibility(View.GONE);
         root.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1f));
+        listToggle.setOnClickListener(v -> {
+            boolean opening = scroll.getVisibility() != View.VISIBLE;
+            scroll.setVisibility(opening ? View.VISIBLE : View.GONE);
+            listToggle.setText(opening ? "⌃  إخفاء سجل التنزيلات" : "⌄  عرض سجل التنزيلات");
+        });
 
         Button clearCompleted = new Button(activity);
         clearCompleted.setText("مسح التنزيلات المكتملة");
@@ -239,6 +253,8 @@ final class DownloadManagerDialog {
             addCard(item, type);
         }
         summary.setText(shown + " نتيجة ظاهرة من " + all.size() + " تنزيل");
+        listToggle.setText((scroll.getVisibility() == View.VISIBLE ? "⌃  إخفاء" : "⌄  عرض")
+                + " سجل التنزيلات (" + shown + ")");
         if (shown == 0) {
             TextView empty = text(all.isEmpty() ? "لا توجد تنزيلات حتى الآن\nابدأ تنزيل ملف من المتصفح وسيظهر هنا." :
                     "لا توجد نتائج مطابقة للبحث أو القسم المحدد.", 14, MUTED, false);
