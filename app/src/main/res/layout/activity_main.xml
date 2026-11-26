@@ -75,7 +75,7 @@
                 android:orientation="horizontal"
                 android:layoutDirection="ltr"
                 android:gravity="center_vertical"
-                android:background="#111D30"
+                android:background="@drawable/bg_search_bar"
                 android:padding="8dp"
                 android:layout_marginBottom="20dp">
                 <EditText
@@ -89,7 +89,7 @@
                     android:singleLine="true"
                     android:imeOptions="actionGo"
                     android:inputType="textUri"
-                    android:background="#1B2B43"
+                    android:background="@drawable/bg_search_input"
                     android:paddingHorizontal="10dp"
                     android:textSize="14sp"/>
                 <Button
@@ -407,8 +407,8 @@
         android:orientation="horizontal"
         android:layoutDirection="ltr"
         android:gravity="center"
-        android:background="#080F1D"
-        android:elevation="8dp">
+        android:background="@drawable/bg_bottom_navigation"
+        android:elevation="10dp">
 
         <Button
             android:id="@+id/bottom_home"
