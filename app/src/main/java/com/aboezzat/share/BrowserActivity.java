@@ -86,6 +86,7 @@ import okhttp3.RequestBody;
 import okhttp3.MediaType;
 import okhttp3.Response;
 import org.json.JSONObject;
+import org.json.JSONArray;
 
 public class BrowserActivity extends Activity {
 
@@ -3716,33 +3717,31 @@ public class BrowserActivity extends Activity {
             Request req = buildReceiverPlayRequest(endpoint, videoTrackUrl, audioTrackUrl,
                     bestVideo == null ? null : bestVideo.requestHeaders);
             final String receiverEndpoint = endpoint;
-            AtomicBoolean requestHeadersSent = new AtomicBoolean(false);
-            OkHttpClient trackedClient = receiverClient.newBuilder()
-                    .eventListener(new okhttp3.EventListener() {
-                        @Override
-                        public void requestHeadersEnd(Call call, Request request) {
-                            requestHeadersSent.set(true);
-                        }
-                    }).build();
-
-            trackedClient.newCall(req).enqueue(new Callback() {
-                private void finishSend() {
-                    runOnUiThread(() -> {
-                        if (requestHeadersSent.get()) {
-                            Toast.makeText(BrowserActivity.this, "✅ تم الإرسال", Toast.LENGTH_SHORT).show();
-                        }
-                    });
+            receiverClient.newCall(req).enqueue(new Callback() {
+                private void finishSend(boolean accepted, String detail) {
+                    runOnUiThread(() -> Toast.makeText(BrowserActivity.this,
+                            accepted ? "✅ تم استلام الطلب بواسطة الريسيفر"
+                                    : "❌ لم يستقبل الريسيفر الطلب: " + detail,
+                            Toast.LENGTH_LONG).show());
                 }
 
                 @Override
                 public void onFailure(Call call, IOException error) {
-                    finishSend();
+                    finishSend(false, error == null ? "فشل الاتصال" : error.getMessage());
                 }
 
                 @Override
                 public void onResponse(Call call, Response response) {
+                    boolean accepted = response.isSuccessful();
+                    String detail = "HTTP " + response.code();
+                    try {
+                        if (!accepted && response.body() != null) {
+                            String body = response.body().string();
+                            if (!body.trim().isEmpty()) detail += " - " + body;
+                        }
+                    } catch (IOException ignored) { }
                     response.close();
-                    finishSend();
+                    finishSend(accepted, detail);
                 }
             });
         } catch (Exception e) {
@@ -3899,8 +3898,6 @@ public class BrowserActivity extends Activity {
     private void castToTv(String mediaUrl, String audioUrl) { castToTv(mediaUrl, audioUrl, null); }
 
     private void castToTv(String mediaUrl, String audioUrl, java.util.Map<String, String> capturedHeaders) {
-        // BrowserActivity may stay alive while the user changes the selected receiver
-        // from the home screen. Refresh the saved target for every actual cast.
         refreshSelectedReceiverIp();
         if (isBlockedAdUrl(mediaUrl) || isBlockedAdUrl(audioUrl)) {
             Toast.makeText(this, "تم استبعاد رابط إعلاني ولا يمكن تشغيله", Toast.LENGTH_SHORT).show();
@@ -3910,42 +3907,244 @@ public class BrowserActivity extends Activity {
             Toast.makeText(this, "يرجى تعيين IP الشاشة أولاً", Toast.LENGTH_SHORT).show();
             return;
         }
+        final String endpoint;
+        final OkHttpClient receiverClient;
         try {
-            final String endpoint = ReceiverApiClient.buildEndpoint(tvIp);
-            OkHttpClient receiverClient = ReceiverApiClient.create(this, Uri.parse(endpoint).getHost());
-            Request req = buildReceiverPlayRequest(endpoint, mediaUrl, audioUrl, capturedHeaders);
-            final String receiverEndpoint = endpoint;
-            AtomicBoolean requestHeadersSent = new AtomicBoolean(false);
-            OkHttpClient trackedClient = receiverClient.newBuilder()
-                    .eventListener(new okhttp3.EventListener() {
-                        @Override
-                        public void requestHeadersEnd(Call call, Request request) {
-                            requestHeadersSent.set(true);
+            endpoint = ReceiverApiClient.buildEndpoint(tvIp);
+            receiverClient = ReceiverApiClient.create(this, Uri.parse(endpoint).getHost());
+        } catch (Exception error) {
+            Toast.makeText(this, "تعذر تجهيز الاتصال بالريسيفر", Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        Request statusRequest = new Request.Builder().url(endpoint + "/?command=status").get().build();
+        receiverClient.newBuilder()
+                .connectTimeout(1800, java.util.concurrent.TimeUnit.MILLISECONDS)
+                .readTimeout(2200, java.util.concurrent.TimeUnit.MILLISECONDS)
+                .callTimeout(3000, java.util.concurrent.TimeUnit.MILLISECONDS)
+                .build().newCall(statusRequest).enqueue(new Callback() {
+            @Override public void onFailure(Call call, IOException error) {
+                runOnUiThread(() -> {
+                    if (isFinishing() || isDestroyed()) return;
+                    // Unknown status must never silently replace a possibly active session.
+                    showBrowserCastChoiceDialog(
+                            () -> sendBrowserCastRequest(receiverClient, endpoint, mediaUrl, audioUrl, capturedHeaders, null),
+                            () -> sendBrowserCastRequest(receiverClient, endpoint, mediaUrl, audioUrl, capturedHeaders, "append"));
+                });
+            }
+            @Override public void onResponse(Call call, Response response) {
+                boolean active = false;
+                boolean statusKnown = false;
+                try {
+                    if (response.isSuccessful() && response.body() != null) {
+                        JSONObject state = new JSONObject(response.body().string());
+                        if (state.has("mediaActive") && state.has("mediaStateUpdatedAt")
+                                && state.has("mediaType")) {
+                            statusKnown = true;
+                            long updated = state.optLong("mediaStateUpdatedAt", 0L);
+                            long age = System.currentTimeMillis() - updated;
+                            String type = state.optString("mediaType", "none");
+                            active = state.optBoolean("mediaActive", false) && updated > 0L
+                                    && age >= -5000L && age <= 60000L
+                                    && ("video".equals(type) || "audio".equals(type) || "image".equals(type));
                         }
-                    }).build();
-
-            trackedClient.newCall(req).enqueue(new Callback() {
-                private void finishSend() {
-                    runOnUiThread(() -> {
-                        if (requestHeadersSent.get()) {
-                            Toast.makeText(BrowserActivity.this, "✅ تم الإرسال", Toast.LENGTH_SHORT).show();
-                        }
-                    });
-                }
-
-                @Override
-                public void onFailure(Call call, IOException error) {
-                    finishSend();
-                }
-
-                @Override
-                public void onResponse(Call call, Response response) {
+                    }
+                } catch (Exception ignored) {
+                } finally {
                     response.close();
-                    finishSend();
+                }
+                final boolean hasActivePlayback = active;
+                final boolean hasKnownStatus = statusKnown;
+                runOnUiThread(() -> {
+                    if (isFinishing() || isDestroyed()) return;
+                    if (!hasKnownStatus) {
+                        // HTTP errors or malformed status are treated as unknown, not idle.
+                        showBrowserCastChoiceDialog(
+                                () -> sendBrowserCastRequest(receiverClient, endpoint, mediaUrl, audioUrl, capturedHeaders, null),
+                                () -> sendBrowserCastRequest(receiverClient, endpoint, mediaUrl, audioUrl, capturedHeaders, "append"));
+                    } else if (!hasActivePlayback) {
+                        sendBrowserCastRequest(receiverClient, endpoint, mediaUrl, audioUrl, capturedHeaders, null);
+                    } else {
+                        showBrowserCastChoiceDialog(
+                                () -> sendBrowserCastRequest(receiverClient, endpoint, mediaUrl, audioUrl, capturedHeaders, null),
+                                () -> sendBrowserCastRequest(receiverClient, endpoint, mediaUrl, audioUrl, capturedHeaders, "append"));
+                    }
+                });
+            }
+        });
+    }
+
+    private void showBrowserCastChoiceDialog(Runnable playNow, Runnable appendToQueue) {
+        final Dialog dialog = new Dialog(this);
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(browserChoiceDp(20), browserChoiceDp(18),
+                browserChoiceDp(20), browserChoiceDp(14));
+        panel.setBackground(new android.graphics.drawable.GradientDrawable() {{
+            setColor(Color.rgb(17, 29, 49));
+            setCornerRadius(browserChoiceDp(22));
+            setStroke(browserChoiceDp(1), Color.rgb(48, 76, 105));
+        }});
+
+        TextView title = new TextView(this);
+        title.setText("فيه محتوى شغال على الريسيفر");
+        title.setTextColor(Color.WHITE);
+        title.setTextSize(19);
+        title.setTypeface(null, android.graphics.Typeface.BOLD);
+        title.setGravity(Gravity.CENTER);
+        panel.addView(title, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        TextView message = new TextView(this);
+        message.setText("اختار هتعمل إيه بالرابط الجديد");
+        message.setTextColor(Color.rgb(183, 201, 220));
+        message.setTextSize(13);
+        message.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams messageParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        messageParams.topMargin = browserChoiceDp(7);
+        messageParams.bottomMargin = browserChoiceDp(16);
+        panel.addView(message, messageParams);
+
+        addBrowserCastChoiceRow(panel, dialog, android.R.drawable.ic_media_play,
+                "تشغيل الآن", "إيقاف المحتوى الحالي وتشغيل الرابط الجديد",
+                Color.rgb(66, 190, 255), playNow);
+        addBrowserCastChoiceRow(panel, dialog, android.R.drawable.ic_menu_add,
+                "إضافة إلى قائمة التشغيل", "تشغيل الرابط بعد انتهاء المحتوى الحالي",
+                Color.rgb(54, 220, 190), appendToQueue);
+        addBrowserCastChoiceRow(panel, dialog, android.R.drawable.ic_menu_close_clear_cancel,
+                "إلغاء", "إغلاق النافذة دون إرسال الرابط",
+                Color.rgb(190, 202, 218), () -> { });
+
+        dialog.setContentView(panel);
+        Window window = dialog.getWindow();
+        if (window != null) {
+            window.setBackgroundDrawableResource(android.R.color.transparent);
+            window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+            WindowManager.LayoutParams params = window.getAttributes();
+            params.width = Math.min(getResources().getDisplayMetrics().widthPixels
+                    - browserChoiceDp(36), browserChoiceDp(420));
+            params.height = WindowManager.LayoutParams.WRAP_CONTENT;
+            params.gravity = Gravity.CENTER;
+            params.dimAmount = 0.62f;
+            window.setAttributes(params);
+        }
+        dialog.show();
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setBackgroundDrawableResource(android.R.color.transparent);
+            dialog.getWindow().setLayout(Math.min(getResources().getDisplayMetrics().widthPixels
+                    - browserChoiceDp(36), browserChoiceDp(420)),
+                    WindowManager.LayoutParams.WRAP_CONTENT);
+        }
+    }
+
+    private void addBrowserCastChoiceRow(LinearLayout parent, Dialog dialog, int iconResource,
+            String label, String description, int accentColor, Runnable action) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(browserChoiceDp(13), browserChoiceDp(12),
+                browserChoiceDp(13), browserChoiceDp(12));
+        android.graphics.drawable.GradientDrawable background =
+                new android.graphics.drawable.GradientDrawable();
+        background.setColor(Color.rgb(27, 45, 68));
+        background.setCornerRadius(browserChoiceDp(15));
+        background.setStroke(browserChoiceDp(1), Color.rgb(55, 82, 110));
+        row.setBackground(background);
+        row.setClickable(true);
+        row.setFocusable(true);
+
+        ImageView icon = new ImageView(this);
+        icon.setImageResource(iconResource);
+        icon.setColorFilter(accentColor);
+        LinearLayout.LayoutParams iconParams = new LinearLayout.LayoutParams(
+                browserChoiceDp(30), browserChoiceDp(30));
+        iconParams.setMarginEnd(browserChoiceDp(13));
+        row.addView(icon, iconParams);
+
+        LinearLayout labels = new LinearLayout(this);
+        labels.setOrientation(LinearLayout.VERTICAL);
+        TextView heading = new TextView(this);
+        heading.setText(label);
+        heading.setTextColor(Color.WHITE);
+        heading.setTextSize(15);
+        heading.setTypeface(null, android.graphics.Typeface.BOLD);
+        labels.addView(heading);
+        TextView detail = new TextView(this);
+        detail.setText(description);
+        detail.setTextColor(Color.rgb(183, 201, 220));
+        detail.setTextSize(11);
+        LinearLayout.LayoutParams detailParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        detailParams.topMargin = browserChoiceDp(3);
+        labels.addView(detail, detailParams);
+        row.addView(labels, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        rowParams.bottomMargin = browserChoiceDp(9);
+        parent.addView(row, rowParams);
+        row.setOnClickListener(view -> {
+            dialog.dismiss();
+            if (action != null) action.run();
+        });
+    }
+
+    private int browserChoiceDp(float value) {
+        return (int) (value * getResources().getDisplayMetrics().density + 0.5f);
+    }
+
+    private void sendBrowserCastRequest(OkHttpClient receiverClient, String endpoint,
+            String mediaUrl, String audioUrl, java.util.Map<String, String> capturedHeaders,
+            String queueMode) {
+        try {
+            Request req;
+            if (queueMode == null) {
+                req = buildReceiverPlayRequest(endpoint, mediaUrl, audioUrl, capturedHeaders);
+            } else {
+                JSONObject item = new JSONObject();
+                item.put("url", mediaUrl);
+                item.put("sourceUrl", mediaUrl);
+                item.put("headers", new JSONObject(capturedHeaders == null
+                        ? java.util.Collections.emptyMap() : capturedHeaders));
+                if (audioUrl != null && !audioUrl.trim().isEmpty()) item.put("audio", audioUrl);
+                JSONArray items = new JSONArray();
+                items.put(item);
+                JSONObject payload = new JSONObject();
+                payload.put("mode", queueMode);
+                payload.put("items", items);
+                RequestBody body = RequestBody.create(
+                        MediaType.parse("application/json; charset=utf-8"), payload.toString());
+                req = new Request.Builder().url(endpoint + "/queue").post(body).build();
+            }
+            receiverClient.newCall(req).enqueue(new Callback() {
+                private void finishSend(boolean accepted, String detail) {
+                    runOnUiThread(() -> Toast.makeText(BrowserActivity.this,
+                            accepted ? (queueMode == null ? "✅ تم استلام الطلب بواسطة الريسيفر"
+                                    : "✅ تمت إضافة الرابط إلى قائمة التشغيل")
+                                    : "❌ لم يستقبل الريسيفر الطلب: " + detail,
+                            Toast.LENGTH_LONG).show());
+                }
+                @Override public void onFailure(Call call, IOException error) {
+                    finishSend(false, error == null ? "فشل الاتصال" : error.getMessage());
+                }
+                @Override public void onResponse(Call call, Response response) {
+                    boolean accepted = response.isSuccessful();
+                    String detail = "HTTP " + response.code();
+                    try {
+                        if (!accepted && response.body() != null) {
+                            String body = response.body().string();
+                            if (!body.trim().isEmpty()) detail += " - " + body;
+                        }
+                    } catch (IOException ignored) { }
+                    response.close();
+                    finishSend(accepted, detail);
                 }
             });
-        } catch (Exception e) {
-            Toast.makeText(this, "خطأ في الرابط", Toast.LENGTH_SHORT).show();
+        } catch (Exception error) {
+            Toast.makeText(this, "تعذر تجهيز طلب الإرسال: " + error.getMessage(),
+                    Toast.LENGTH_LONG).show();
         }
     }
 
