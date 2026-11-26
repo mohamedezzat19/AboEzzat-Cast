@@ -804,8 +804,8 @@ public class MainActivity extends Activity {
         SharedPreferences.Editor edit = browserPrefs.edit();
         // Remove every history metadata key, not only URLs still present in the set.
         for (String key : browserPrefs.getAll().keySet()) {
-            if (key.startsWith("history_title_") || key.startsWith("history_time_")
-                    || key.startsWith("visit_count_")) {
+            if (key.startsWith("history_title_") || key.startsWith("history_thumbnail_")
+                    || key.startsWith("history_time_") || key.startsWith("visit_count_")) {
                 edit.remove(key);
             }
         }
@@ -914,8 +914,8 @@ public class MainActivity extends Activity {
                 Set<String> updated = new HashSet<>(browserPrefs.getStringSet("browser_history", new HashSet<String>()));
                 updated.remove(url);
                 browserPrefs.edit().putStringSet("browser_history", updated)
-                        .remove("history_title_" + url).remove("history_time_" + url)
-                        .remove("visit_count_" + url).apply();
+                        .remove("history_title_" + url).remove("history_thumbnail_" + url)
+                        .remove("history_time_" + url).remove("visit_count_" + url).apply();
                 dialog.dismiss();
                 Toast.makeText(MainActivity.this, "تم حذف الصفحة من السجل", Toast.LENGTH_SHORT).show();
                 showBrowserHistory(mostVisited);
@@ -958,6 +958,31 @@ public class MainActivity extends Activity {
         return (index + 1) + ". " + name;
     }
 
+    private void loadHistoryThumbnail(ImageView target, String imageUrl) {
+        if (target == null || imageUrl == null || imageUrl.trim().isEmpty()) return;
+        target.setTag(imageUrl);
+        new Thread(() -> {
+            java.net.HttpURLConnection connection = null;
+            try {
+                java.net.URL url = new java.net.URL(imageUrl);
+                connection = (java.net.HttpURLConnection) url.openConnection();
+                connection.setConnectTimeout(4500);
+                connection.setReadTimeout(4500);
+                connection.setInstanceFollowRedirects(true);
+                connection.setRequestProperty("User-Agent", "Mozilla/5.0");
+                try (java.io.InputStream input = connection.getInputStream()) {
+                    android.graphics.Bitmap bitmap = android.graphics.BitmapFactory.decodeStream(input);
+                    if (bitmap != null) new Handler(Looper.getMainLooper()).post(() -> {
+                        if (imageUrl.equals(target.getTag())) target.setImageBitmap(bitmap);
+                    });
+                }
+            } catch (Exception ignored) {
+            } finally {
+                if (connection != null) connection.disconnect();
+            }
+        }).start();
+    }
+
     // Library layout modeled on the supplied screenshot.
     private void showLibraryDialog() {
         SharedPreferences browserPrefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE | MODE_MULTI_PROCESS);
@@ -987,7 +1012,8 @@ public class MainActivity extends Activity {
         subtitleParams.bottomMargin = dp(12);
         content.addView(subtitle, subtitleParams);
 
-        addLibrarySectionTitle(content, "☆  المفضلة");
+        LinearLayout favoritesItems = new LinearLayout(this);
+        favoritesItems.setOrientation(LinearLayout.VERTICAL);
         Set<String> bookmarks = new HashSet<>(browserPrefs.getStringSet("custom_sites", new HashSet<String>()));
         List<String> entries = new ArrayList<>(), names = new ArrayList<>(), urls = new ArrayList<>();
         for (String entry : bookmarks) {
@@ -995,11 +1021,11 @@ public class MainActivity extends Activity {
             if (parts.length == 2) { entries.add(entry); names.add(parts[0]); urls.add(parts[1]); }
         }
         if (entries.isEmpty()) {
-            addLibraryEmptyText(content, "لا توجد عناصر بعد");
+            addLibraryEmptyText(favoritesItems, "لا توجد عناصر بعد");
         } else {
             for (int i = 0; i < entries.size(); i++) {
                 final int index = i;
-                TextView card = addLibraryCard(content, names.get(i));
+                TextView card = addLibraryCard(favoritesItems, names.get(i));
                 card.setOnClickListener(v -> openLibraryUrl(urls.get(index)));
                 card.setOnLongClickListener(v -> {
                     showLinkActionsDialog(names.get(index), urls.get(index), () -> {
@@ -1014,35 +1040,92 @@ public class MainActivity extends Activity {
             }
         }
 
-        addLibrarySectionTitle(content, "◷  سجل التصفح");
+        content.addView(createCollapsibleItemsPanel("☆  المفضلة", entries.size(), favoritesItems, 0));
+
         Set<String> history = new HashSet<>(browserPrefs.getStringSet("browser_history", new HashSet<String>()));
         List<String> historyUrls = new ArrayList<>(history);
         historyUrls.removeIf(url -> url == null || url.trim().isEmpty());
         historyUrls.sort((a, b) -> Long.compare(browserPrefs.getLong("history_time_" + b, 0),
                 browserPrefs.getLong("history_time_" + a, 0)));
+        LinearLayout historyHeader = new LinearLayout(this);
+        historyHeader.setOrientation(LinearLayout.HORIZONTAL);
+        historyHeader.setGravity(Gravity.CENTER_VERTICAL);
+        historyHeader.setPadding(dp(12), dp(14), dp(12), dp(14));
+        historyHeader.setBackground(libraryCardBackground(0xFF252630));
+        TextView historyTitle = new TextView(this);
+        historyTitle.setText("◷  سجل التصفح  (" + historyUrls.size() + ")");
+        historyTitle.setTextColor(0xFFFFFFFF);
+        historyTitle.setTextSize(16);
+        historyTitle.setTypeface(null, Typeface.BOLD);
+        historyTitle.setLayoutParams(new LinearLayout.LayoutParams(0, -2, 1));
+        TextView historyArrow = new TextView(this);
+        historyArrow.setText("⌄");
+        historyArrow.setTextColor(0xFF26D7E8);
+        historyArrow.setTextSize(22);
+        historyHeader.addView(historyTitle);
+        historyHeader.addView(historyArrow);
+        content.addView(historyHeader);
+        LinearLayout historyItems = new LinearLayout(this);
+        historyItems.setOrientation(LinearLayout.VERTICAL);
+        historyItems.setVisibility(View.GONE);
+        LinearLayout.LayoutParams historyItemsParams = new LinearLayout.LayoutParams(-1, -2);
+        historyItemsParams.topMargin = dp(6);
+        content.addView(historyItems, historyItemsParams);
+        historyHeader.setOnClickListener(v -> {
+            boolean opening = historyItems.getVisibility() != View.VISIBLE;
+            historyItems.setVisibility(opening ? View.VISIBLE : View.GONE);
+            historyArrow.setText(opening ? "⌃" : "⌄");
+        });
         for (String url : historyUrls) {
             final String pageUrl = url;
             String pageTitle = browserPrefs.getString("history_title_" + url, "");
-            if (pageTitle == null || pageTitle.trim().isEmpty() || pageTitle.equals(url))
+            if (pageTitle == null || pageTitle.trim().isEmpty() || pageTitle.equals(url)
+                    || pageTitle.startsWith("http://") || pageTitle.startsWith("https://"))
                 pageTitle = getCompactSavedUrlLabel(url);
-            TextView card = addLibraryCard(content, pageTitle);
-            card.setOnClickListener(v -> openLibraryUrl(pageUrl));
-            card.setOnLongClickListener(v -> {
-                String name = browserPrefs.getString("history_title_" + pageUrl, pageUrl);
-                showLinkActionsDialog(name, pageUrl, () -> {
+            LinearLayout historyRow = new LinearLayout(this);
+            historyRow.setOrientation(LinearLayout.HORIZONTAL);
+            historyRow.setGravity(Gravity.CENTER_VERTICAL);
+            historyRow.setPadding(dp(8), dp(7), dp(8), dp(7));
+            historyRow.setBackground(libraryCardBackground(0xFF191D29));
+            ImageView thumb = new ImageView(this);
+            thumb.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            thumb.setBackground(libraryCardBackground(0xFF303746));
+            LinearLayout.LayoutParams thumbParams = new LinearLayout.LayoutParams(dp(54), dp(42));
+            thumbParams.setMargins(dp(4), 0, dp(10), 0);
+            historyRow.addView(thumb, thumbParams);
+            String imageUrl = browserPrefs.getString("history_thumbnail_" + url, "");
+            if (imageUrl == null || imageUrl.trim().isEmpty()) {
+                try {
+                    String host = Uri.parse(url).getHost();
+                    if (host != null) imageUrl = "https://www.google.com/s2/favicons?domain=" + Uri.encode(host) + "&sz=128";
+                } catch (Exception ignored) {}
+            }
+            loadHistoryThumbnail(thumb, imageUrl);
+            TextView name = new TextView(this);
+            name.setText(pageTitle);
+            name.setTextColor(0xFFF4F8FF);
+            name.setTextSize(14);
+            name.setMaxLines(2);
+            name.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            name.setGravity(Gravity.RIGHT | Gravity.CENTER_VERTICAL);
+            historyRow.addView(name, new LinearLayout.LayoutParams(0, -2, 1));
+            historyItems.addView(historyRow, new LinearLayout.LayoutParams(-1, -2));
+            historyRow.setOnClickListener(v -> openLibraryUrl(pageUrl));
+            historyRow.setOnLongClickListener(v -> {
+                String nameText = browserPrefs.getString("history_title_" + pageUrl, pageUrl);
+                showLinkActionsDialog(nameText, pageUrl, () -> {
                     Set<String> updated = new HashSet<>(browserPrefs.getStringSet("browser_history", new HashSet<String>()));
                     updated.remove(pageUrl);
                     browserPrefs.edit().putStringSet("browser_history", updated)
-                            .remove("history_title_" + pageUrl).remove("history_time_" + pageUrl)
-                            .remove("visit_count_" + pageUrl).apply();
+                            .remove("history_title_" + pageUrl).remove("history_thumbnail_" + pageUrl)
+                            .remove("history_time_" + pageUrl).remove("visit_count_" + pageUrl).apply();
                     Toast.makeText(MainActivity.this, "تم حذف الصفحة من السجل", Toast.LENGTH_SHORT).show();
                     showLibraryDialog();
                 }, () -> sendUrlToTvFromUi(pageUrl));
                 return true;
             });
         }
-        if (historyUrls.isEmpty()) addLibraryEmptyText(content, "لا توجد صفحات في سجل التصفح");
-
+        if (historyUrls.isEmpty()) addLibraryEmptyText(historyItems, "لا توجد صفحات في سجل التصفح");
         TextView clearHistory = new TextView(this);
         clearHistory.setText("🗑  مسح سجل التصفح بالكامل");
         clearHistory.setTextColor(0xFFFFFFFF);
@@ -1122,7 +1205,7 @@ public class MainActivity extends Activity {
         });
         AlertDialog dialog = new AlertDialog.Builder(this, R.style.ModernDialogTheme)
                 .setTitle("الأكثر زيارة")
-                .setView(list)
+                .setView(createCollapsibleItemsPanel("عرض المواقع", rankedUrls.size(), list, 320))
                 .setNegativeButton("إغلاق", null).create();
         list.setOnItemClickListener((parent, view, position, id) -> {
             if (position >= 0 && position < rankedUrls.size()) {
@@ -1155,6 +1238,40 @@ public class MainActivity extends Activity {
             return true;
         });
         dialog.show();
+    }
+
+
+    private LinearLayout createCollapsibleItemsPanel(String label, int count, View items, int heightDp) {
+        LinearLayout section = new LinearLayout(this);
+        section.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        header.setPadding(dp(12), dp(13), dp(12), dp(13));
+        header.setBackground(libraryCardBackground(0xFF252630));
+        TextView heading = new TextView(this);
+        heading.setText(label + " (" + count + ")");
+        heading.setTextColor(Color.WHITE);
+        heading.setTextSize(15);
+        heading.setTypeface(null, Typeface.BOLD);
+        header.addView(heading, new LinearLayout.LayoutParams(0, -2, 1));
+        TextView arrow = new TextView(this);
+        arrow.setText("⌄");
+        arrow.setTextColor(0xFF26D7E8);
+        arrow.setTextSize(21);
+        header.addView(arrow);
+        section.addView(header);
+        items.setVisibility(View.GONE);
+        LinearLayout.LayoutParams itemParams = new LinearLayout.LayoutParams(-1,
+                heightDp > 0 ? dp(heightDp) : -2);
+        itemParams.topMargin = dp(6);
+        section.addView(items, itemParams);
+        header.setOnClickListener(v -> {
+            boolean opening = items.getVisibility() != View.VISIBLE;
+            items.setVisibility(opening ? View.VISIBLE : View.GONE);
+            arrow.setText(opening ? "⌃" : "⌄");
+        });
+        return section;
     }
 
     private int dp(float value) {
@@ -1385,7 +1502,7 @@ public class MainActivity extends Activity {
                 showLegacyPlaylistDialog();
             }));
         }
-        panel.addView(scroll, new LinearLayout.LayoutParams(-1, dp(300)));
+        panel.addView(createCollapsibleItemsPanel("عرض عناصر القائمة", videoQueue.size(), scroll, 300), new LinearLayout.LayoutParams(-1, -2));
         new AlertDialog.Builder(this, R.style.ModernDialogTheme).setTitle("القائمة القديمة")
                 .setView(panel).setPositiveButton("إضافة فيديوهات", (d,w) -> openMediaPicker(false))
                 .setNeutralButton("مسح", (d,w) -> {
@@ -1705,7 +1822,7 @@ public class MainActivity extends Activity {
         }
         // Give the dialog content a real measured height; a zero-height weighted
         // ScrollView inside a wrap-content dialog can collapse the playlist rows.
-        panel.addView(scroll, new LinearLayout.LayoutParams(-1, dp(360)));
+        panel.addView(createCollapsibleItemsPanel("عرض عناصر القائمة", playlistItems.length(), scroll, 360), new LinearLayout.LayoutParams(-1, -2));
         new AlertDialog.Builder(this, R.style.ModernDialogTheme).setTitle(name + " (" + playlistItems.length() + ")")
                 .setView(panel)
                 .setPositiveButton("إضافة وسائط", (d,w) -> openNamedPlaylistPicker(name))
@@ -1898,7 +2015,7 @@ public class MainActivity extends Activity {
                 android.R.layout.simple_list_item_1, names));
         AlertDialog dialog = new AlertDialog.Builder(this, R.style.ModernDialogTheme)
                 .setTitle("العلامات المرجعية (اضغط مطولاً للحذف)")
-                .setView(listView)
+                .setView(createCollapsibleItemsPanel("عرض العلامات المرجعية", entries.size(), listView, 320))
                 .setNegativeButton("إغلاق", null)
                 .create();
         listView.setOnItemClickListener((parent, view, position, id) -> {
@@ -1949,7 +2066,7 @@ public class MainActivity extends Activity {
                 android.R.layout.simple_list_item_1, labels));
         AlertDialog dialog = new AlertDialog.Builder(this, R.style.ModernDialogTheme)
                 .setTitle("الوسائط المحفوظة")
-                .setView(list)
+                .setView(createCollapsibleItemsPanel("عرض الوسائط المحفوظة", urls.size(), list, 320))
                 .setPositiveButton("إضافة رابط", (d, w) -> showAddSavedMediaDialog())
                 .setNegativeButton("إغلاق", null)
                 .create();

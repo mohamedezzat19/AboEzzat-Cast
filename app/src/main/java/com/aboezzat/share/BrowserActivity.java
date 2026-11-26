@@ -795,7 +795,7 @@ public class BrowserActivity extends Activity {
         final AlertDialog[] dialogRef = new AlertDialog[1];
         AlertDialog dialog = new AlertDialog.Builder(this, R.style.ModernDialogTheme)
                 .setTitle("سجل التصفح • " + urls.size())
-                .setView(list)
+                .setView(createCollapsibleLinksPanel("عرض سجل التصفح", urls.size(), list, 340))
                 .setPositiveButton("حذف المحدد", (d, w) -> {
                     if (selectedUrls.isEmpty()) return;
                     Set<String> updated = new HashSet<>(prefs.getStringSet(
@@ -804,6 +804,7 @@ public class BrowserActivity extends Activity {
                     for (String selectedUrl : selectedUrls) {
                         updated.remove(selectedUrl);
                         editor.remove("history_title_" + selectedUrl)
+                                .remove("history_thumbnail_" + selectedUrl)
                                 .remove("history_time_" + selectedUrl)
                                 .remove("visit_count_" + selectedUrl);
                     }
@@ -814,8 +815,16 @@ public class BrowserActivity extends Activity {
                 })
                 .setNegativeButton("إغلاق", null)
                 .setNeutralButton("مسح السجل", (d, w) -> {
-                    prefs.edit().putStringSet("browser_history", new HashSet<String>())
-                            .putLong("history_cleared_at", System.currentTimeMillis()).apply();
+                    SharedPreferences.Editor clearEditor = prefs.edit()
+                            .putStringSet("browser_history", new HashSet<String>())
+                            .putLong("history_cleared_at", System.currentTimeMillis());
+                    for (String key : prefs.getAll().keySet()) {
+                        if (key.startsWith("history_title_") || key.startsWith("history_thumbnail_")
+                                || key.startsWith("history_time_") || key.startsWith("visit_count_")) {
+                            clearEditor.remove(key);
+                        }
+                    }
+                    clearEditor.apply();
                     Toast.makeText(this, "تم مسح سجل التصفح", Toast.LENGTH_SHORT).show();
                 }).create();
 
@@ -912,7 +921,7 @@ public class BrowserActivity extends Activity {
         });
         AlertDialog dialog = new AlertDialog.Builder(this, R.style.ModernDialogTheme)
                 .setTitle("المفضلة والمواقع المحفوظة • " + entries.size())
-                .setView(list).setNegativeButton("إغلاق", null).create();
+                .setView(createCollapsibleLinksPanel("عرض المواقع المحفوظة", entries.size(), list, 320)).setNegativeButton("إغلاق", null).create();
         list.setOnItemClickListener((parent, view, position, id) -> {
             if (position >= 0 && position < entries.size()) {
                 loadTargetUrl(entries.get(position).substring(entries.get(position).indexOf('|') + 1));
@@ -936,6 +945,40 @@ public class BrowserActivity extends Activity {
             return true;
         });
         dialog.show();
+    }
+
+
+    private LinearLayout createCollapsibleLinksPanel(String label, int count, View items, int heightDp) {
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        header.setPadding(dp(14), dp(13), dp(14), dp(13));
+        header.setBackgroundColor(Color.rgb(31, 47, 68));
+        TextView title = new TextView(this);
+        title.setText(label + " (" + count + ")");
+        title.setTextColor(Color.WHITE);
+        title.setTextSize(15);
+        title.setTypeface(null, android.graphics.Typeface.BOLD);
+        header.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
+        TextView arrow = new TextView(this);
+        arrow.setText("⌄");
+        arrow.setTextColor(Color.rgb(38, 215, 232));
+        arrow.setTextSize(21);
+        header.addView(arrow);
+        panel.addView(header);
+        items.setVisibility(View.GONE);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1,
+                heightDp > 0 ? dp(heightDp) : -2);
+        params.topMargin = dp(6);
+        panel.addView(items, params);
+        header.setOnClickListener(v -> {
+            boolean opening = items.getVisibility() != View.VISIBLE;
+            items.setVisibility(opening ? View.VISIBLE : View.GONE);
+            arrow.setText(opening ? "⌃" : "⌄");
+        });
+        return panel;
     }
 
     private int dp(float value) {
@@ -3267,7 +3310,7 @@ public class BrowserActivity extends Activity {
         main.setPadding(20, 20, 20, 20);
 
         TextView header = new TextView(this);
-        header.setText("المسارات المكتشفة (" + capturedList.size() + ") - محددة تلقائياً");
+        header.setText("⌄  المسارات المكتشفة (" + capturedList.size() + ") - اضغط للعرض");
         header.setTextColor(Color.WHITE);
         header.setTextSize(16);
         header.setGravity(Gravity.CENTER);
@@ -3370,7 +3413,13 @@ public class BrowserActivity extends Activity {
         };
         listView.setAdapter(capturedMediaAdapter);
 
+        listView.setVisibility(View.GONE);
         main.addView(listView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 650));
+        header.setOnClickListener(v -> {
+            boolean opening = listView.getVisibility() != View.VISIBLE;
+            listView.setVisibility(opening ? View.VISIBLE : View.GONE);
+            header.setText((opening ? "⌃" : "⌄") + "  المسارات المكتشفة (" + capturedList.size() + ") - " + (opening ? "اضغط للإخفاء" : "اضغط للعرض"));
+        });
 
         Button btnCastNow = new Button(this);
         btnCastNow.setText("📺 بث فوري على الشاشة (دمج وتشغيل)");
@@ -4421,8 +4470,8 @@ public class BrowserActivity extends Activity {
         LinearLayout rows = new LinearLayout(this);
         rows.setOrientation(LinearLayout.VERTICAL);
         scroll.addView(rows);
-        content.addView(scroll, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(360)));
+        content.addView(createCollapsibleLinksPanel("عرض علامات التبويب", tabList.size(), scroll, 360),
+                new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         AlertDialog dialog = new AlertDialog.Builder(this, R.style.ModernDialogTheme)
                 .setTitle("علامات التبويب المفتوحة")
                 .setView(content)
@@ -4531,6 +4580,8 @@ public class BrowserActivity extends Activity {
         history.add(url);
         historyPrefs.edit().putStringSet("browser_history", history)
                 .putString("history_title_" + url, title)
+                .putString("history_thumbnail_" + url,
+                        lastDiscoveredPoster == null ? "" : lastDiscoveredPoster)
                 .putLong("history_time_" + url, System.currentTimeMillis())
                 .putInt("visit_count_" + url, historyPrefs.getInt("visit_count_" + url, 0) + 1)
                 .apply();
