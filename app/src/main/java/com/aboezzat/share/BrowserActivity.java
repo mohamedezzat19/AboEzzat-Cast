@@ -3978,7 +3978,7 @@ public class BrowserActivity extends Activity {
                 item.put("sourceUrl", mediaUrl);
                 item.put("headers", new JSONObject(capturedHeaders == null
                         ? java.util.Collections.emptyMap() : capturedHeaders));
-                if (audioUrl != null && !audioUrl.trim().isEmpty()) item.put("audioUrl", audioUrl);
+                if (audioUrl != null && !audioUrl.trim().isEmpty()) item.put("audio", audioUrl);
                 JSONArray items = new JSONArray();
                 items.put(item);
                 JSONObject payload = new JSONObject();
