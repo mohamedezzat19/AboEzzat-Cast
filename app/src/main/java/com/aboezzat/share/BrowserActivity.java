@@ -795,7 +795,7 @@ public class BrowserActivity extends Activity {
         final AlertDialog[] dialogRef = new AlertDialog[1];
         AlertDialog dialog = new AlertDialog.Builder(this, R.style.ModernDialogTheme)
                 .setTitle("سجل التصفح • " + urls.size())
-                .setView(list)
+                .setView(createCollapsibleLinksPanel("عرض سجل التصفح", urls.size(), list, 340))
                 .setPositiveButton("حذف المحدد", (d, w) -> {
                     if (selectedUrls.isEmpty()) return;
                     Set<String> updated = new HashSet<>(prefs.getStringSet(
@@ -912,7 +912,7 @@ public class BrowserActivity extends Activity {
         });
         AlertDialog dialog = new AlertDialog.Builder(this, R.style.ModernDialogTheme)
                 .setTitle("المفضلة والمواقع المحفوظة • " + entries.size())
-                .setView(list).setNegativeButton("إغلاق", null).create();
+                .setView(createCollapsibleLinksPanel("عرض المواقع المحفوظة", entries.size(), list, 320)).setNegativeButton("إغلاق", null).create();
         list.setOnItemClickListener((parent, view, position, id) -> {
             if (position >= 0 && position < entries.size()) {
                 loadTargetUrl(entries.get(position).substring(entries.get(position).indexOf('|') + 1));
@@ -936,6 +936,40 @@ public class BrowserActivity extends Activity {
             return true;
         });
         dialog.show();
+    }
+
+
+    private LinearLayout createCollapsibleLinksPanel(String label, int count, View items, int heightDp) {
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        header.setPadding(dp(14), dp(13), dp(14), dp(13));
+        header.setBackgroundColor(Color.rgb(31, 47, 68));
+        TextView title = new TextView(this);
+        title.setText(label + " (" + count + ")");
+        title.setTextColor(Color.WHITE);
+        title.setTextSize(15);
+        title.setTypeface(null, android.graphics.Typeface.BOLD);
+        header.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
+        TextView arrow = new TextView(this);
+        arrow.setText("⌄");
+        arrow.setTextColor(Color.rgb(38, 215, 232));
+        arrow.setTextSize(21);
+        header.addView(arrow);
+        panel.addView(header);
+        items.setVisibility(View.GONE);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1,
+                heightDp > 0 ? dp(heightDp) : -2);
+        params.topMargin = dp(6);
+        panel.addView(items, params);
+        header.setOnClickListener(v -> {
+            boolean opening = items.getVisibility() != View.VISIBLE;
+            items.setVisibility(opening ? View.VISIBLE : View.GONE);
+            arrow.setText(opening ? "⌃" : "⌄");
+        });
+        return panel;
     }
 
     private int dp(float value) {
