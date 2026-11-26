@@ -75,7 +75,7 @@
                 android:orientation="horizontal"
                 android:layoutDirection="ltr"
                 android:gravity="center_vertical"
-                android:background="#07142D"
+                android:background="#111D30"
                 android:padding="8dp"
                 android:layout_marginBottom="20dp">
                 <EditText
@@ -85,11 +85,11 @@
                     android:layout_weight="1"
                     android:hint="ابحث أو اكتب عنوان موقع"
                     android:textColor="#FFFFFF"
-                    android:textColorHint="#9CA3AF"
+                    android:textColorHint="#A9B9CC"
                     android:singleLine="true"
                     android:imeOptions="actionGo"
                     android:inputType="textUri"
-                    android:background="#182442"
+                    android:background="#1B2B43"
                     android:paddingHorizontal="10dp"
                     android:textSize="14sp"/>
                 <Button
@@ -99,7 +99,7 @@
                     android:text="🎙"
                     android:textSize="16sp"
                     android:textColor="#FFFFFF"
-                    android:backgroundTint="#153B60"
+                    android:backgroundTint="#16465A"
                     android:layout_marginStart="4dp"/>
                 <Button
                     android:id="@+id/btn_search_clear"
@@ -107,7 +107,7 @@
                     android:layout_height="44dp"
                     android:text="✕"
                     android:textColor="#FFFFFF"
-                    android:backgroundTint="#152A50"
+                    android:backgroundTint="#1B2B43"
                     android:layout_marginStart="3dp"/>
                 <Button
                     android:id="@+id/btn_search_go"
@@ -115,7 +115,7 @@
                     android:layout_height="44dp"
                     android:text="OK"
                     android:textColor="#FFFFFF"
-                    android:backgroundTint="#253457"
+                    android:backgroundTint="#1B2B43"
                     android:layout_marginStart="3dp"/>
             </LinearLayout>
 
@@ -135,7 +135,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="أدوات ومصادر البث"
-                android:textColor="#DCEBFF"
+                android:textColor="#F4F8FF"
                 android:textSize="13sp"
                 android:textStyle="bold"
                 android:layout_marginBottom="10dp" />
@@ -176,7 +176,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="تصفح مواقع الفيديو، إنستجرام، فيسبوك وبث فوري"
-                        android:textColor="#B9D8F2"
+                        android:textColor="#A9B9CC"
                         android:textSize="12sp"
                         android:layout_marginTop="2dp" />
                 </LinearLayout>
@@ -219,7 +219,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="بث فيديو، صورة أو صوت منفرد"
-                        android:textColor="#B9D8F2"
+                        android:textColor="#A9B9CC"
                         android:textSize="11sp"
                         android:layout_marginTop="2dp" />
                 </LinearLayout>
@@ -254,7 +254,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="عرض ألبوم صور وراء بعض"
-                        android:textColor="#B9D8F2"
+                        android:textColor="#A9B9CC"
                         android:textSize="11sp"
                         android:layout_marginTop="2dp" />
                 </LinearLayout>
@@ -293,7 +293,7 @@
                         android:layout_weight="1"
                         android:text="التالي ⏭️"
                         android:textColor="#FFFFFF"
-                        android:backgroundTint="#24475B"
+                        android:backgroundTint="#16465A"
                         android:layout_marginEnd="3dp" />
 
                     <Button
@@ -303,7 +303,7 @@
                         android:layout_weight="1.2"
                         android:text="⏯️ تشغيل"
                         android:textColor="#000000"
-                        android:backgroundTint="#00B8D9"
+                        android:backgroundTint="#26D7E8"
                         android:layout_marginHorizontal="3dp" />
 
                     <Button
@@ -315,7 +315,7 @@
                         android:textSize="18sp"
                         android:contentDescription="إيقاف الفيديو وإغلاق التشغيل"
                         android:textColor="#FFFFFF"
-                        android:backgroundTint="#24475B"
+                        android:backgroundTint="#16465A"
                         android:layout_marginHorizontal="3dp" />
 
                     <Button
@@ -325,7 +325,7 @@
                         android:layout_weight="1"
                         android:text="⏮️ السابق"
                         android:textColor="#FFFFFF"
-                        android:backgroundTint="#152A50"
+                        android:backgroundTint="#1B2B43"
                         android:layout_marginStart="3dp" />
                 </LinearLayout>
 
@@ -344,7 +344,7 @@
                         android:layout_weight="1"
                         android:text="10s تقديم ⏩"
                         android:textColor="#FFFFFF"
-                        android:backgroundTint="#152A50"
+                        android:backgroundTint="#1B2B43"
                         android:layout_marginEnd="4dp" />
 
                     <Button
@@ -354,7 +354,7 @@
                         android:layout_weight="1"
                         android:text="⏪ 10s تأخير"
                         android:textColor="#FFFFFF"
-                        android:backgroundTint="#262833"
+                        android:backgroundTint="#1B2B43"
                         android:layout_marginStart="4dp" />
                 </LinearLayout>
 
@@ -372,7 +372,7 @@
                         android:layout_weight="1"
                         android:text="🔊 تعلية"
                         android:textColor="#FFFFFF"
-                        android:backgroundTint="#262833"
+                        android:backgroundTint="#1B2B43"
                         android:layout_marginEnd="4dp" />
 
                     <Button
@@ -382,7 +382,7 @@
                         android:layout_weight="1"
                         android:text="🔇 كتم"
                         android:textColor="#FFFFFF"
-                        android:backgroundTint="#24475B"
+                        android:backgroundTint="#16465A"
                         android:layout_marginHorizontal="4dp" />
 
                     <Button
@@ -392,7 +392,7 @@
                         android:layout_weight="1"
                         android:text="🔉 تقليل"
                         android:textColor="#FFFFFF"
-                        android:backgroundTint="#262833"
+                        android:backgroundTint="#1B2B43"
                         android:layout_marginStart="4dp" />
                 </LinearLayout>
             </LinearLayout>
@@ -407,7 +407,7 @@
         android:orientation="horizontal"
         android:layoutDirection="ltr"
         android:gravity="center"
-        android:background="#101A38"
+        android:background="#080F1D"
         android:elevation="8dp">
 
         <Button
@@ -417,8 +417,8 @@
             android:layout_weight="1"
             android:text="🏠\nالرئيسية"
             android:textSize="12sp"
-            android:textColor="#FFD700"
-            android:backgroundTint="#253457"
+            android:textColor="#26D7E8"
+            android:backgroundTint="#1B2B43"
             android:minHeight="0dp"
             android:padding="2dp"/>
 
@@ -430,7 +430,7 @@
             android:text="🎞️\nالوسائط"
             android:textSize="12sp"
             android:textColor="#FFFFFF"
-            android:backgroundTint="#253457"
+            android:backgroundTint="#1B2B43"
             android:minHeight="0dp"
             android:padding="2dp"/>
 
@@ -442,7 +442,7 @@
             android:text="📚\nالمكتبة"
             android:textSize="12sp"
             android:textColor="#FFFFFF"
-            android:backgroundTint="#253457"
+            android:backgroundTint="#1B2B43"
             android:minHeight="0dp"
             android:padding="2dp"/>
     </LinearLayout>
@@ -453,7 +453,7 @@
         android:layout_width="290dp"
         android:layout_height="match_parent"
         android:layout_gravity="start"
-        android:background="#07132B"
+        android:background="#080F1D"
         android:fillViewport="true">
 
         <LinearLayout
@@ -467,7 +467,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="Abo Ezzat Cast"
-                android:textColor="#00B0FF"
+                android:textColor="#26D7E8"
                 android:textSize="20sp"
                 android:textStyle="bold"
                 android:gravity="start"
@@ -732,7 +732,7 @@
             <View
                 android:layout_width="match_parent"
                 android:layout_height="1dp"
-                android:background="#2E303D"
+                android:background="#26364C"
                 android:layout_marginVertical="12dp" />
 
             <!-- 10. الوضع المظلم -->
