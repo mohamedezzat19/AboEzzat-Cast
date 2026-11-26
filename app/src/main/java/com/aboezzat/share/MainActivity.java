@@ -1384,6 +1384,48 @@ public class MainActivity extends Activity {
                 }).setNegativeButton("رجوع", (d,w) -> showPlaylistDialog()).show();
     }
 
+    private void showAddPlaylistLinkDialog(String name) {
+        EditText input = new EditText(this);
+        input.setSingleLine(true);
+        input.setHint("https://...");
+        new AlertDialog.Builder(this, R.style.ModernDialogTheme)
+                .setTitle("إضافة رابط إنترنت")
+                .setMessage("سيحاول الريسيفر تجهيز الرابط وتشغيل الوسائط المدعومة منه.")
+                .setView(input)
+                .setPositiveButton("إضافة", (dialog, which) -> {
+                    String value = input.getText().toString().trim();
+                    Uri parsed = Uri.parse(value);
+                    String scheme = parsed.getScheme();
+                    if (parsed.getHost() == null
+                            || !("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme))) {
+                        Toast.makeText(this, "اكتب رابط HTTP أو HTTPS صحيحًا.", Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                    JSONObject all = loadNamedPlaylists();
+                    JSONArray items = all.optJSONArray(name);
+                    if (items == null) items = new JSONArray();
+                    if (items.length() >= 50) {
+                        Toast.makeText(this, "الحد الأقصى 50 عنصرًا في القائمة.", Toast.LENGTH_LONG).show();
+                        return;
+                    }
+                    JSONObject entry = new JSONObject();
+                    try {
+                        entry.put("url", value);
+                        entry.put("sourceUrl", value);
+                        entry.put("name", getCompactSavedUrlLabel(value));
+                        entry.put("mime", "text/uri-list");
+                        entry.put("headers", new JSONObject());
+                        items.put(entry);
+                        putNamedPlaylistItems(all, name, items);
+                        saveNamedPlaylists(all);
+                        showNamedPlaylistDialog(name);
+                    } catch (Exception error) {
+                        Toast.makeText(this, "تعذر حفظ الرابط.", Toast.LENGTH_LONG).show();
+                    }
+                })
+                .setNegativeButton("إلغاء", null).show();
+    }
+
     private void castNamedPlaylistToTv(String name) {
         List<String> targets = getPlaybackReceiverTargets();
         if (targets.isEmpty()) {
@@ -1425,6 +1467,20 @@ public class MainActivity extends Activity {
             for (int i = 0; i < savedItems.length(); i++) {
                 JSONObject saved = savedItems.optJSONObject(i);
                 if (saved == null) continue;
+                String remoteUrl = saved.optString("url", "");
+                if (!remoteUrl.isEmpty()) {
+                    Uri parsed = Uri.parse(remoteUrl);
+                    String scheme = parsed.getScheme();
+                    if (parsed.getHost() == null
+                            || !("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme))) continue;
+                    JSONObject entry = new JSONObject();
+                    entry.put("url", remoteUrl);
+                    entry.put("sourceUrl", saved.optString("sourceUrl", remoteUrl));
+                    entry.put("headers", saved.optJSONObject("headers") == null
+                            ? new JSONObject() : saved.optJSONObject("headers"));
+                    queueItems.put(entry);
+                    continue;
+                }
                 Uri uri = Uri.parse(saved.optString("uri", ""));
                 if (uri == null || !"content".equalsIgnoreCase(uri.getScheme())) continue;
                 String mime = saved.optString("mime", getContentResolver().getType(uri));
@@ -1587,6 +1643,14 @@ public class MainActivity extends Activity {
         playAll.setBackground(playBg);
         playAll.setOnClickListener(v -> castNamedPlaylistToTv(name));
         panel.addView(playAll, new LinearLayout.LayoutParams(-1, -2));
+        TextView addLink = new TextView(this);
+        addLink.setText("＋  إضافة رابط إنترنت للقائمة");
+        addLink.setTextColor(0xFF80DEEA);
+        addLink.setTextSize(13);
+        addLink.setGravity(Gravity.CENTER);
+        addLink.setPadding(dp(10), dp(11), dp(10), dp(11));
+        addLink.setOnClickListener(v -> showAddPlaylistLinkDialog(name));
+        panel.addView(addLink, new LinearLayout.LayoutParams(-1, -2));
         android.widget.ScrollView scroll = new android.widget.ScrollView(this);
         LinearLayout rows = new LinearLayout(this);
         rows.setOrientation(LinearLayout.VERTICAL);
@@ -1610,8 +1674,13 @@ public class MainActivity extends Activity {
             TextView remove = new TextView(this); remove.setText("حذف"); remove.setTextColor(0xFFFFB4AB); remove.setPadding(dp(8),dp(8),dp(8),dp(8));
             row.addView(up); row.addView(down); row.addView(remove);
             row.setOnClickListener(v -> {
-                setSelectedMediaUri(uri);
-                castLocalMediaToTv(true);
+                String savedUrl = item.optString("url", "");
+                if (!savedUrl.isEmpty()) {
+                    castUrlDirectlyToTv(savedUrl);
+                } else {
+                    setSelectedMediaUri(uri);
+                    castLocalMediaToTv(true);
+                }
             });
             up.setOnClickListener(v -> moveNamedPlaylistItem(name, index, -1));
             down.setOnClickListener(v -> moveNamedPlaylistItem(name, index, 1));
