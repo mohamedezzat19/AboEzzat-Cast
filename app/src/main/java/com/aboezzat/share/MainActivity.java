@@ -1429,7 +1429,9 @@ public class MainActivity extends Activity {
             TextView empty = new TextView(this); empty.setText("القائمة فارغة. أضف صورًا أو فيديوهات أو ملفات صوتية."); empty.setTextColor(Color.LTGRAY);
             rows.addView(empty);
         }
-        panel.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1f));
+        // Give the dialog content a real measured height; a zero-height weighted
+        // ScrollView inside a wrap-content dialog can collapse the playlist rows.
+        panel.addView(scroll, new LinearLayout.LayoutParams(-1, dp(360)));
         new AlertDialog.Builder(this, R.style.ModernDialogTheme).setTitle(name + " (" + playlistItems.length() + ")")
                 .setView(panel)
                 .setPositiveButton("إضافة وسائط", (d,w) -> openNamedPlaylistPicker(name))
