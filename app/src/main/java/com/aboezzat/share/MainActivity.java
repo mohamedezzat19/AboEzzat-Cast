@@ -958,6 +958,31 @@ public class MainActivity extends Activity {
         return (index + 1) + ". " + name;
     }
 
+    private void loadHistoryThumbnail(ImageView target, String imageUrl) {
+        if (target == null || imageUrl == null || imageUrl.trim().isEmpty()) return;
+        target.setTag(imageUrl);
+        new Thread(() -> {
+            java.net.HttpURLConnection connection = null;
+            try {
+                java.net.URL url = new java.net.URL(imageUrl);
+                connection = (java.net.HttpURLConnection) url.openConnection();
+                connection.setConnectTimeout(4500);
+                connection.setReadTimeout(4500);
+                connection.setInstanceFollowRedirects(true);
+                connection.setRequestProperty("User-Agent", "Mozilla/5.0");
+                try (java.io.InputStream input = connection.getInputStream()) {
+                    android.graphics.Bitmap bitmap = android.graphics.BitmapFactory.decodeStream(input);
+                    if (bitmap != null) new Handler(Looper.getMainLooper()).post(() -> {
+                        if (imageUrl.equals(target.getTag())) target.setImageBitmap(bitmap);
+                    });
+                }
+            } catch (Exception ignored) {
+            } finally {
+                if (connection != null) connection.disconnect();
+            }
+        }).start();
+    }
+
     // Library layout modeled on the supplied screenshot.
     private void showLibraryDialog() {
         SharedPreferences browserPrefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE | MODE_MULTI_PROCESS);
@@ -1014,34 +1039,91 @@ public class MainActivity extends Activity {
             }
         }
 
-        addLibrarySectionTitle(content, "◷  سجل التصفح");
         Set<String> history = new HashSet<>(browserPrefs.getStringSet("browser_history", new HashSet<String>()));
         List<String> historyUrls = new ArrayList<>(history);
         historyUrls.removeIf(url -> url == null || url.trim().isEmpty());
         historyUrls.sort((a, b) -> Long.compare(browserPrefs.getLong("history_time_" + b, 0),
                 browserPrefs.getLong("history_time_" + a, 0)));
+        LinearLayout historyHeader = new LinearLayout(this);
+        historyHeader.setOrientation(LinearLayout.HORIZONTAL);
+        historyHeader.setGravity(Gravity.CENTER_VERTICAL);
+        historyHeader.setPadding(dp(12), dp(14), dp(12), dp(14));
+        historyHeader.setBackground(libraryCardBackground(0xFF252630));
+        TextView historyTitle = new TextView(this);
+        historyTitle.setText("◷  سجل التصفح  (" + historyUrls.size() + ")");
+        historyTitle.setTextColor(0xFFFFFFFF);
+        historyTitle.setTextSize(16);
+        historyTitle.setTypeface(null, Typeface.BOLD);
+        historyTitle.setLayoutParams(new LinearLayout.LayoutParams(0, -2, 1));
+        TextView historyArrow = new TextView(this);
+        historyArrow.setText("⌄");
+        historyArrow.setTextColor(0xFF26D7E8);
+        historyArrow.setTextSize(22);
+        historyHeader.addView(historyTitle);
+        historyHeader.addView(historyArrow);
+        content.addView(historyHeader);
+        LinearLayout historyItems = new LinearLayout(this);
+        historyItems.setOrientation(LinearLayout.VERTICAL);
+        historyItems.setVisibility(View.GONE);
+        LinearLayout.LayoutParams historyItemsParams = new LinearLayout.LayoutParams(-1, -2);
+        historyItemsParams.topMargin = dp(6);
+        content.addView(historyItems, historyItemsParams);
+        historyHeader.setOnClickListener(v -> {
+            boolean opening = historyItems.getVisibility() != View.VISIBLE;
+            historyItems.setVisibility(opening ? View.VISIBLE : View.GONE);
+            historyArrow.setText(opening ? "⌃" : "⌄");
+        });
         for (String url : historyUrls) {
             final String pageUrl = url;
             String pageTitle = browserPrefs.getString("history_title_" + url, "");
-            if (pageTitle == null || pageTitle.trim().isEmpty() || pageTitle.equals(url))
+            if (pageTitle == null || pageTitle.trim().isEmpty() || pageTitle.equals(url)
+                    || pageTitle.startsWith("http://") || pageTitle.startsWith("https://"))
                 pageTitle = getCompactSavedUrlLabel(url);
-            TextView card = addLibraryCard(content, pageTitle);
-            card.setOnClickListener(v -> openLibraryUrl(pageUrl));
-            card.setOnLongClickListener(v -> {
-                String name = browserPrefs.getString("history_title_" + pageUrl, pageUrl);
-                showLinkActionsDialog(name, pageUrl, () -> {
+            LinearLayout historyRow = new LinearLayout(this);
+            historyRow.setOrientation(LinearLayout.HORIZONTAL);
+            historyRow.setGravity(Gravity.CENTER_VERTICAL);
+            historyRow.setPadding(dp(8), dp(7), dp(8), dp(7));
+            historyRow.setBackground(libraryCardBackground(0xFF191D29));
+            ImageView thumb = new ImageView(this);
+            thumb.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            thumb.setBackground(libraryCardBackground(0xFF303746));
+            LinearLayout.LayoutParams thumbParams = new LinearLayout.LayoutParams(dp(54), dp(42));
+            thumbParams.setMargins(dp(4), 0, dp(10), 0);
+            historyRow.addView(thumb, thumbParams);
+            String imageUrl = browserPrefs.getString("history_thumbnail_" + url, "");
+            if (imageUrl == null || imageUrl.trim().isEmpty()) {
+                try {
+                    String host = Uri.parse(url).getHost();
+                    if (host != null) imageUrl = "https://www.google.com/s2/favicons?domain=" + Uri.encode(host) + "&sz=128";
+                } catch (Exception ignored) {}
+            }
+            loadHistoryThumbnail(thumb, imageUrl);
+            TextView name = new TextView(this);
+            name.setText(pageTitle);
+            name.setTextColor(0xFFF4F8FF);
+            name.setTextSize(14);
+            name.setMaxLines(2);
+            name.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            name.setGravity(Gravity.RIGHT | Gravity.CENTER_VERTICAL);
+            historyRow.addView(name, new LinearLayout.LayoutParams(0, -2, 1));
+            historyItems.addView(historyRow, new LinearLayout.LayoutParams(-1, -2));
+            historyRow.setOnClickListener(v -> openLibraryUrl(pageUrl));
+            historyRow.setOnLongClickListener(v -> {
+                String nameText = browserPrefs.getString("history_title_" + pageUrl, pageUrl);
+                showLinkActionsDialog(nameText, pageUrl, () -> {
                     Set<String> updated = new HashSet<>(browserPrefs.getStringSet("browser_history", new HashSet<String>()));
                     updated.remove(pageUrl);
                     browserPrefs.edit().putStringSet("browser_history", updated)
-                            .remove("history_title_" + pageUrl).remove("history_time_" + pageUrl)
-                            .remove("visit_count_" + pageUrl).apply();
+                            .remove("history_title_" + pageUrl).remove("history_thumbnail_" + pageUrl)
+                            .remove("history_time_" + pageUrl).remove("visit_count_" + pageUrl).apply();
                     Toast.makeText(MainActivity.this, "تم حذف الصفحة من السجل", Toast.LENGTH_SHORT).show();
                     showLibraryDialog();
                 }, () -> sendUrlToTvFromUi(pageUrl));
                 return true;
             });
         }
-        if (historyUrls.isEmpty()) addLibraryEmptyText(content, "لا توجد صفحات في سجل التصفح");
+        if (historyUrls.isEmpty()) addLibraryEmptyText(historyItems, "لا توجد صفحات في سجل التصفح");
+        TextView clearHistory = new TextView(this);
 
         TextView clearHistory = new TextView(this);
         clearHistory.setText("🗑  مسح سجل التصفح بالكامل");
