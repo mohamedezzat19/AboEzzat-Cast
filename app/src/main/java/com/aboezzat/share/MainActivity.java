@@ -643,9 +643,9 @@ public class MainActivity extends Activity {
         final int page = dark ? 0xFF061329 : 0xFFF2F6FC;
         final int primaryText = dark ? 0xFFF4F8FF : 0xFF17263D;
         final int secondaryText = dark ? 0xFFB8C8DC : 0xFF53647A;
-        if (view.getId() == R.id.drawer_layout || view.getId() == R.id.main_content_scroll) view.setBackgroundColor(page);
+        if (view.getId() == R.id.drawer_layout || view.getId() == R.id.main_content_scroll) { if (dark) view.setBackgroundResource(R.drawable.bg_starfield); else view.setBackgroundColor(page); }
         else if (view.getId() == R.id.nav_view) view.setBackgroundColor(dark ? 0xFF080F1D : 0xFFE5EDF8);
-        else if (view.getId() == R.id.bottom_navigation) view.setBackgroundColor(dark ? 0xFF0D192B : 0xFFDCE7F5);
+        else if (view.getId() == R.id.bottom_navigation) { if (dark) view.setBackgroundResource(R.drawable.bg_bottom_navigation); else view.setBackgroundColor(0xFFDCE7F5); }
         if (view instanceof android.view.ViewGroup) {
             android.view.ViewGroup group = (android.view.ViewGroup) view;
             for (int i = 0; i < group.getChildCount(); i++) applyDarkMode(group.getChildAt(i), dark);
