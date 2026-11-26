@@ -804,8 +804,8 @@ public class MainActivity extends Activity {
         SharedPreferences.Editor edit = browserPrefs.edit();
         // Remove every history metadata key, not only URLs still present in the set.
         for (String key : browserPrefs.getAll().keySet()) {
-            if (key.startsWith("history_title_") || key.startsWith("history_time_")
-                    || key.startsWith("visit_count_")) {
+            if (key.startsWith("history_title_") || key.startsWith("history_thumbnail_")
+                    || key.startsWith("history_time_") || key.startsWith("visit_count_")) {
                 edit.remove(key);
             }
         }
@@ -914,8 +914,8 @@ public class MainActivity extends Activity {
                 Set<String> updated = new HashSet<>(browserPrefs.getStringSet("browser_history", new HashSet<String>()));
                 updated.remove(url);
                 browserPrefs.edit().putStringSet("browser_history", updated)
-                        .remove("history_title_" + url).remove("history_time_" + url)
-                        .remove("visit_count_" + url).apply();
+                        .remove("history_title_" + url).remove("history_thumbnail_" + url)
+                        .remove("history_time_" + url).remove("visit_count_" + url).apply();
                 dialog.dismiss();
                 Toast.makeText(MainActivity.this, "تم حذف الصفحة من السجل", Toast.LENGTH_SHORT).show();
                 showBrowserHistory(mostVisited);
