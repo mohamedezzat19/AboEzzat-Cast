@@ -86,6 +86,7 @@ import okhttp3.RequestBody;
 import okhttp3.MediaType;
 import okhttp3.Response;
 import org.json.JSONObject;
+import org.json.JSONArray;
 
 public class BrowserActivity extends Activity {
 
@@ -3897,8 +3898,6 @@ public class BrowserActivity extends Activity {
     private void castToTv(String mediaUrl, String audioUrl) { castToTv(mediaUrl, audioUrl, null); }
 
     private void castToTv(String mediaUrl, String audioUrl, java.util.Map<String, String> capturedHeaders) {
-        // BrowserActivity may stay alive while the user changes the selected receiver
-        // from the home screen. Refresh the saved target for every actual cast.
         refreshSelectedReceiverIp();
         if (isBlockedAdUrl(mediaUrl) || isBlockedAdUrl(audioUrl)) {
             Toast.makeText(this, "تم استبعاد رابط إعلاني ولا يمكن تشغيله", Toast.LENGTH_SHORT).show();
@@ -3908,26 +3907,99 @@ public class BrowserActivity extends Activity {
             Toast.makeText(this, "يرجى تعيين IP الشاشة أولاً", Toast.LENGTH_SHORT).show();
             return;
         }
+        final String endpoint;
+        final OkHttpClient receiverClient;
         try {
-            final String endpoint = ReceiverApiClient.buildEndpoint(tvIp);
-            OkHttpClient receiverClient = ReceiverApiClient.create(this, Uri.parse(endpoint).getHost());
-            Request req = buildReceiverPlayRequest(endpoint, mediaUrl, audioUrl, capturedHeaders);
-            final String receiverEndpoint = endpoint;
+            endpoint = ReceiverApiClient.buildEndpoint(tvIp);
+            receiverClient = ReceiverApiClient.create(this, Uri.parse(endpoint).getHost());
+        } catch (Exception error) {
+            Toast.makeText(this, "تعذر تجهيز الاتصال بالريسيفر", Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        Request statusRequest = new Request.Builder().url(endpoint + "/?command=status").get().build();
+        receiverClient.newBuilder()
+                .connectTimeout(1800, java.util.concurrent.TimeUnit.MILLISECONDS)
+                .readTimeout(2200, java.util.concurrent.TimeUnit.MILLISECONDS)
+                .callTimeout(3000, java.util.concurrent.TimeUnit.MILLISECONDS)
+                .build().newCall(statusRequest).enqueue(new Callback() {
+            @Override public void onFailure(Call call, IOException error) {
+                runOnUiThread(() -> sendBrowserCastRequest(receiverClient, endpoint,
+                        mediaUrl, audioUrl, capturedHeaders, null));
+            }
+            @Override public void onResponse(Call call, Response response) {
+                boolean active = false;
+                try {
+                    if (response.isSuccessful() && response.body() != null) {
+                        JSONObject state = new JSONObject(response.body().string());
+                        long updated = state.optLong("mediaStateUpdatedAt", 0L);
+                        long age = System.currentTimeMillis() - updated;
+                        String type = state.optString("mediaType", "none");
+                        active = state.optBoolean("mediaActive", false) && updated > 0L
+                                && age >= -5000L && age <= 60000L
+                                && ("video".equals(type) || "audio".equals(type) || "image".equals(type));
+                    }
+                } catch (Exception ignored) {
+                } finally {
+                    response.close();
+                }
+                final boolean hasActivePlayback = active;
+                runOnUiThread(() -> {
+                    if (isFinishing() || isDestroyed()) return;
+                    if (!hasActivePlayback) {
+                        sendBrowserCastRequest(receiverClient, endpoint, mediaUrl, audioUrl, capturedHeaders, null);
+                        return;
+                    }
+                    new AlertDialog.Builder(BrowserActivity.this, R.style.ModernDialogTheme)
+                            .setTitle("فيه محتوى شغال على الريسيفر")
+                            .setMessage("اختار تعمل إيه بالمحتوى الحالي قبل إرسال الرابط الجديد.")
+                            .setPositiveButton("تشغيل بدل الحالي", (dialog, which) ->
+                                    sendBrowserCastRequest(receiverClient, endpoint, mediaUrl, audioUrl, capturedHeaders, null))
+                            .setNeutralButton("إضافة بعد الحالي", (dialog, which) ->
+                                    sendBrowserCastRequest(receiverClient, endpoint, mediaUrl, audioUrl, capturedHeaders, "append"))
+                            .setNegativeButton("إلغاء", null)
+                            .setOnCancelListener(dialog -> { })
+                            .show();
+                });
+            }
+        });
+    }
+
+    private void sendBrowserCastRequest(OkHttpClient receiverClient, String endpoint,
+            String mediaUrl, String audioUrl, java.util.Map<String, String> capturedHeaders,
+            String queueMode) {
+        try {
+            Request req;
+            if (queueMode == null) {
+                req = buildReceiverPlayRequest(endpoint, mediaUrl, audioUrl, capturedHeaders);
+            } else {
+                JSONObject item = new JSONObject();
+                item.put("url", mediaUrl);
+                item.put("sourceUrl", mediaUrl);
+                item.put("headers", new JSONObject(capturedHeaders == null
+                        ? java.util.Collections.emptyMap() : capturedHeaders));
+                if (audioUrl != null && !audioUrl.trim().isEmpty()) item.put("audioUrl", audioUrl);
+                JSONArray items = new JSONArray();
+                items.put(item);
+                JSONObject payload = new JSONObject();
+                payload.put("mode", queueMode);
+                payload.put("items", items);
+                RequestBody body = RequestBody.create(
+                        MediaType.parse("application/json; charset=utf-8"), payload.toString());
+                req = new Request.Builder().url(endpoint + "/queue").post(body).build();
+            }
             receiverClient.newCall(req).enqueue(new Callback() {
                 private void finishSend(boolean accepted, String detail) {
                     runOnUiThread(() -> Toast.makeText(BrowserActivity.this,
-                            accepted ? "✅ تم استلام الطلب بواسطة الريسيفر"
+                            accepted ? (queueMode == null ? "✅ تم استلام الطلب بواسطة الريسيفر"
+                                    : "✅ تمت إضافة الرابط إلى قائمة التشغيل")
                                     : "❌ لم يستقبل الريسيفر الطلب: " + detail,
                             Toast.LENGTH_LONG).show());
                 }
-
-                @Override
-                public void onFailure(Call call, IOException error) {
+                @Override public void onFailure(Call call, IOException error) {
                     finishSend(false, error == null ? "فشل الاتصال" : error.getMessage());
                 }
-
-                @Override
-                public void onResponse(Call call, Response response) {
+                @Override public void onResponse(Call call, Response response) {
                     boolean accepted = response.isSuccessful();
                     String detail = "HTTP " + response.code();
                     try {
@@ -3940,8 +4012,9 @@ public class BrowserActivity extends Activity {
                     finishSend(accepted, detail);
                 }
             });
-        } catch (Exception e) {
-            Toast.makeText(this, "خطأ في الرابط", Toast.LENGTH_SHORT).show();
+        } catch (Exception error) {
+            Toast.makeText(this, "تعذر تجهيز طلب الإرسال: " + error.getMessage(),
+                    Toast.LENGTH_LONG).show();
         }
     }
 
