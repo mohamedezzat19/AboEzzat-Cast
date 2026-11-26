@@ -3924,35 +3924,51 @@ public class BrowserActivity extends Activity {
                 .callTimeout(3000, java.util.concurrent.TimeUnit.MILLISECONDS)
                 .build().newCall(statusRequest).enqueue(new Callback() {
             @Override public void onFailure(Call call, IOException error) {
-                runOnUiThread(() -> sendBrowserCastRequest(receiverClient, endpoint,
-                        mediaUrl, audioUrl, capturedHeaders, null));
+                runOnUiThread(() -> {
+                    if (isFinishing() || isDestroyed()) return;
+                    // Unknown status must never silently replace a possibly active session.
+                    showBrowserCastChoiceDialog(
+                            () -> sendBrowserCastRequest(receiverClient, endpoint, mediaUrl, audioUrl, capturedHeaders, null),
+                            () -> sendBrowserCastRequest(receiverClient, endpoint, mediaUrl, audioUrl, capturedHeaders, "append"));
+                });
             }
             @Override public void onResponse(Call call, Response response) {
                 boolean active = false;
+                boolean statusKnown = false;
                 try {
                     if (response.isSuccessful() && response.body() != null) {
                         JSONObject state = new JSONObject(response.body().string());
-                        long updated = state.optLong("mediaStateUpdatedAt", 0L);
-                        long age = System.currentTimeMillis() - updated;
-                        String type = state.optString("mediaType", "none");
-                        active = state.optBoolean("mediaActive", false) && updated > 0L
-                                && age >= -5000L && age <= 60000L
-                                && ("video".equals(type) || "audio".equals(type) || "image".equals(type));
+                        if (state.has("mediaActive") && state.has("mediaStateUpdatedAt")
+                                && state.has("mediaType")) {
+                            statusKnown = true;
+                            long updated = state.optLong("mediaStateUpdatedAt", 0L);
+                            long age = System.currentTimeMillis() - updated;
+                            String type = state.optString("mediaType", "none");
+                            active = state.optBoolean("mediaActive", false) && updated > 0L
+                                    && age >= -5000L && age <= 60000L
+                                    && ("video".equals(type) || "audio".equals(type) || "image".equals(type));
+                        }
                     }
                 } catch (Exception ignored) {
                 } finally {
                     response.close();
                 }
                 final boolean hasActivePlayback = active;
+                final boolean hasKnownStatus = statusKnown;
                 runOnUiThread(() -> {
                     if (isFinishing() || isDestroyed()) return;
-                    if (!hasActivePlayback) {
+                    if (!hasKnownStatus) {
+                        // HTTP errors or malformed status are treated as unknown, not idle.
+                        showBrowserCastChoiceDialog(
+                                () -> sendBrowserCastRequest(receiverClient, endpoint, mediaUrl, audioUrl, capturedHeaders, null),
+                                () -> sendBrowserCastRequest(receiverClient, endpoint, mediaUrl, audioUrl, capturedHeaders, "append"));
+                    } else if (!hasActivePlayback) {
                         sendBrowserCastRequest(receiverClient, endpoint, mediaUrl, audioUrl, capturedHeaders, null);
-                        return;
+                    } else {
+                        showBrowserCastChoiceDialog(
+                                () -> sendBrowserCastRequest(receiverClient, endpoint, mediaUrl, audioUrl, capturedHeaders, null),
+                                () -> sendBrowserCastRequest(receiverClient, endpoint, mediaUrl, audioUrl, capturedHeaders, "append"));
                     }
-                    showBrowserCastChoiceDialog(
-                            () -> sendBrowserCastRequest(receiverClient, endpoint, mediaUrl, audioUrl, capturedHeaders, null),
-                            () -> sendBrowserCastRequest(receiverClient, endpoint, mediaUrl, audioUrl, capturedHeaders, "append"));
                 });
             }
         });
