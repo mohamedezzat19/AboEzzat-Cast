@@ -3397,7 +3397,7 @@ private void showManualIpDialog() {
 
         // Probe every selected receiver first, then ask once for the whole group.
         // A timeout is not proof of active playback, so that receiver remains eligible.
-        java.util.List<String> activeTargets = java.util.Collections.synchronizedList(new ArrayList<>());
+        Runnable playBatch = () -> {\n            if (isLikelyVideoClipboardUrl(mediaUrl)) sendSingleUrlQueueBatch(targets, mediaUrl, "replace", finishWhenDone);\n            else dispatchUrlBatch(targets, mediaUrl, finishWhenDone);\n        };\n        java.util.List<String> activeTargets = java.util.Collections.synchronizedList(new ArrayList<>());
         java.util.concurrent.atomic.AtomicInteger completedProbes = new java.util.concurrent.atomic.AtomicInteger();
         Runnable[] finishProbeBatch = new Runnable[1];
         finishProbeBatch[0] = () -> {
