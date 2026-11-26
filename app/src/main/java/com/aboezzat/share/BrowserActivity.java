@@ -3216,15 +3216,24 @@ public class BrowserActivity extends Activity {
             return;
         }
 
-        // Arm only the generic manual-capture path for 45 seconds. This does not
-        // modify share-sheet dispatch or the platform-specific automatic sniffers.
+        // Install the generic HTML5 player monitor at the moment the user asks
+        // for a manual scan. The previous code called __aboArmActiveCapture(), but
+        // that hook belongs to the TikTok/social sniffer and is not installed on
+        // ordinary sites; consequently the red target button could do nothing.
         manualSniffUntilMs = System.currentTimeMillis() + 45000L;
         clearCapturedMedia();
         Toast.makeText(this, "جاري فحص مشغل الموقع والتقاط مسارات الفيديو والصوت...", Toast.LENGTH_LONG).show();
 
-        String js = "(function(){try{if(window.__aboArmActiveCapture)window.__aboArmActiveCapture();}" +
-                "catch(e){}})()";
-        current.evaluateJavascript(js, null);
+        injectGenericAutoCapture(current);
+        current.evaluateJavascript(
+                "(function(){try{if(window.__aboGenericAutoCaptureV3){"
+                        + "document.dispatchEvent(new Event('abo-manual-capture'));"
+                        + "var videos=[].slice.call(document.querySelectorAll('video'));"
+                        + "videos.forEach(function(v){if(!v.paused&&!v.ended){"
+                        + "v.dispatchEvent(new Event('playing'));}});"
+                        + "}}catch(e){}})()",
+                null
+        );
     }
 
     private void showMediaListDialog() {
