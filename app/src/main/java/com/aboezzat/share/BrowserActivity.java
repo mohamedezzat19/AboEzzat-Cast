@@ -4531,6 +4531,8 @@ public class BrowserActivity extends Activity {
         history.add(url);
         historyPrefs.edit().putStringSet("browser_history", history)
                 .putString("history_title_" + url, title)
+                .putString("history_thumbnail_" + url,
+                        lastDiscoveredPoster == null ? "" : lastDiscoveredPoster)
                 .putLong("history_time_" + url, System.currentTimeMillis())
                 .putInt("visit_count_" + url, historyPrefs.getInt("visit_count_" + url, 0) + 1)
                 .apply();
