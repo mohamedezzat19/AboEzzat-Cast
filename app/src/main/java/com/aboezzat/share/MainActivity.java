@@ -112,6 +112,7 @@ public class MainActivity extends Activity {
                 boolean pairingRequest = "POST".equalsIgnoreCase(original.method())
                         && "/pair".equals(original.url().encodedPath());
                 if (!pairingRequest) {
+                        String clientId = getOrCreateReceiverClientId();
                         String secret = decryptReceiverSecret(getSharedPreferences("AboEzzatSharePrefs",
                                 MODE_PRIVATE | MODE_MULTI_PROCESS).getString(
                                         PREF_RECEIVER_SECRET + original.url().host(), ""));
@@ -135,7 +136,8 @@ public class MainActivity extends Activity {
                                     java.security.MessageDigest.getInstance("SHA-256").digest(requestBody),
                                     Base64.URL_SAFE | Base64.NO_WRAP | Base64.NO_PADDING);
                             String canonical = original.method() + "\n" + pathAndQuery
-                                    + "\n" + bodyHash + "\n" + timestamp + "\n" + nonce;
+                                    + "\n" + bodyHash + "\n" + timestamp + "\n" + nonce
+                                    + "\n" + clientId;
                             Mac mac = Mac.getInstance("HmacSHA256");
                             mac.init(new SecretKeySpec(secret.getBytes(java.nio.charset.StandardCharsets.UTF_8),
                                     "HmacSHA256"));
@@ -149,6 +151,7 @@ public class MainActivity extends Activity {
                                 .header("X-AboEzzat-Time", String.valueOf(timestamp))
                                 .header("X-AboEzzat-Nonce", nonce)
                                 .header("X-AboEzzat-Signature", signature)
+                                .header("X-AboEzzat-Client", clientId)
                                 .build();
                         return chain.proceed(signed);
                 }
@@ -2189,6 +2192,20 @@ private void showManualIpDialog() {
         });
     }
 
+    private String getOrCreateReceiverClientId() {
+        SharedPreferences clientPrefs = getSharedPreferences("AboEzzatSharePrefs",
+                MODE_PRIVATE | MODE_MULTI_PROCESS);
+        String clientId = clientPrefs.getString("receiver_client_id", "");
+        if (clientId.matches("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}")) {
+            return clientId;
+        }
+        clientId = UUID.randomUUID().toString();
+        if (!clientPrefs.edit().putString("receiver_client_id", clientId).commit()) {
+            throw new IllegalStateException("Could not save Cast installation identity");
+        }
+        return clientId;
+    }
+
     private void handleReceiverPairingQr(String contents) {
         try {
             if (contents == null || contents.length() > 4096) {
@@ -2267,7 +2284,8 @@ private void showManualIpDialog() {
             String pairUrl = endpoint + "/pair";
             okhttp3.RequestBody pairingBody = okhttp3.RequestBody.create(
                     okhttp3.MediaType.parse("application/json; charset=utf-8"),
-                    new org.json.JSONObject().put("code", code).toString());
+                    new org.json.JSONObject().put("code", code)
+                            .put("client_id", getOrCreateReceiverClientId()).toString());
             Request request = new Request.Builder().url(pairUrl).post(pairingBody).build();
             Toast.makeText(this, "جارٍ التحقق والربط بالريسيفر…", Toast.LENGTH_SHORT).show();
             pinnedClient.newCall(request).enqueue(new Callback() {
