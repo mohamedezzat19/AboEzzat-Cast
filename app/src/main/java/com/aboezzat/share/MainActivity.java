@@ -1124,8 +1124,6 @@ public class MainActivity extends Activity {
         }
         if (historyUrls.isEmpty()) addLibraryEmptyText(historyItems, "لا توجد صفحات في سجل التصفح");
         TextView clearHistory = new TextView(this);
-
-        TextView clearHistory = new TextView(this);
         clearHistory.setText("🗑  مسح سجل التصفح بالكامل");
         clearHistory.setTextColor(0xFFFFFFFF);
         clearHistory.setTextSize(15);
