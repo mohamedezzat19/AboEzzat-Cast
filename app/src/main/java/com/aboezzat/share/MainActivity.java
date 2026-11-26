@@ -3128,84 +3128,88 @@ private void showManualIpDialog() {
             if (finishWhenDone) finish();
             return;
         }
-        java.util.concurrent.atomic.AtomicInteger accepted = new java.util.concurrent.atomic.AtomicInteger();
-        java.util.concurrent.atomic.AtomicInteger finished = new java.util.concurrent.atomic.AtomicInteger();
+
+        // Probe every selected receiver first, then ask once for the whole group.
+        // A timeout is not proof of active playback, so that receiver remains eligible.
+        java.util.List<String> activeTargets = java.util.Collections.synchronizedList(new ArrayList<>());
+        java.util.concurrent.atomic.AtomicInteger completedProbes = new java.util.concurrent.atomic.AtomicInteger();
+        Runnable[] finishProbeBatch = new Runnable[1];
+        finishProbeBatch[0] = () -> {
+            if (completedProbes.incrementAndGet() != targets.size()) return;
+            runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed()) {
+                    if (finishWhenDone) finish();
+                    return;
+                }
+                if (activeTargets.isEmpty()) {
+                    dispatchUrlBatch(targets, mediaUrl, finishWhenDone);
+                    return;
+                }
+                new AlertDialog.Builder(MainActivity.this, R.style.ModernDialogTheme)
+                        .setTitle("فيه محتوى شغال على أجهزة الاستقبال")
+                        .setMessage("تم تأكيد وجود تشغيل فعلي على " + activeTargets.size()
+                                + " من " + targets.size()
+                                + " أجهزة. هل تريد إيقاف التشغيل الحالي على الأجهزة المحددة وتشغيل المحتوى الجديد؟")
+                        .setPositiveButton("تشغيل بدل الحالي", (dialog, which) ->
+                                dispatchUrlBatch(targets, mediaUrl, finishWhenDone))
+                        .setNegativeButton("إلغاء", (dialog, which) -> {
+                            if (finishWhenDone) finish();
+                        })
+                        .setOnCancelListener(dialog -> {
+                            if (finishWhenDone) finish();
+                        })
+                        .show();
+            });
+        };
+
         for (String tvIp : targets) {
-            probeReceiverBeforeUrlSend(tvIp, mediaUrl, finishWhenDone,
-                    targets.size(), accepted, finished);
+            try {
+                String endpoint = buildReceiverHttpsEndpoint(tvIp);
+                String host = Uri.parse(endpoint).getHost();
+                if (host == null) throw new IOException("Invalid receiver host");
+                OkHttpClient probe = getPinnedReceiverClient(host).newBuilder()
+                        .connectTimeout(1800, java.util.concurrent.TimeUnit.MILLISECONDS)
+                        .readTimeout(2200, java.util.concurrent.TimeUnit.MILLISECONDS)
+                        .callTimeout(3000, java.util.concurrent.TimeUnit.MILLISECONDS)
+                        .build();
+                Request statusRequest = new Request.Builder()
+                        .url(endpoint + "/?command=status").get().build();
+                probe.newCall(statusRequest).enqueue(new Callback() {
+                    @Override public void onFailure(Call call, IOException error) {
+                        finishProbeBatch[0].run();
+                    }
+                    @Override public void onResponse(Call call, Response response) {
+                        try {
+                            if (response.isSuccessful() && response.body() != null) {
+                                JSONObject state = new JSONObject(response.body().string());
+                                long updatedAt = state.optLong("mediaStateUpdatedAt", 0L);
+                                long age = System.currentTimeMillis() - updatedAt;
+                                String type = state.optString("mediaType", "none");
+                                boolean active = state.optBoolean("mediaActive", false)
+                                        && updatedAt > 0L && age >= -5000L && age <= 60000L
+                                        && ("video".equals(type) || "audio".equals(type) || "image".equals(type));
+                                if (active) activeTargets.add(tvIp);
+                            }
+                        } catch (Exception ignored) {
+                            // Invalid or stale status is not evidence of active playback.
+                        } finally {
+                            response.close();
+                            finishProbeBatch[0].run();
+                        }
+                    }
+                });
+            } catch (Exception error) {
+                finishProbeBatch[0].run();
+            }
         }
     }
 
-    // Only interrupt an existing session after the Receiver reports a recent,
-    // confirmed player state through the already authenticated/pinned status API.
-    private void probeReceiverBeforeUrlSend(String tvIp, String mediaUrl, boolean finishWhenDone,
-            int total, java.util.concurrent.atomic.AtomicInteger accepted,
-            java.util.concurrent.atomic.AtomicInteger finished) {
-        try {
-            String endpoint = buildReceiverHttpsEndpoint(tvIp);
-            String host = Uri.parse(endpoint).getHost();
-            if (host == null) throw new IOException("Invalid receiver host");
-            OkHttpClient probe = getPinnedReceiverClient(host).newBuilder()
-                    .connectTimeout(1800, java.util.concurrent.TimeUnit.MILLISECONDS)
-                    .readTimeout(2200, java.util.concurrent.TimeUnit.MILLISECONDS)
-                    .callTimeout(3000, java.util.concurrent.TimeUnit.MILLISECONDS)
-                    .build();
-            Request statusRequest = new Request.Builder()
-                    .url(endpoint + "/?command=status").get().build();
-            probe.newCall(statusRequest).enqueue(new Callback() {
-                @Override public void onFailure(Call call, IOException error) {
-                    // An unavailable status endpoint is not proof of active playback.
-                    sendUrlToSingleReceiver(tvIp, mediaUrl, finishWhenDone,
-                            total, accepted, finished);
-                }
-                @Override public void onResponse(Call call, Response response) {
-                    boolean active = false;
-                    String confirmedMediaType = "video";
-                    try {
-                        if (response.isSuccessful() && response.body() != null) {
-                            JSONObject state = new JSONObject(response.body().string());
-                            long updatedAt = state.optLong("mediaStateUpdatedAt", 0L);
-                            long age = System.currentTimeMillis() - updatedAt;
-                            confirmedMediaType = state.optString("mediaType", "none");
-                            active = state.optBoolean("mediaActive", false)
-                                    && updatedAt > 0L && age >= -5000L && age <= 60000L
-                                    && ("video".equals(confirmedMediaType) || "audio".equals(confirmedMediaType)
-                                            || "image".equals(confirmedMediaType));
-                        }
-                    } catch (Exception ignored) {
-                        active = false;
-                    } finally {
-                        response.close();
-                    }
-                    if (!active) {
-                        sendUrlToSingleReceiver(tvIp, mediaUrl, finishWhenDone,
-                                total, accepted, finished);
-                        return;
-                    }
-                    final String confirmedType = stateTypeForPrompt(confirmedMediaType);
-                    runOnUiThread(() -> {
-                        if (isFinishing() || isDestroyed()) {
-                            finishUrlTarget(total, accepted, finished, finishWhenDone);
-                            return;
-                        }
-                        new AlertDialog.Builder(MainActivity.this, R.style.ModernDialogTheme)
-                                .setTitle("فيه محتوى شغال على الريسيفر")
-                                .setMessage("الريسيفر أكد إن فيه تشغيل فعلي حاليًا (" 
-                                        + confirmedType 
-                                        + "). هل تريد إيقافه وتشغيل المحتوى الجديد؟")
-                                .setPositiveButton("تشغيل بدل الحالي", (dialog, which) ->
-                                        sendUrlToSingleReceiver(tvIp, mediaUrl, finishWhenDone,
-                                                total, accepted, finished))
-                                .setNegativeButton("إلغاء", (dialog, which) ->
-                                        finishUrlTarget(total, accepted, finished, finishWhenDone))
-                                .setOnCancelListener(dialog ->
-                                        finishUrlTarget(total, accepted, finished, finishWhenDone))
-                                .show();
-                    });
-                }
-            });
-        } catch (Exception error) {
-            sendUrlToSingleReceiver(tvIp, mediaUrl, finishWhenDone, total, accepted, finished);
+    private void dispatchUrlBatch(List<String> targets, String mediaUrl, boolean finishWhenDone) {
+        java.util.concurrent.atomic.AtomicInteger accepted = new java.util.concurrent.atomic.AtomicInteger();
+        java.util.concurrent.atomic.AtomicInteger finished = new java.util.concurrent.atomic.AtomicInteger();
+        for (String tvIp : targets) {
+            sendUrlToSingleReceiver(tvIp, mediaUrl, finishWhenDone,
+                    targets.size(), accepted, finished);
         }
     }
 
