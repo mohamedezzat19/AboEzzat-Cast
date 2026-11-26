@@ -3310,7 +3310,7 @@ public class BrowserActivity extends Activity {
         main.setPadding(20, 20, 20, 20);
 
         TextView header = new TextView(this);
-        header.setText("المسارات المكتشفة (" + capturedList.size() + ") - محددة تلقائياً");
+        header.setText("⌄  المسارات المكتشفة (" + capturedList.size() + ") - اضغط للعرض");
         header.setTextColor(Color.WHITE);
         header.setTextSize(16);
         header.setGravity(Gravity.CENTER);
@@ -3413,7 +3413,13 @@ public class BrowserActivity extends Activity {
         };
         listView.setAdapter(capturedMediaAdapter);
 
+        listView.setVisibility(View.GONE);
         main.addView(listView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 650));
+        header.setOnClickListener(v -> {
+            boolean opening = listView.getVisibility() != View.VISIBLE;
+            listView.setVisibility(opening ? View.VISIBLE : View.GONE);
+            header.setText((opening ? "⌃" : "⌄") + "  المسارات المكتشفة (" + capturedList.size() + ") - " + (opening ? "اضغط للإخفاء" : "اضغط للعرض"));
+        });
 
         Button btnCastNow = new Button(this);
         btnCastNow.setText("📺 بث فوري على الشاشة (دمج وتشغيل)");
@@ -4464,8 +4470,8 @@ public class BrowserActivity extends Activity {
         LinearLayout rows = new LinearLayout(this);
         rows.setOrientation(LinearLayout.VERTICAL);
         scroll.addView(rows);
-        content.addView(scroll, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(360)));
+        content.addView(createCollapsibleLinksPanel("عرض علامات التبويب", tabList.size(), scroll, 360),
+                new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         AlertDialog dialog = new AlertDialog.Builder(this, R.style.ModernDialogTheme)
                 .setTitle("علامات التبويب المفتوحة")
                 .setView(content)
