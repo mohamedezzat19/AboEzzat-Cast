@@ -3349,6 +3349,8 @@ private void showManualIpDialog() {
                                 + " أجهزة. هل تريد إيقاف التشغيل الحالي على الأجهزة المحددة وتشغيل المحتوى الجديد؟")
                         .setPositiveButton("تشغيل بدل الحالي", (dialog, which) ->
                                 dispatchUrlBatch(targets, mediaUrl, finishWhenDone))
+                        .setNeutralButton("إضافة بعد الحالي", (dialog, which) ->
+                                sendSingleUrlQueueBatch(targets, mediaUrl, "append", finishWhenDone))
                         .setNegativeButton("إلغاء", (dialog, which) -> {
                             if (finishWhenDone) finish();
                         })
@@ -3399,6 +3401,84 @@ private void showManualIpDialog() {
                 finishProbeBatch[0].run();
             }
         }
+    }
+
+    private void sendSingleUrlQueueBatch(List<String> targets, String mediaUrl,
+                                         String mode, boolean finishWhenDone) {
+        try {
+            JSONObject item = new JSONObject();
+            item.put("url", mediaUrl);
+            item.put("sourceUrl", mediaUrl);
+            item.put("headers", new JSONObject());
+            JSONArray items = new JSONArray();
+            items.put(item);
+            JSONObject payload = new JSONObject();
+            payload.put("mode", mode);
+            payload.put("items", items);
+            sendQueuePayloadToReceivers(targets, payload, finishWhenDone, "تمت إضافة الرابط إلى قائمة التشغيل");
+        } catch (Exception error) {
+            Toast.makeText(this, "تعذر تجهيز الرابط للإضافة إلى القائمة.", Toast.LENGTH_LONG).show();
+            if (finishWhenDone) finish();
+        }
+    }
+
+    private void sendSingleLocalQueueBatch(List<String> targets, String mediaUrl,
+                                           String mediaPin, String mode) {
+        try {
+            JSONObject item = new JSONObject();
+            item.put("url", mediaUrl);
+            item.put("mediaPin", mediaPin);
+            item.put("headers", new JSONObject());
+            JSONArray items = new JSONArray();
+            items.put(item);
+            JSONObject payload = new JSONObject();
+            payload.put("mode", mode);
+            payload.put("items", items);
+            sendQueuePayloadToReceivers(targets, payload, false, "تمت إضافة الوسيط إلى قائمة التشغيل");
+        } catch (Exception error) {
+            Toast.makeText(this, "تعذر تجهيز الوسيط للإضافة إلى القائمة.", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void sendQueuePayloadToReceivers(List<String> targets, JSONObject payload,
+                                             boolean finishWhenDone, String successMessage) {
+        java.util.concurrent.atomic.AtomicInteger accepted = new java.util.concurrent.atomic.AtomicInteger();
+        java.util.concurrent.atomic.AtomicInteger finished = new java.util.concurrent.atomic.AtomicInteger();
+        for (String target : targets) {
+            try {
+                String endpoint = buildReceiverHttpsEndpoint(target);
+                String host = Uri.parse(endpoint).getHost();
+                if (host == null) throw new IOException("Invalid receiver host");
+                OkHttpClient client = getPinnedReceiverClient(host);
+                okhttp3.RequestBody body = okhttp3.RequestBody.create(
+                        okhttp3.MediaType.parse("application/json; charset=utf-8"), payload.toString());
+                Request request = new Request.Builder().url(endpoint + "/queue").post(body).build();
+                client.newCall(request).enqueue(new Callback() {
+                    @Override public void onFailure(Call call, IOException error) {
+                        finishQueuePayloadTarget(targets.size(), accepted, finished, finishWhenDone, successMessage);
+                    }
+                    @Override public void onResponse(Call call, Response response) {
+                        try { if (response.isSuccessful()) accepted.incrementAndGet(); }
+                        finally {
+                            response.close();
+                            finishQueuePayloadTarget(targets.size(), accepted, finished, finishWhenDone, successMessage);
+                        }
+                    }
+                });
+            } catch (Exception error) {
+                finishQueuePayloadTarget(targets.size(), accepted, finished, finishWhenDone, successMessage);
+            }
+        }
+    }
+
+    private void finishQueuePayloadTarget(int total, java.util.concurrent.atomic.AtomicInteger accepted,
+                                          java.util.concurrent.atomic.AtomicInteger finished,
+                                          boolean finishWhenDone, String successMessage) {
+        if (finished.incrementAndGet() == total) runOnUiThread(() -> {
+            Toast.makeText(this, successMessage + " إلى " + accepted.get()
+                    + " من " + total + " أجهزة", Toast.LENGTH_LONG).show();
+            if (finishWhenDone) finish();
+        });
     }
 
     private void dispatchUrlBatch(List<String> targets, String mediaUrl, boolean finishWhenDone) {
@@ -3997,6 +4077,8 @@ private void showManualIpDialog() {
                                 targets.size(), accepted, finished);
                     }
                 };
+                Runnable addAll = () -> sendSingleLocalQueueBatch(targets, mediaUrl, mediaPin, "append");
+
                 if (activeTargets.isEmpty()) {
                     sendAll.run();
                     return;
@@ -4007,6 +4089,7 @@ private void showManualIpDialog() {
                                 + " من " + targets.size()
                                 + " أجهزة. هل تريد إيقاف التشغيل الحالي على الأجهزة المحددة وتشغيل الملف الجديد؟")
                         .setPositiveButton("تشغيل بدل الحالي", (dialog, which) -> sendAll.run())
+                        .setNeutralButton("إضافة بعد الحالي", (dialog, which) -> addAll.run())
                         .setNegativeButton("إلغاء", null)
                         .show();
             });
