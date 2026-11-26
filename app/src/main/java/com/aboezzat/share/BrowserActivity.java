@@ -300,15 +300,16 @@ public class BrowserActivity extends Activity {
 
         SharedPreferences prefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
         tvIp = prefs.getString("tv_ip", "").trim();
+        final boolean darkMode = prefs.getBoolean("dark_mode", true);
 
         rootLayout = new LinearLayout(this);
         rootLayout.setOrientation(LinearLayout.VERTICAL);
-        rootLayout.setBackgroundColor(Color.parseColor("#080C27"));
+        rootLayout.setBackgroundColor(Color.parseColor(darkMode ? "#080C27" : "#F2F6FC"));
 
         topBar = new LinearLayout(this);
         topBar.setOrientation(LinearLayout.HORIZONTAL);
         topBar.setPadding(8, 8, 8, 8);
-        topBar.setBackgroundColor(Color.parseColor("#0D1733"));
+        topBar.setBackgroundColor(Color.parseColor(darkMode ? "#0D1733" : "#E2EAF5"));
         topBar.setGravity(Gravity.CENTER_VERTICAL);
         topBar.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
 
@@ -328,12 +329,12 @@ public class BrowserActivity extends Activity {
 
         etUrl = new EditText(this);
         etUrl.setHint("اكتب الرابط أو ابحث...");
-        etUrl.setHintTextColor(Color.GRAY);
-        etUrl.setTextColor(Color.WHITE);
+        etUrl.setHintTextColor(darkMode ? Color.LTGRAY : Color.DKGRAY);
+        etUrl.setTextColor(darkMode ? Color.WHITE : Color.rgb(23, 38, 61));
         etUrl.setTextSize(13);
         etUrl.setSingleLine(true);
         etUrl.setTextDirection(View.TEXT_DIRECTION_LTR);
-        etUrl.setBackgroundColor(Color.parseColor("#182442"));
+        etUrl.setBackgroundColor(Color.parseColor(darkMode ? "#182442" : "#FFFFFF"));
         etUrl.setPadding(15, 10, 15, 10);
         LinearLayout.LayoutParams urlParams = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
         urlParams.setMargins(5, 0, 5, 0);
@@ -356,8 +357,8 @@ public class BrowserActivity extends Activity {
         btnCast = new Button(this);
         btnCast.setText("📺 0");
         btnCast.setTextSize(13);
-        btnCast.setTextColor(Color.WHITE);
-        btnCast.setBackgroundColor(Color.parseColor("#182442"));
+        btnCast.setTextColor(darkMode ? Color.WHITE : Color.rgb(23, 38, 61));
+        btnCast.setBackgroundColor(Color.parseColor(darkMode ? "#182442" : "#D3DFEF"));
         btnCast.setVisibility(View.GONE);
         btnCast.setOnClickListener(v -> showMediaListDialog());
         topBar.addView(btnCast, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -384,7 +385,7 @@ public class BrowserActivity extends Activity {
 
         bottomBar = new LinearLayout(this);
         bottomBar.setOrientation(LinearLayout.HORIZONTAL);
-        bottomBar.setBackgroundColor(Color.parseColor("#0D1733"));
+        bottomBar.setBackgroundColor(Color.parseColor(darkMode ? "#0D1733" : "#E2EAF5"));
         bottomBar.setPadding(dp(5), dp(5), dp(5), dp(5));
         bottomBar.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
         bottomBar.setGravity(Gravity.CENTER);
@@ -424,7 +425,7 @@ public class BrowserActivity extends Activity {
         appNavigation.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
         appNavigation.setGravity(Gravity.CENTER);
         appNavigation.setPadding(dp(4), dp(3), dp(4), dp(3));
-        appNavigation.setBackgroundColor(Color.parseColor("#07132B"));
+        appNavigation.setBackgroundColor(Color.parseColor(darkMode ? "#07132B" : "#DCE7F5"));
         String[] navLabels = {"🏠\nالرئيسية", "🎞️\nالوسائط", "📚\nالمكتبة"};
         for (int index = 0; index < navLabels.length; index++) {
             final int destination = index;
@@ -436,7 +437,8 @@ public class BrowserActivity extends Activity {
             navButton.setMinHeight(0);
             navButton.setPadding(dp(2), 0, dp(2), 0);
             android.graphics.drawable.GradientDrawable navBg = new android.graphics.drawable.GradientDrawable();
-            navBg.setColor(Color.parseColor("#14284D"));
+            navBg.setColor(Color.parseColor(darkMode ? "#14284D" : "#C8D8EC"));
+            navButton.setTextColor(darkMode ? Color.WHITE : Color.rgb(23, 38, 61));
             navBg.setCornerRadius(dp(8));
             navButton.setBackground(navBg);
             LinearLayout.LayoutParams navLp = new LinearLayout.LayoutParams(0, dp(42), 1f);
