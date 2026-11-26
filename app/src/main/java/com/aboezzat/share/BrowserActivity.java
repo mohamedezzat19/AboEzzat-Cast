@@ -789,6 +789,7 @@ public class BrowserActivity extends Activity {
         };
         list.setAdapter(adapter);
 
+        final AlertDialog[] dialogRef = new AlertDialog[1];
         AlertDialog dialog = new AlertDialog.Builder(this, R.style.ModernDialogTheme)
                 .setTitle("سجل التصفح • " + urls.size())
                 .setView(list)
@@ -805,7 +806,8 @@ public class BrowserActivity extends Activity {
                     }
                     editor.putStringSet("browser_history", updated).apply();
                     Toast.makeText(this, "تم حذف " + selectedUrls.size() + " موقع", Toast.LENGTH_SHORT).show();
-                    dialogDismissAndRefresh();
+                    if (dialogRef[0] != null) dialogRef[0].dismiss();
+                    showBrowserHistoryDialog();
                 })
                 .setNegativeButton("إغلاق", null)
                 .setNeutralButton("مسح السجل", (d, w) -> {
@@ -848,15 +850,12 @@ public class BrowserActivity extends Activity {
             Toast.makeText(this, "اختار مواقع إضافية بالضغط عليها، ثم اضغط حذف المحدد", Toast.LENGTH_LONG).show();
             return true;
         });
+        dialogRef[0] = dialog;
         dialog.setOnShowListener(d -> refreshSelectionUi[0].run());
         dialog.show();
         refreshSelectionUi[0].run();
     }
 
-    private void dialogDismissAndRefresh() {
-        // The history dialog is recreated from the current SharedPreferences snapshot.
-        showBrowserHistoryDialog();
-    }
 
     private void showQuickSitesDialog() {
         SharedPreferences prefs = getSharedPreferences("AboEzzatSharePrefs", MODE_PRIVATE);
