@@ -3716,33 +3716,31 @@ public class BrowserActivity extends Activity {
             Request req = buildReceiverPlayRequest(endpoint, videoTrackUrl, audioTrackUrl,
                     bestVideo == null ? null : bestVideo.requestHeaders);
             final String receiverEndpoint = endpoint;
-            AtomicBoolean requestHeadersSent = new AtomicBoolean(false);
-            OkHttpClient trackedClient = receiverClient.newBuilder()
-                    .eventListener(new okhttp3.EventListener() {
-                        @Override
-                        public void requestHeadersEnd(Call call, Request request) {
-                            requestHeadersSent.set(true);
-                        }
-                    }).build();
-
-            trackedClient.newCall(req).enqueue(new Callback() {
-                private void finishSend() {
-                    runOnUiThread(() -> {
-                        if (requestHeadersSent.get()) {
-                            Toast.makeText(BrowserActivity.this, "✅ تم الإرسال", Toast.LENGTH_SHORT).show();
-                        }
-                    });
+            receiverClient.newCall(req).enqueue(new Callback() {
+                private void finishSend(boolean accepted, String detail) {
+                    runOnUiThread(() -> Toast.makeText(BrowserActivity.this,
+                            accepted ? "✅ تم استلام الطلب بواسطة الريسيفر"
+                                    : "❌ لم يستقبل الريسيفر الطلب: " + detail,
+                            Toast.LENGTH_LONG).show());
                 }
 
                 @Override
                 public void onFailure(Call call, IOException error) {
-                    finishSend();
+                    finishSend(false, error == null ? "فشل الاتصال" : error.getMessage());
                 }
 
                 @Override
                 public void onResponse(Call call, Response response) {
+                    boolean accepted = response.isSuccessful();
+                    String detail = "HTTP " + response.code();
+                    try {
+                        if (!accepted && response.body() != null) {
+                            String body = response.body().string();
+                            if (!body.trim().isEmpty()) detail += " - " + body;
+                        }
+                    } catch (IOException ignored) { }
                     response.close();
-                    finishSend();
+                    finishSend(accepted, detail);
                 }
             });
         } catch (Exception e) {
@@ -3915,33 +3913,31 @@ public class BrowserActivity extends Activity {
             OkHttpClient receiverClient = ReceiverApiClient.create(this, Uri.parse(endpoint).getHost());
             Request req = buildReceiverPlayRequest(endpoint, mediaUrl, audioUrl, capturedHeaders);
             final String receiverEndpoint = endpoint;
-            AtomicBoolean requestHeadersSent = new AtomicBoolean(false);
-            OkHttpClient trackedClient = receiverClient.newBuilder()
-                    .eventListener(new okhttp3.EventListener() {
-                        @Override
-                        public void requestHeadersEnd(Call call, Request request) {
-                            requestHeadersSent.set(true);
-                        }
-                    }).build();
-
-            trackedClient.newCall(req).enqueue(new Callback() {
-                private void finishSend() {
-                    runOnUiThread(() -> {
-                        if (requestHeadersSent.get()) {
-                            Toast.makeText(BrowserActivity.this, "✅ تم الإرسال", Toast.LENGTH_SHORT).show();
-                        }
-                    });
+            receiverClient.newCall(req).enqueue(new Callback() {
+                private void finishSend(boolean accepted, String detail) {
+                    runOnUiThread(() -> Toast.makeText(BrowserActivity.this,
+                            accepted ? "✅ تم استلام الطلب بواسطة الريسيفر"
+                                    : "❌ لم يستقبل الريسيفر الطلب: " + detail,
+                            Toast.LENGTH_LONG).show());
                 }
 
                 @Override
                 public void onFailure(Call call, IOException error) {
-                    finishSend();
+                    finishSend(false, error == null ? "فشل الاتصال" : error.getMessage());
                 }
 
                 @Override
                 public void onResponse(Call call, Response response) {
+                    boolean accepted = response.isSuccessful();
+                    String detail = "HTTP " + response.code();
+                    try {
+                        if (!accepted && response.body() != null) {
+                            String body = response.body().string();
+                            if (!body.trim().isEmpty()) detail += " - " + body;
+                        }
+                    } catch (IOException ignored) { }
                     response.close();
-                    finishSend();
+                    finishSend(accepted, detail);
                 }
             });
         } catch (Exception e) {
