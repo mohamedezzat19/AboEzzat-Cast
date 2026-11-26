@@ -751,7 +751,10 @@ public class BrowserActivity extends Activity {
         list.setBackgroundColor(Color.rgb(12, 22, 39));
         list.setDivider(new android.graphics.drawable.ColorDrawable(Color.rgb(55, 75, 101)));
         list.setDividerHeight(dp(1));
-        list.setAdapter(new android.widget.ArrayAdapter<String>(this,
+        list.setChoiceMode(android.widget.ListView.CHOICE_MODE_MULTIPLE);
+        Set<String> selectedUrls = new HashSet<>();
+        boolean[] selectionMode = {false};
+        android.widget.ArrayAdapter<String> adapter = new android.widget.ArrayAdapter<String>(this,
                 android.R.layout.simple_list_item_2, android.R.id.text1, urls) {
             @Override public View getView(int position, View convertView, ViewGroup parent) {
                 View row = super.getView(position, convertView, parent);
@@ -768,8 +771,8 @@ public class BrowserActivity extends Activity {
                 }
                 TextView titleView = row.findViewById(android.R.id.text1);
                 TextView addressView = row.findViewById(android.R.id.text2);
-                titleView.setText(title.trim());
-                titleView.setTextColor(Color.WHITE);
+                titleView.setText((selectedUrls.contains(url) ? "✓  " : "") + title.trim());
+                titleView.setTextColor(selectedUrls.contains(url) ? Color.rgb(100, 210, 160) : Color.WHITE);
                 titleView.setTextSize(15);
                 titleView.setSingleLine(true);
                 titleView.setEllipsize(android.text.TextUtils.TruncateAt.END);
@@ -778,44 +781,81 @@ public class BrowserActivity extends Activity {
                 addressView.setTextSize(12);
                 addressView.setSingleLine(true);
                 addressView.setEllipsize(android.text.TextUtils.TruncateAt.END);
-                row.setBackgroundColor(Color.rgb(23, 35, 54));
+                row.setBackgroundColor(selectedUrls.contains(url)
+                        ? Color.rgb(31, 65, 70) : Color.rgb(23, 35, 54));
                 row.setPadding(dp(16), dp(10), dp(16), dp(10));
                 return row;
             }
-        });
+        };
+        list.setAdapter(adapter);
 
         AlertDialog dialog = new AlertDialog.Builder(this, R.style.ModernDialogTheme)
                 .setTitle("سجل التصفح • " + urls.size())
-                .setView(list).setNegativeButton("إغلاق", null)
+                .setView(list)
+                .setPositiveButton("حذف المحدد", (d, w) -> {
+                    if (selectedUrls.isEmpty()) return;
+                    Set<String> updated = new HashSet<>(prefs.getStringSet(
+                            "browser_history", new HashSet<String>()));
+                    android.content.SharedPreferences.Editor editor = prefs.edit();
+                    for (String selectedUrl : selectedUrls) {
+                        updated.remove(selectedUrl);
+                        editor.remove("history_title_" + selectedUrl)
+                                .remove("history_time_" + selectedUrl)
+                                .remove("visit_count_" + selectedUrl);
+                    }
+                    editor.putStringSet("browser_history", updated).apply();
+                    Toast.makeText(this, "تم حذف " + selectedUrls.size() + " موقع", Toast.LENGTH_SHORT).show();
+                    dialogDismissAndRefresh();
+                })
+                .setNegativeButton("إغلاق", null)
                 .setNeutralButton("مسح السجل", (d, w) -> {
                     prefs.edit().putStringSet("browser_history", new HashSet<String>())
                             .putLong("history_cleared_at", System.currentTimeMillis()).apply();
                     Toast.makeText(this, "تم مسح سجل التصفح", Toast.LENGTH_SHORT).show();
                 }).create();
 
+        final Runnable[] refreshSelectionUi = new Runnable[1];
+        refreshSelectionUi[0] = () -> {
+            adapter.notifyDataSetChanged();
+            dialog.setTitle(selectionMode[0]
+                    ? "تم تحديد " + selectedUrls.size() + " من " + urls.size()
+                    : "سجل التصفح • " + urls.size());
+            if (dialog.isShowing()) {
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(!selectedUrls.isEmpty());
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE).setText(
+                        selectionMode[0] ? "حذف المحدد" : "حذف المحدد");
+            }
+        };
         list.setOnItemClickListener((parent, view, position, id) -> {
-            if (position >= 0 && position < urls.size()) {
-                loadTargetUrl(urls.get(position));
+            if (position < 0 || position >= urls.size()) return;
+            String url = urls.get(position);
+            if (selectionMode[0]) {
+                if (!selectedUrls.add(url)) selectedUrls.remove(url);
+                list.setItemChecked(position, selectedUrls.contains(url));
+                refreshSelectionUi[0].run();
+            } else {
+                loadTargetUrl(url);
                 dialog.dismiss();
             }
         });
         list.setOnItemLongClickListener((parent, view, position, id) -> {
             if (position < 0 || position >= urls.size()) return true;
-            String selectedUrl = urls.get(position);
-            String savedTitle = prefs.getString("history_title_" + selectedUrl, "سجل التصفح");
-            showBrowserLinkActions(savedTitle, selectedUrl, () -> {
-                Set<String> updated = new HashSet<>(prefs.getStringSet("browser_history", new HashSet<String>()));
-                updated.remove(selectedUrl);
-                prefs.edit().putStringSet("browser_history", updated)
-                        .remove("history_title_" + selectedUrl)
-                        .remove("history_time_" + selectedUrl)
-                        .remove("visit_count_" + selectedUrl).apply();
-                dialog.dismiss();
-                showBrowserHistoryDialog();
-            });
+            selectionMode[0] = true;
+            String url = urls.get(position);
+            selectedUrls.add(url);
+            list.setItemChecked(position, true);
+            refreshSelectionUi[0].run();
+            Toast.makeText(this, "اختار مواقع إضافية بالضغط عليها، ثم اضغط حذف المحدد", Toast.LENGTH_LONG).show();
             return true;
         });
+        dialog.setOnShowListener(d -> refreshSelectionUi[0].run());
         dialog.show();
+        refreshSelectionUi[0].run();
+    }
+
+    private void dialogDismissAndRefresh() {
+        // The history dialog is recreated from the current SharedPreferences snapshot.
+        showBrowserHistoryDialog();
     }
 
     private void showQuickSitesDialog() {
