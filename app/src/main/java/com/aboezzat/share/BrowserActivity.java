@@ -3743,15 +3743,20 @@ public class BrowserActivity extends Activity {
 
                 @Override
                 public void onResponse(Call call, Response response) {
-                    boolean accepted = response.isSuccessful();
-                    String detail = "HTTP " + response.code();
+                    int statusCode = response.code();
+                    String responseBody = "";
                     try {
-                        if (!accepted && response.body() != null) {
-                            String body = response.body().string();
-                            if (!body.trim().isEmpty()) detail += " - " + body;
-                        }
-                    } catch (IOException ignored) { }
-                    response.close();
+                        if (response.body() != null) responseBody = response.body().string();
+                    } catch (IOException ignored) {
+                    } finally {
+                        response.close();
+                    }
+                    final boolean accepted = statusCode == 200
+                            && "OK".equalsIgnoreCase(responseBody.trim());
+                    String detail = "HTTP " + statusCode;
+                    if (!accepted && !responseBody.trim().isEmpty()) {
+                        detail += " - " + responseBody.trim();
+                    }
                     finishSend(accepted, detail);
                 }
             });
