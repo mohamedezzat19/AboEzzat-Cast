@@ -3716,33 +3716,31 @@ public class BrowserActivity extends Activity {
             Request req = buildReceiverPlayRequest(endpoint, videoTrackUrl, audioTrackUrl,
                     bestVideo == null ? null : bestVideo.requestHeaders);
             final String receiverEndpoint = endpoint;
-            AtomicBoolean requestHeadersSent = new AtomicBoolean(false);
-            OkHttpClient trackedClient = receiverClient.newBuilder()
-                    .eventListener(new okhttp3.EventListener() {
-                        @Override
-                        public void requestHeadersEnd(Call call, Request request) {
-                            requestHeadersSent.set(true);
-                        }
-                    }).build();
-
-            trackedClient.newCall(req).enqueue(new Callback() {
-                private void finishSend() {
-                    runOnUiThread(() -> {
-                        if (requestHeadersSent.get()) {
-                            Toast.makeText(BrowserActivity.this, "✅ تم الإرسال", Toast.LENGTH_SHORT).show();
-                        }
-                    });
-                }
-
+            receiverClient.newCall(req).enqueue(new Callback() {
                 @Override
                 public void onFailure(Call call, IOException error) {
-                    finishSend();
+                    runOnUiThread(() -> Toast.makeText(BrowserActivity.this,
+                            "تعذر تأكيد استلام الريسيفر للطلب: " + error.getClass().getSimpleName(),
+                            Toast.LENGTH_LONG).show());
                 }
 
                 @Override
                 public void onResponse(Call call, Response response) {
-                    response.close();
-                    finishSend();
+                    int statusCode = response.code();
+                    String responseBody = "";
+                    try {
+                        if (response.body() != null) responseBody = response.body().string();
+                    } catch (IOException ignored) {
+                    } finally {
+                        response.close();
+                    }
+                    final boolean accepted = response.isSuccessful()
+                            && statusCode == 200 && "OK".equalsIgnoreCase(responseBody.trim());
+                    runOnUiThread(() -> Toast.makeText(BrowserActivity.this,
+                            accepted
+                                    ? "استلم الريسيفر طلب التشغيل؛ جارٍ فتح المحتوى…"
+                                    : "الريسيفر رفض طلب التشغيل أو لم يؤكده (HTTP " + statusCode + ")",
+                            Toast.LENGTH_LONG).show());
                 }
             });
         } catch (Exception e) {
