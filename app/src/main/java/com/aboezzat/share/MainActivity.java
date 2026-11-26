@@ -1012,7 +1012,8 @@ public class MainActivity extends Activity {
         subtitleParams.bottomMargin = dp(12);
         content.addView(subtitle, subtitleParams);
 
-        addLibrarySectionTitle(content, "☆  المفضلة");
+        LinearLayout favoritesItems = new LinearLayout(this);
+        favoritesItems.setOrientation(LinearLayout.VERTICAL);
         Set<String> bookmarks = new HashSet<>(browserPrefs.getStringSet("custom_sites", new HashSet<String>()));
         List<String> entries = new ArrayList<>(), names = new ArrayList<>(), urls = new ArrayList<>();
         for (String entry : bookmarks) {
@@ -1020,11 +1021,11 @@ public class MainActivity extends Activity {
             if (parts.length == 2) { entries.add(entry); names.add(parts[0]); urls.add(parts[1]); }
         }
         if (entries.isEmpty()) {
-            addLibraryEmptyText(content, "لا توجد عناصر بعد");
+            addLibraryEmptyText(favoritesItems, "لا توجد عناصر بعد");
         } else {
             for (int i = 0; i < entries.size(); i++) {
                 final int index = i;
-                TextView card = addLibraryCard(content, names.get(i));
+                TextView card = addLibraryCard(favoritesItems, names.get(i));
                 card.setOnClickListener(v -> openLibraryUrl(urls.get(index)));
                 card.setOnLongClickListener(v -> {
                     showLinkActionsDialog(names.get(index), urls.get(index), () -> {
@@ -1038,6 +1039,8 @@ public class MainActivity extends Activity {
                 });
             }
         }
+
+        content.addView(createCollapsibleItemsPanel("☆  المفضلة", entries.size(), favoritesItems, 0));
 
         Set<String> history = new HashSet<>(browserPrefs.getStringSet("browser_history", new HashSet<String>()));
         List<String> historyUrls = new ArrayList<>(history);
@@ -1202,7 +1205,7 @@ public class MainActivity extends Activity {
         });
         AlertDialog dialog = new AlertDialog.Builder(this, R.style.ModernDialogTheme)
                 .setTitle("الأكثر زيارة")
-                .setView(list)
+                .setView(createCollapsibleItemsPanel("عرض المواقع", rankedUrls.size(), list, 320))
                 .setNegativeButton("إغلاق", null).create();
         list.setOnItemClickListener((parent, view, position, id) -> {
             if (position >= 0 && position < rankedUrls.size()) {
@@ -1235,6 +1238,40 @@ public class MainActivity extends Activity {
             return true;
         });
         dialog.show();
+    }
+
+
+    private LinearLayout createCollapsibleItemsPanel(String label, int count, View items, int heightDp) {
+        LinearLayout section = new LinearLayout(this);
+        section.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        header.setPadding(dp(12), dp(13), dp(12), dp(13));
+        header.setBackground(libraryCardBackground(0xFF252630));
+        TextView heading = new TextView(this);
+        heading.setText(label + " (" + count + ")");
+        heading.setTextColor(Color.WHITE);
+        heading.setTextSize(15);
+        heading.setTypeface(null, Typeface.BOLD);
+        header.addView(heading, new LinearLayout.LayoutParams(0, -2, 1));
+        TextView arrow = new TextView(this);
+        arrow.setText("⌄");
+        arrow.setTextColor(0xFF26D7E8);
+        arrow.setTextSize(21);
+        header.addView(arrow);
+        section.addView(header);
+        items.setVisibility(View.GONE);
+        LinearLayout.LayoutParams itemParams = new LinearLayout.LayoutParams(-1,
+                heightDp > 0 ? dp(heightDp) : -2);
+        itemParams.topMargin = dp(6);
+        section.addView(items, itemParams);
+        header.setOnClickListener(v -> {
+            boolean opening = items.getVisibility() != View.VISIBLE;
+            items.setVisibility(opening ? View.VISIBLE : View.GONE);
+            arrow.setText(opening ? "⌃" : "⌄");
+        });
+        return section;
     }
 
     private int dp(float value) {
@@ -1465,7 +1502,7 @@ public class MainActivity extends Activity {
                 showLegacyPlaylistDialog();
             }));
         }
-        panel.addView(scroll, new LinearLayout.LayoutParams(-1, dp(300)));
+        panel.addView(createCollapsibleItemsPanel("عرض عناصر القائمة", videoQueue.size(), scroll, 300), new LinearLayout.LayoutParams(-1, -2));
         new AlertDialog.Builder(this, R.style.ModernDialogTheme).setTitle("القائمة القديمة")
                 .setView(panel).setPositiveButton("إضافة فيديوهات", (d,w) -> openMediaPicker(false))
                 .setNeutralButton("مسح", (d,w) -> {
@@ -1785,7 +1822,7 @@ public class MainActivity extends Activity {
         }
         // Give the dialog content a real measured height; a zero-height weighted
         // ScrollView inside a wrap-content dialog can collapse the playlist rows.
-        panel.addView(scroll, new LinearLayout.LayoutParams(-1, dp(360)));
+        panel.addView(createCollapsibleItemsPanel("عرض عناصر القائمة", playlistItems.length(), scroll, 360), new LinearLayout.LayoutParams(-1, -2));
         new AlertDialog.Builder(this, R.style.ModernDialogTheme).setTitle(name + " (" + playlistItems.length() + ")")
                 .setView(panel)
                 .setPositiveButton("إضافة وسائط", (d,w) -> openNamedPlaylistPicker(name))
@@ -1978,7 +2015,7 @@ public class MainActivity extends Activity {
                 android.R.layout.simple_list_item_1, names));
         AlertDialog dialog = new AlertDialog.Builder(this, R.style.ModernDialogTheme)
                 .setTitle("العلامات المرجعية (اضغط مطولاً للحذف)")
-                .setView(listView)
+                .setView(createCollapsibleItemsPanel("عرض العلامات المرجعية", entries.size(), listView, 320))
                 .setNegativeButton("إغلاق", null)
                 .create();
         listView.setOnItemClickListener((parent, view, position, id) -> {
@@ -2029,7 +2066,7 @@ public class MainActivity extends Activity {
                 android.R.layout.simple_list_item_1, labels));
         AlertDialog dialog = new AlertDialog.Builder(this, R.style.ModernDialogTheme)
                 .setTitle("الوسائط المحفوظة")
-                .setView(list)
+                .setView(createCollapsibleItemsPanel("عرض الوسائط المحفوظة", urls.size(), list, 320))
                 .setPositiveButton("إضافة رابط", (d, w) -> showAddSavedMediaDialog())
                 .setNegativeButton("إغلاق", null)
                 .create();
