@@ -76,6 +76,14 @@ public final class ReceiverApiClient {
         if (expectedPin.length != 32) throw new IOException("Invalid Receiver certificate pin");
         String secret = decryptSecret(encryptedSecret);
         if (secret.length() < 40) throw new IOException("Receiver pairing secret is unavailable");
+        String clientId = prefs.getString("receiver_client_id", "");
+        if (clientId == null || !clientId.matches("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}")) {
+            clientId = UUID.randomUUID().toString();
+            if (!prefs.edit().putString("receiver_client_id", clientId).commit()) {
+                throw new IOException("Could not save Cast installation identity");
+            }
+        }
+        final String authenticatedClientId = clientId;
 
         X509TrustManager pinnedTrustManager = new X509TrustManager() {
             @Override public void checkClientTrusted(X509Certificate[] chain, String authType)
@@ -133,7 +141,8 @@ public final class ReceiverApiClient {
                                 MessageDigest.getInstance("SHA-256").digest(requestBody),
                                 Base64.URL_SAFE | Base64.NO_WRAP | Base64.NO_PADDING);
                         String canonical = original.method() + "\n" + pathAndQuery
-                                + "\n" + bodyHash + "\n" + timestamp + "\n" + nonce;
+                                + "\n" + bodyHash + "\n" + timestamp + "\n" + nonce
+                                + "\n" + authenticatedClientId;
                         Mac mac = Mac.getInstance("HmacSHA256");
                         mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
                         signature = Base64.encodeToString(
@@ -146,6 +155,7 @@ public final class ReceiverApiClient {
                             .header("X-AboEzzat-Time", String.valueOf(timestamp))
                             .header("X-AboEzzat-Nonce", nonce)
                             .header("X-AboEzzat-Signature", signature)
+                            .header("X-AboEzzat-Client", authenticatedClientId)
                             .build();
                     return chain.proceed(signed);
                 })
