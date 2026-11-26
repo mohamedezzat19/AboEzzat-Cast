@@ -3260,7 +3260,7 @@ private void showManualIpDialog() {
             if (host == null) return false;
             host = host.toLowerCase(java.util.Locale.ROOT);
             if (host.startsWith("www.")) host = host.substring(4);
-            if (path.matches(".*\\.(mp4|m3u8|webm|mov|mkv|avi)$")) return true;
+            if (path.matches(".*\\.(mp4|m3u8|webm|mov|mkv|avi|flv|m4v|mpg|mpeg|3gp|ts|mpd|mp3|m4a|aac|ogg|oga|opus|wav|flac|jpg|jpeg|png|webp|gif|avif|heic)$")) return true;
             if (host.equals("youtu.be") || host.endsWith("youtube.com")
                     || host.endsWith("youtube-nocookie.com") || host.equals("fb.watch")) return true;
             if (host.endsWith("facebook.com") || host.equals("fb.com"))
@@ -3397,7 +3397,14 @@ private void showManualIpDialog() {
 
         // Probe every selected receiver first, then ask once for the whole group.
         // A timeout is not proof of active playback, so that receiver remains eligible.
-        Runnable playBatch = () -> {\n            if (isLikelyVideoClipboardUrl(mediaUrl)) sendSingleUrlQueueBatch(targets, mediaUrl, "replace", finishWhenDone);\n            else dispatchUrlBatch(targets, mediaUrl, finishWhenDone);\n        };\n        java.util.List<String> activeTargets = java.util.Collections.synchronizedList(new ArrayList<>());
+        Runnable playBatch = () -> {
+            if (isLikelyVideoClipboardUrl(mediaUrl)) {
+                sendSingleUrlQueueBatch(targets, mediaUrl, "replace", finishWhenDone);
+            } else {
+                dispatchUrlBatch(targets, mediaUrl, finishWhenDone);
+            }
+        };
+        java.util.List<String> activeTargets = java.util.Collections.synchronizedList(new ArrayList<>());
         java.util.concurrent.atomic.AtomicInteger completedProbes = new java.util.concurrent.atomic.AtomicInteger();
         Runnable[] finishProbeBatch = new Runnable[1];
         finishProbeBatch[0] = () -> {
@@ -3408,7 +3415,7 @@ private void showManualIpDialog() {
                     return;
                 }
                 if (activeTargets.isEmpty()) {
-                    dispatchUrlBatch(targets, mediaUrl, finishWhenDone);
+                    playBatch.run();
                     return;
                 }
                 new AlertDialog.Builder(MainActivity.this, R.style.ModernDialogTheme)
@@ -3416,8 +3423,7 @@ private void showManualIpDialog() {
                         .setMessage("تم تأكيد وجود تشغيل فعلي على " + activeTargets.size()
                                 + " من " + targets.size()
                                 + " أجهزة. هل تريد إيقاف التشغيل الحالي على الأجهزة المحددة وتشغيل المحتوى الجديد؟")
-                        .setPositiveButton("تشغيل بدل الحالي", (dialog, which) ->
-                                dispatchUrlBatch(targets, mediaUrl, finishWhenDone))
+                        .setPositiveButton("تشغيل بدل الحالي", (dialog, which) -> playBatch.run())
                         .setNeutralButton("إضافة بعد الحالي", (dialog, which) ->
                                 sendSingleUrlQueueBatch(targets, mediaUrl, "append", finishWhenDone))
                         .setNegativeButton("إلغاء", (dialog, which) -> {
