@@ -1396,7 +1396,7 @@ public class MainActivity extends Activity {
                     String value = input.getText().toString().trim();
                     Uri parsed = Uri.parse(value);
                     String scheme = parsed.getScheme();
-                    if (parsed.getHost() == null
+                    if (value.length() > 8192 || parsed.getHost() == null || parsed.getUserInfo() != null
                             || !("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme))) {
                         Toast.makeText(this, "اكتب رابط HTTP أو HTTPS صحيحًا.", Toast.LENGTH_LONG).show();
                         return;
@@ -1665,7 +1665,7 @@ public class MainActivity extends Activity {
             row.setGravity(Gravity.CENTER_VERTICAL);
             row.setPadding(dp(6), dp(6), dp(6), dp(6));
             TextView label = new TextView(this);
-            label.setText((i + 1) + ". " + title + "\n" + item.optString("mime", "وسائط"));
+            label.setText((i + 1) + ". " + title + "\n" + (item.has("url") ? "رابط إنترنت" : item.optString("mime", "وسائط")));
             label.setTextColor(Color.WHITE);
             label.setTextSize(13);
             row.addView(label, new LinearLayout.LayoutParams(0, -2, 1f));
