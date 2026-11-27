@@ -3483,10 +3483,8 @@ private void showManualIpDialog() {
             currentSlideIndex = 0;
             persistMediaQueues();
             setSelectedMediaUri(slideshowQueue.get(0));
-            if (slideshowQueue.size() > 1) {
-                isSlideshowRunning = true;
-                slideHandler.postDelayed(slideRunnable, 5000);
-            }
+            isSlideshowRunning = false;
+            slideHandler.removeCallbacks(slideRunnable);
         } else if (!videoQueue.isEmpty()) {
             currentVideoIndex = 0;
             persistMediaQueues();
@@ -3504,7 +3502,8 @@ private void showManualIpDialog() {
             @Override public void run() {
                 if (isFinishing()) return;
                 if (CastKeepAliveService.isLocalServerReady()) {
-                    castLocalMediaToTv(true);
+                    if (imageShare) castLocalImageQueueToTv(true);
+                    else castLocalMediaToTv(true);
                 } else if (++attempts[0] < 20) {
                     retryHandler.postDelayed(this, 300L);
                 } else {
@@ -4121,13 +4120,11 @@ private void showManualIpDialog() {
                     persistMediaQueues();
                     for (Uri mediaUri : slideshowQueue) addRecentMedia(mediaUri);
                     setSelectedMediaUri(slideshowQueue.get(0));
-                    castLocalMediaToTv(true);
+                    isSlideshowRunning = false;
+                    slideHandler.removeCallbacks(slideRunnable);
+                    castLocalImageQueueToTv(true);
                     if (slideshowQueue.size() > 1) {
-                        slideIntervalMs = prefs.getLong("slideshow_interval_ms", 5000L);
-                        if (slideIntervalMs < 1000L || slideIntervalMs > 60000L) slideIntervalMs = 5000L;
-                        isSlideshowRunning = true;
-                        slideHandler.postDelayed(slideRunnable, slideIntervalMs);
-                        Toast.makeText(this, "بدأ العرض التقديمي للصور (" + slideshowQueue.size() + ")", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(this, "تم إرسال مجموعة الصور كقائمة واحدة (" + slideshowQueue.size() + ")", Toast.LENGTH_SHORT).show();
                     }
                 }
             }
@@ -4254,6 +4251,71 @@ private void showManualIpDialog() {
             extension = "mp4";
         }
         return "/media." + extension;
+    }
+
+    // Send a selected image group as one authenticated Receiver queue request.
+    // This avoids firing one independent playback request every few seconds.
+    private void castLocalImageQueueToTv(boolean showToast) {
+        if (slideshowQueue.isEmpty()) return;
+        List<String> targets = getPlaybackReceiverTargets();
+        if (targets.isEmpty()) {
+            if (showToast) Toast.makeText(this, "مفيش أجهزة محددة ومربوطة بأمان للبث.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (slideshowQueue.size() > 50) {
+            Toast.makeText(this, "الحد الأقصى لإرسال مجموعة الصور مرة واحدة 50 صورة.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        String phoneIp = getDeviceIpAddress();
+        if (phoneIp == null || phoneIp.isEmpty() || "0.0.0.0".equals(phoneIp)) {
+            Toast.makeText(this, "تعذر تحديد عنوان الهاتف على شبكة Wi-Fi.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (!CastKeepAliveService.isLocalServerReady()) {
+            Toast.makeText(this, "خادم بث الملفات لم يصبح جاهزًا بعد؛ انتظر لحظة.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        final String mediaPin;
+        try {
+            mediaPin = CastTlsIdentity.getCertificateFingerprint();
+        } catch (Exception error) {
+            Toast.makeText(this, "تعذر تجهيز شهادة تشفير الوسائط.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (mediaPin == null || !mediaPin.matches("[A-Za-z0-9_-]{43}")) {
+            Toast.makeText(this, "بصمة شهادة الوسائط غير صالحة.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        JSONArray queueItems = new JSONArray();
+        try {
+            for (Uri uri : slideshowQueue) {
+                if (uri == null || !"content".equalsIgnoreCase(uri.getScheme())) continue;
+                String mime = getContentResolver().getType(uri);
+                if (mime == null || !mime.toLowerCase(java.util.Locale.ROOT).startsWith("image/")) {
+                    mime = "image/jpeg";
+                }
+                setSelectedMediaUri(uri);
+                String token = CastKeepAliveService.getMediaAccessToken();
+                if (token == null || !token.matches("[A-Za-z0-9_-]{43}")) {
+                    throw new IOException("Unable to register local image");
+                }
+                JSONObject item = new JSONObject();
+                item.put("url", "https://" + phoneIp + ":8088"
+                        + getLocalMediaRoutePath(uri, mime) + "?token=" + token);
+                item.put("mediaPin", mediaPin);
+                item.put("headers", new JSONObject());
+                queueItems.put(item);
+            }
+            if (queueItems.length() == 0) {
+                Toast.makeText(this, "مجموعة الصور لا تحتوي على ملفات صالحة.", Toast.LENGTH_LONG).show();
+                return;
+            }
+            setSelectedMediaUri(slideshowQueue.get(0));
+            probeReceiversBeforeQueueSend(targets, queueItems);
+        } catch (Exception error) {
+            Toast.makeText(this, "تعذر تجهيز مجموعة الصور: " + error.getClass().getSimpleName(),
+                    Toast.LENGTH_LONG).show();
+        }
     }
 
     private void castLocalMediaToTv(boolean showToast) {
